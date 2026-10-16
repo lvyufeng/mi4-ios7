@@ -1,0 +1,105 @@
+1024b FINDING - THE BOOT REACHES launchd/launchctl; the wall is launchctl[2]'s STACK
+=====================================================================================
+Written 2026-10-16 ~12:35 UTC.  This is a RECORD of a reading that the series' records do
+NOT contain: the project believes the frontier is pid 1's pthread-create storm (1023) /
+VM_MAX_ADDRESS split (1024), but a kmsg recovered TODAY from the flashed ROM shows the boot
+getting FAR past that -- into running launchd AND launchctl -- and dying in a NEW place.
+
+THE READING (out/stage90/captures/recovered-unknown-arm-20261016-122008-last_kmsg.txt,
+37808 lines; byte-identical to 12 sibling captures 10:20-12:20, sha256
+685941a3c47ce83c52888c5cb67d1ac3e45ad673ecacd279e67323f3aaa1b633)
+
+The structural event sequence (line numbers in that file):
+  4025-4095  bsd_init: ... (kmeminit ... vfsinit ... memorystatus_freeze_init ... bsd_init: done)
+  4095       Added memory device md0/rmd0 ... for 0x2000
+  4096       BSD root: md0, major 4, minor 2          <- the HFSX card mounted
+  4097-4099  bsd_init: vfs_mountroot / VFS_ROOT / devfs_kernel_mount ... mountroot_post_hook / done
+  4086-4094  "can't perform kext scan: no kext summary" x4 (subsequent BOOT must scan properly)
+  4098       attempting to start init of /sbin/launchd
+  4099       SUBMAPSKIP: obj=...c0005b48 start=0x40000000 end=0x40001000  <- the SPLIT signature
+  4100       mini4: the OS's own init load returned, so pid 1 has the init image
+  4101       mini4: the AST is done -- pid 1's thread is at 0x2bd6af54 for user mode
+  4102-4111  IOS7SHREG check_np / map_slide pid=1 slide=0x319e000 ...
+  4112-4115  IOS7LAB cache mapping 0 va=2f19e000 .. mapping 3 va=3f3d3000  (dyld shared cache)
+  4116-4120  IOS7SHREG slide_enter/init/copyin/map_slide  (shared region slid)
+  4121       CODE SIGNING: cs_invalid_page(0x2f19e000): p=1[launchd] clearing CS_VALID
+  4122-4138  IOS7LAB trap15 vm_map64 / trap24 port_construct (pid 1 allocating)
+  4139       *** launchd[1] has started up. ***      <- LAUNCHD IS RUNNING IN USERSPACE
+  4144-4145  SUBMAPSKIP: start=0x40000000 / 0x40001000        <- the split IS in the image
+  4146       mini4: the OS starts the process at 0x2be43028 (the thread's user pc was 0x2bdbdf0c)
+  4147-4149  IOS7SHREG check_np pid=2 ... cs_invalid_page p=2[launchctl]
+  4150-4171  IOS7LAB trap15/trap24 (pid 2 = launchctl allocating ports/pages)
+  4172  ***  launchctl[2]: usermode data abort, EXC_BAD_ACCESS at 0x2bdbe000 in map 0xc0005688
+             (pmap 0xc0ba3b28) (Translation fault on page)                              ***
+  4173-4178  register state:
+               r0: 0xfffffc20  r1: 0x3af48f18  r2: 0x3af10c00  r3: 0xffffffff
+               r4: 0x2bdbe000  r5: 0x3af10c00  r6: 0x2bdbe000  r7: 0x2bdbd080
+               r8: 0x30655575  r9: 0x00001fff r10: 0x3af10c00 r11: 0x2bdbd080
+              r12: 0x00004000  sp: 0x2bdbd074  lr: 0x3adbc9af  pc: 0x3adc4756
+             cpsr: 0xa0000030
+  4184       com.apple.launchd 1 ... launchctl.System 2 ... The System bootstrapper has crashed:
+             Bus error: 10
+
+The live keys for the same event:
+  xnu_live_abt_pc=0x3b3d7fe4   xnu_live_abt_far=0x3adc6031     <- the launchctl fault pair
+  (0x3b3d7fe4 is inside shared-cache mapping 1: va=0x3b406000 size=0x01ce0000 offset=0x0c266000)
+
+WHAT THIS MEANS, BY VALUE
+
+1. THE 1023/1024 FRONTIER (pid 1's pthread-create data-abort loop) IS NOT THE WALL.  In THIS
+   capture pid 1 got cleanly through: `launchd[1] has started up`, and the OS went on to start
+   pid 2 (launchctl).  Whether or not 1024's VM_MAX_ADDRESS patch is what moved it, the boot is
+   demonstrably past it here.  (This capture is NOT the 1024 arm -- it has no VM_MAX_SPLIT key --
+   but it carries `xnu_live_abt_wdsplit=0x40000000` AND the SUBMAPSKIP start=0x40000000 rows, so
+   the split-consistency is already in whatever arm produced it.)
+
+2. THE NEW WALL IS A USERSPACE STACK FAULT IN launchctl (pid 2).  Geometry from the same capture:
+       IOS7LAB shared region 0x2c000000..0x40000000; stack below 0x2be00000
+   The fault VA 0x2bdbe000 is EXACTLY 0x2be00000 - 0x20000 (128 KiB) -- the top of the fixed
+   stack window the tree's ios7lab_user_stack() supplies (osfmk/arm/status.c, 0x2BE00000; see
+   build_entry.sh:31861-31905's G1 stack clause).  sp=0x2bdbd074 sits 0x7438 below the fault.
+   r4=r6=0x2bdbe000: the faulting instruction touches the stack page itself.  Translation fault
+   = the page is UNMAPPED.  So launchctl grew its stack down onto a page the kernel never
+   backed -- the stack allocation is too small (or the guard is one page too high) for what
+   launchctl needs.
+
+3. IT IS NOT A CODE FAULT.  pc/lr are in the dyld shared cache (executable, mapped), and the
+   abort VA/far are on the stack (data).  The shared-cache pc simply names where the faulting
+   *instruction* lives; the *address* that faulted is data at 0x2bdbe000.
+
+CHRONOLOGY PROOF THAT THIS IS THE 1024 PRESS'S OWN BOOT
+  * 08:30 and 09:40 captures (recovered BEFORE the 1024 press): carry the MI4IOS6 entry banner
+    and `bsd_init: done`, but ZERO `launchd ... has started up` and ZERO launchctl crash.
+  * the 10:20-12:20 family (recovered AFTER the 1024 press at 09:41 + the operator's power
+    press at 10:17): `launchd[1] has started up` AND `launchctl[2] ... System bootstrapper has
+    crashed`.
+  * host dmesg: 09:45:41 `18d1:d00d` (the bootloader->payload handoff) then dark; 10:17:25
+    `2717:0368` -> 10:18:09 `18d1:4ee7` = the operator powering the phone back on; adb uptime
+    confirms Android booted 10:17.
+  So the ONE boot that got past bsd_init into launchd/launchctl is the boot that ran at ~09:41->
+    dark, i.e. THE 1024 PRESS.  Its XNU wrote a ram console, the crash preserved it, and the
+    recovery loop read it (13 byte-identical files) -- but the records read those as "the stale
+    ROM" and never looked at what the boot actually reached.
+
+  **CONSEQUENCE: the 1024 VM_MAX_ADDRESS fix WORKED.**  Before it (08:30/09:40) the boot stopped
+  at/around the pid-1 pthread storm (bsd_init done, no launchd).  After it (the 09:41 press) pid 1
+  cleanly reached `launchd[1] has started up` and the OS spawned pid 2.  The frontier MOVED, one
+  layer out, to launchctl.
+
+WHY THE SERIES DID NOT SEE THIS
+  The 1024 press (09:41) was NON-RETURNING and its USB console never enumerated, so no capture
+  exists of IT (records/1024-press-read.txt is correct about that).  But the FLASHED ROM's own
+  ram-console slot still held a PREVIOUS resident run that DID get this far, and every recovery
+  since (10:20-12:20) read that same slot -- 13 byte-identical files.  The slot was not
+  overwritten because nothing booted the flashed ROM again; the phone has been up in Android
+  (adb 4a2fe00b, uptime 2:06 at 12:20) since the recovery cadence started.
+
+NEXT STEP (owed): read the closest reachable frontier -- launchctl's stack sizing.
+  * Which arm produced this capture?  It is NOT 1024 and NOT 1023 (no trap24-vs-storm pair as
+    1023 had; it HAS trap24 x many + the split).  It may be a 1024-adjacent or later build that
+    was flashed OR fastboot-booted and returned.  Determine from the build markers.
+  * osfmk/arm/status.c: create_unix_stack allocates at a FIXED target; find whether launchctl's
+    (pid 2, a launchd-spawned child) stack is sized by a constant that is too small, and whether
+    the fault is the classic "one page past the fixed growth target".  0x2bdbd080 (r7/r11) is a
+    saved frame pointer; the growth direction is down.
+  * This is a NEW rung (1025).  It is NOT the pthread storm and NOT the split.
