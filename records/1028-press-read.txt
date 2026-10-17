@@ -2,63 +2,104 @@
 ========================================================================================
 Arm: armed-d13-35a7e83e.  Press log: /tmp/press_1028.log.  NOT PRESSED AGAIN (single slot).
 
-VERDICT: **NO READING - the RAM-console slot was NOT re-written by this run, so the checker
-read the 1027 press's OWN log (a STALE slot).**  The FIX-NOOP cell the press printed is an
-artifact of the stale-slot defect, NOT a device fact about the +16 fix.
+VERDICT: **FIX-NOOP, of the informative kind - the H2 fault RECURS, but its geometry MOVED WITH THE
+REGION by exactly ONE PAGE.**  The fix took effect (`ustack_rc=0`, the region grew) and the fault
+moved up by the same page: `far - ustack = 0x1000` and `far - sp = 0x1F8C = 0xF8C + 0x1000`.  So the
+off-the-end word at the region top was NOT the cause; the failing write FOLLOWS the region top.  H2
+(the block-top-flush mechanism) is REFUTED as a fix target.  Per the pre-registered cell: report,
+do not re-fix.
 
-WHAT HAPPENED
--------------
-1. All by-value gates PASSED before the boot (press log step 0):
-     (0a)  the staged kern_exec.c carries STAGE90_XNU_H2_STACK_HEADROOM with the `size + 16`
-           extent (x1) and the patcher's #endif (x1), AND the pool's own source-content record
-           (out/xnu_kernel_src_d13.sha256) names the SAME sha256 - the fix IS in the object the
-           linked image was built from;
-     (0a-1) trap.o carries 1027's xnu_live_abt_lookup_far= AND 1025's xnu_live_abt_vmfkrv=;
-            kern_exec.o carries 1026's xnu_live_abt_proc_ustack AND 1025's xnu_live_ustack_req=;
-     (0f)  the LINKED xnu_arm_entry.elf carries xnu_live_abt_lookup_far= and xnu_live_abt_vmfkrv=.
-2. `fastboot boot out/stage90/stage90-qcdt.img` (sha256 fa57362e..., verified unchanged across the
-   send).  Booting OKAY at ~03:34.
-3. The device did NOT return (runner exit 2 = resident rung non-return; the expected shape).
-   - adb: serial 4a2fe00b not listed.
-   - host log: 27 -> 27 enumerations (no new one).
-   - USB console capture: zero bytes (reader exit 143 - the reader was SIGTERM'd, as designed).
-4. Step 4 (recovery) waited 90x5s = 450 s and found the device STILL dark, so it did NOT recover a
-   fresh log: "device not visible yet; if still dark, the operator power-press is the next step".
-5. Step 5 then read the NEWEST recovered file on disk, which is
-   out/stage90/captures/recovered-unknown-arm-20261017-030551-last_kmsg.txt - **mtime 03:05:51**,
-   i.e. 29 minutes BEFORE this press's boot (the press itself started 03:48:16, the boot ~03:34).
+CAPTURE
+-------
+out/stage90/captures/recovered-unknown-arm-20261017-041142-last_kmsg.txt  (mtime 04:11:42, AFTER the
+~03:34 boot - a FRESH, NON-STALE slot; this is 1028's own run, unlike the earlier stale-slot read).
 
-WHY THE FIX-NOOP CELL IS AN ARTIFACT (three independent tells)
---------------------------------------------------------------
-a. The capture's mtime (03:05:51) PREDATES the 1028 boot (~03:34).  A slot written by 1028's own
-   boot cannot be older than the boot.
-b. The capture's rows are the 1027 H2 reading EXACTLY: far=0x2bde0000 == ustack, sp == 0xF8C,
-   lookup_far=0 - i.e. records/1027-press-read.txt's reading, verbatim.  (The press's own step-5
-   note predicts this: "if $_last still matches the 1025 press's own log, the run did NOT re-write
-   the ram-console slot".)
-c. The device never returned, so it never reached the point of writing its own RAM console.
+CONTROLS (the instrument is SOUND - all live)
+---------------------------------------------
+  launchd[1] has started up       : YES (x1)
+  trap24 fired                    : YES (abt_pc_n>=12, pc live)
+  mach_port_construct result=0    : 8 rows
+  undef_seq                       : None (the NEON wall stays retired)
+  panic                           : 0
+  wdt_pets                        : 0 (resident rung, as expected)
 
-So the FIX-NOOP cell is adjudicating the PREVIOUS boot, and its own caveat ("a build defect OR the
-top word was not the cause") is the wrong branch: the reading is neither - there is NO 1028 reading.
-By [[mi4-last-kmsg-reader-carrier]] a resident rung that does not return keeps NO /proc/last_kmsg of
-its own; the reader then reads whatever slot the LAST returning boot left.
+THE FAULT, BY VALUE (pid=2 = launchctl[2])
+------------------------------------------
+  xnu_live_abt_vmfkrv      = 1
+  xnu_live_abt_vmfkrv_far  = 0x2bd0e000
+  xnu_live_abt_vmfkrv_dfsr = 0x00000807   (data abort, write)
+  xnu_live_abt_vmfkrv_pc   = 0x388f4756   (userspace - same frontier shape as 1025-1027)
+  xnu_live_abt_vmfkrv_sp   = 0x2bd0c074
+  xnu_live_abt_vmfkrv_pid  = 2
+  xnu_live_abt_lookup_far  = 0
+  xnu_live_abt_far_in_map  = 1            (the word just below far IS in the map)
+  xnu_live_abt_map         = 0xc0005688
+  xnu_live_abt_taskmap     = 0xc0005688   (map == taskmap: H1 still refuted by value)
+  xnu_live_abt_ustack      = 0x2bd0d000
+  xnu_live_abt_e2_lo       = 0x2bc0e000
+  xnu_live_abt_e2_hi       = 0x2bd0e000   (covering entry of the far-4 lookup == far)
 
-**THE FIX IS STILL CERTIFIED PRESENT, BY VALUE, IN THE ARM THAT WAS BOOTED** (independent of the
-slot): out/stage90/xnu_arm_entry.elf, create_unix_stack @ 0x8020a768:
-    8020a7c4: orr  r2, r6, #16    <- FIXED mach_vm_allocate size (= size + 16; size page-aligned)
-    8020a7d8: bl   mach_vm_allocate
-    8020a7fc: mov  r2, r6         <- ANYWHERE fallback size (UNCHANGED)
-    8020a814: add  r7, r0, r6     <- user_stack = addr + size (UNCHANGED)
-(records/1028-build.txt has the same disassembly off the pool object and the linked entry elf.)
+THE USTACK GEOMETRY (the FIXED allocate - the fix's own row)
+------------------------------------------------------------
+  xnu_live_ustack_req        = 0x2bd0d000
+  xnu_live_ustack_size       = 0x00100000
+  xnu_live_ustack_fixed_addr = 0x2bc0d000
+  xnu_live_ustack_rc         = 0        <- **FIXED allocate SUCCEEDED: NO ANYWHERE fallback, no NO-OP**
+  xnu_live_ustack_final      = 0x2bd0d000
+  xnu_live_ustack_prot_addr  = 0x2bc0d000
+  xnu_live_ustack_prot_size  = 0x00001000
 
-DEFECT FOUND (press): the press WARNS about a stale slot in step 5 but still RUNS the checker on the
-stale file, so a non-returning run prints a FIX-NOOP/G-CTL cell that reads a DIFFERENT boot's log.
-The press must REFUSE to adjudicate a capture older than its own boot (a freshness check: the
-capture's mtime must be AFTER the boot, or the press must print NO READING and stop).  This is the
-[[mi4-silence-is-a-reading-only-if-success-is-silent]] / [[mi4-last-kmsg-reader-carrier]] shape
-from the reading side.
+THE ARITHMETIC THAT DECIDES IT
+------------------------------
+  far - ustack      = 0x2bd0e000 - 0x2bd0d000 = 0x1000   (one PAGE above the advertised stack top)
+  ustack - sp       = 0x2bd0d000 - 0x2bd0c074 = 0x0F8C   (the block size - UNCHANGED from 1024-1027)
+  far - sp          = 0x2bd0e000 - 0x2bd0c074 = 0x1F8C = 0x0F8C + 0x1000
 
-NEXT STEP: the device needs the OPERATOR's power press (VolDown+Power+USB -> fastboot, then
-`fastboot boot <stock boot.img>` -> `cat /proc/last_kmsg`), then re-run
-`scripts/recover_last_kmsg.sh --read-only` and adjudicate ONLY the capture that is newer than the
-1028 boot.  Do NOT `fastboot boot` anything else first (it would clear the slot).  NOT boot TWRP.
+Compare the SAME offsets on 1027 / 1026 / 1025 / 1024:
+  far - sp == 0x0F8C  and  far == ustack  (the fault was AT the region top).
+
+On 1028:
+  far - sp == 0x1F8C  and  far == ustack + 0x1000  (the fault is ONE PAGE ABOVE the region top).
+
+So the fix grew the region by exactly one page (mach_vm_allocate rounds `size + 16` to
+`size + PAGE_SIZE`, docs/1028-design.md s.5) and THE FAULT MOVED WITH IT BY THE SAME PAGE.  The block
+top and sp are unchanged (`ustack - sp` is still 0xF8C), so the failing write is NOT the block's top
+word: it is a write at `p->user_stack + 0x1000`, one page ABOVE even the new region top.
+
+WHAT THIS MEANS
+---------------
+* **H2 as a fix target is REFUTED.**  H2 said "the region ends flush with the block top, so the word at
+  `far == user_stack` is unowned."  If that were the whole cause, growing the top by a page would have
+  OWNED the word at `user_stack` and the fault would VANISH.  Instead it MOVED: userspace is writing a
+  fixed distance ABOVE whatever the top is.  The boundary is not the block top.
+* **The write target tracks `p->user_stack`, not the block.**  `far == ustack + 0x1000` exactly.  The
+  consumer is deriving its store address from the advertised stack top (which `thread_userstack`
+  returns to userspace, status.c:90/98) and writing one page above it - i.e. it treats the region as if
+  it were `[.., ustack + 0x1000)` and writes at its top.  Raising `ustack` (the fix) raises the fault.
+* This is the [[mi4-a-window-is-an-interval-not-a-function]] / "the boundary can be in a READER" shape:
+  the failing party computes its address FROM the value we changed, so the value must be corrected at
+  its SOURCE, not by growing an allocation the party does not consult.
+
+NOT A NO-OP, NOT A BUILD DEFECT
+-------------------------------
+`xnu_live_ustack_rc = 0` (not the ANYWHERE fallback), the region's `final == req` and grew (the second
+ustack row's exec has `req=0x2bdfd000`, whose top `+0x1000 = 0x2be00000` is exactly the "stack below
+0x2be00000" boundary printed by the kernel).  The fix is present and effective - it simply moved the
+fault instead of removing it.
+
+NEXT (per the pre-registered cell: report, do NOT re-fix)
+---------------------------------------------------------
+Name the next frontier BY VALUE: read what is at `ustack + 0x1000` and who writes there.  The consumer
+is userspace (pc=0x388f4756 in the shared cache, slide=0xcce000 => base 0x37c26756); the address it
+writes is `p->user_stack + 0x1000`.  A 1029 probe must (a) publish `p->user_stack` AND the region's
+`vm_map_entry.end` AND the faulting store's effective address in ONE row so the "who derived what"
+chain is by-value, and (b) test the READER hypothesis: if the writer reads the top from
+`thread_userstack` and adds `0x1000` (a page), the correct fix is at that reader (or at the value it
+returns), NOT another kernel allocation.  Do NOT simply allocate another page: the fault will follow.
+
+HELD ARTIFACTS
+--------------
+- The stale-slot defect from the FIRST 1028 press is FIXED (press stamps the boot epoch and refuses
+  older captures); this reading is from a capture NEWER than the boot.
+- By-value fix certification (independent of the slot): xnu_arm_entry.elf create_unix_stack @ 0x8020a768
+  `orr r2, r6, #16` (FIXED extent) / `mov r2, r6` (fallback unchanged).  (records/1028-build.txt)
