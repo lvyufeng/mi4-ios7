@@ -72,6 +72,14 @@ SOURCE OF THE FACTS
   block-index relation UNVERIFIED.** A one-line `count` probe (or reading `xnu_live_wrp_block_bytes`,
   already published by 1030 = xnu_live_rdr_proc_argslen) would close (a)/(b).
 
+  ⚠ (b) IS NOT A HOLE TO FILL — IT IS A STANDING CONTRADICTION. `4k >= 0x1F78` (k >= 2014) is forced by
+  the OBSERVED r4_fault regardless of `count`, yet k must be <= count. So for EVERY count < 2014 the
+  cursor-overshoot account is arithmetically IMPOSSIBLE, and no count tested (max 0x3EF = 1007) reaches
+  it. Therefore "the cursor overshoots an under-sized block" is NOT YET CLOSED: either (i) count is
+  >= 2014 (a >8 KiB VLA — untested, but consistent), or (ii) the block-2 model is wrong (the cursor walks
+  a DIFFERENT object than block2_lo, or r3_init != sp0 - 8*count). A `count`/`block_bytes` row must be
+  read as TESTING this contradiction, NOT as filling an owed field. (Raised by design-1032, 2026-10-17.)
+
 (5) CROSS-CHECKS AGAINST THE 1030 RAW FRAME (records/1030-press-read.txt) — TWO DISCREPANCIES.
   The 1030 frame, all 14 rows (values as printed):
       r4 = 0x2bdae000   r3 = 0xffffffff   r5 = 0x38c9ec00   r6 = 0x2bdae000
