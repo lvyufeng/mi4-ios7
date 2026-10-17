@@ -72,7 +72,30 @@ SOURCE OF THE FACTS
   block-index relation UNVERIFIED.** A one-line `count` probe (or reading `xnu_live_wrp_block_bytes`,
   already published by 1030 = xnu_live_rdr_proc_argslen) would close (a)/(b).
 
-(5) WHAT THIS DOES *NOT* CHANGE.
+(5) CROSS-CHECKS AGAINST THE 1030 RAW FRAME (records/1030-press-read.txt) — TWO DISCREPANCIES.
+  The 1030 frame, all 14 rows (values as printed):
+      r4 = 0x2bdae000   r3 = 0xffffffff   r5 = 0x38c9ec00   r6 = 0x2bdae000
+      r12 = 0x00004000  sp = 0x2bdac074   pc = 0x38b52756   lr = 0x38b4a9af
+      r4-sp = 0x1f8c  userstack = 0x2bdad000  r4-ustack = 0x1000  far = 0x2bdae000
+      r4-far = 0  block_bytes = 188
+  Slide (from pc): 0x38b52756 - 0x37C26756 = 0x00F2C000.
+    - lr unslid = 0x38b4a9af - 0x00F2C000 = 0x37C1E9AF  == the agent's claimed lr. AGREES.
+    - **r5 DISCREPANCY.** The agent asserted r5 = arg0 = the objc table base = 0x3b868c00. The frame's
+      r5 = 0x38c9ec00, which unslides to 0x37D72C00 - NOT 0x3b868c00 and not present anywhere the agent
+      quoted. So the agent's r5 VALUE is unsupported by the 1030 frame (it may be from a different run or
+      a mis-attribution). Its lr/pc are verified; its r5 value is NOT. Do not repeat 0x3b868c00.
+    - **r3 vs r4 DISCREPANCY (a correction to the 1030 narrative itself).** The 1030 record's prose says
+      "r6 == r4: the caller passed the same value as r2 and r3", but the frame prints r3 = 0xffffffff
+      while r4 = r6 = 0x2bdae000. So in THIS frame r3 != r4. The writer maps r4 <- caller r3 (mov r4,r3),
+      so a frame r3 of 0xffffffff conflicts with r4 = 0x2bdae000. Either arm_ctx->r[3] was clobbered
+      between the store and the dump (the fault is IN the store's post-increment path, so r3 may legitimately
+      differ), or the 1030 "r2 == r3" story was an over-read. **This is exactly why the 1031 probe exists:
+      it republishes the caller frame at the fault; the 1030 r3 row does NOT support the r2==r3 claim.**
+  NOTE: the agent's INSTRUCTION findings (writer prologue bytes, the two caller alloca sites, the
+  `sub.w rN, sp, r#N, lsl #2` shape) stand on the objdump, which the lr AGREES with; the register-VALUE
+  claims that do not cross-check (r5) are marked unsupported above.
+
+(6) WHAT THIS DOES *NOT* CHANGE.
   §2 of docs/1031-design.md (the cells) are value-decided and need NO change: 1031 still measures that the
   caller passes r3 == r2 == the region's exclusive top. The fix DIRECTION (the region top / a page the
   writer's cursor lands on) is unchanged. What changes is the MECHANISM narrative: the abort is a copy
@@ -81,6 +104,6 @@ SOURCE OF THE FACTS
   short" (1029/1030-audit: the region is 1 MiB = MAXSSIZ with ~1016 KiB unused BELOW sp; the writer goes
   UP, not down).
 
-(6) THE FIX IS NOT PICKED HERE. 1031 is a PROBE. The reading is WITHELD (device dark after the press;
+(7) THE FIX IS NOT PICKED HERE. 1031 is a PROBE. The reading is WITHELD (device dark after the press;
 records/1031-press-read.txt). This file is static forensics that must be reconciled WITH the 1031 capture
 when it is recovered, not used in its place.
