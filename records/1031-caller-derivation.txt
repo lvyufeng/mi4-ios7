@@ -233,3 +233,22 @@ ADDENDUM 2026-10-17 (lead, independent objdump + arithmetic) — TWO CORRECTIONS
        k = T>>1. (count-derivation's dissent — "r2 overwritten before the seed" — is REFUTED; it
        mislocated the seed below the loop body.) Conclusion unchanged: k independent of count;
        geometry fixes T = 2*count + 0x7BC.
+
+(E) THE COUNT IS NOT RECOVERABLE FROM THE 1030 FRAME — the "static record" can compute only a PREDICTION.
+    design-1032 proposed 4 rows (cc_count_minus_blk, cc_4k, cc_8count, cc_r4_minus_r3) to decide
+    CAL-COUNT-FITS vs CAL-COUNT-ELSE. Checked against the ACTUAL 14 published rows
+    (records/1030-press-read.txt:58-64), EVERY one of those rows needs `count`, and count is ABSENT:
+      - count = the r5 at the bl 0x37C2641E (caller life) — NOT in the frame.
+      - the frame's r5 = 0x38c9ec00 is the WRITER's r5 (`mov r5,r0` at the prologue = the base),
+        NOT the caller's count. So r5 does not supply it.
+      - r3_init = S_bl - 8*count would give count, but the frame's r3 = 0xffffffff (clobbered at the
+        fault; the writer reuses r3 mid-loop), NOT block2_lo. So r3 does not supply it either.
+      - r4_fault - sp = 0x1F8C is a frame row, but S_bl = sp+20 and r4_fault - S_bl = 0x1F78 is a
+        CONSTANT that cancels count — it does not isolate count.
+    => The frame fixes ONLY: r4_fault - S_bl = 0x1F78, i.e. the relation 4k = 0x1F78 + 8*count, i.e.
+       T = 2*count + 0x7BC as a PREDICTION valid for ANY count with k=T>>1. NO frame row pins count.
+       So CAL-COUNT-FITS and CAL-COUNT-ELSE are NOT decidable from the 1030 frame; the static record
+       can state the prediction and the consistency band (count >= ~1007 for k>=... ), nothing more.
+    => To ACTUALLY decide it needs a row that carries count (or r3_init / block2_lo) AT THE FAULT —
+       i.e. a genuine new probe, not a re-read of the 1030 frame. Until such a row exists, 1032 as a
+       fix-selecting rung is UNJUSTIFIED and the honest deliverable is this record.
