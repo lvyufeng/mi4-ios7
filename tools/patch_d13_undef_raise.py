@@ -141,6 +141,7 @@ ALLOWED_IF_IDENTIFIERS = {
     # adding a Site A block in the usermode DATA-abort arm, far below `sleh_undef` where this witness
     # lives.  Same shared-namespace rule, same OFF reasoning ([[mi4-one-file-many-rungs]]).
     "STAGE90_XNU_WRITER_PROBE",
+    "STAGE90_XNU_CALLER_PROBE",
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

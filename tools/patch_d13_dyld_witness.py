@@ -433,7 +433,13 @@ ALLOWED_IF_IDENTIFIERS = {"BOARD_CONFIG_QSD8250_LEO", "BOARD_CONFIG_ARMPBA8", SW
                           # OFF reasoning: the OFF arm below drives STAGE90_XNU_WRITER_PROBE as
                           # `undefined`, so 1030's block is compiled OUT and the OFF text is still
                           # HEAD's ([[mi4-one-file-many-rungs]]).
-                          "STAGE90_XNU_WRITER_PROBE"}
+                          "STAGE90_XNU_WRITER_PROBE",
+                          # 1031's CALLER PROBE (tools/patch_d13_caller_probe.py) edits the SAME file
+                          # (osfmk/arm/trap.c), adding a Site A block after 1030's.  Same shared-namespace
+                          # rule, same OFF reasoning: the OFF arm below drives STAGE90_XNU_CALLER_PROBE as
+                          # `undefined`, so 1031's block is compiled OUT and the OFF text is still HEAD's
+                          # ([[mi4-one-file-many-rungs]]).
+                          "STAGE90_XNU_CALLER_PROBE"}
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WORDS = {"defined", "if", "elif", "ifdef", "ifndef"}

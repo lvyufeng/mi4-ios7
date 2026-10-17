@@ -104,6 +104,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_H2_STACK_HEADROOM",  # 1028 (edits kern_exec.c; allowed for the proof)
     "STAGE90_XNU_READER_PROBE",       # 1029
     "STAGE90_XNU_WRITER_PROBE",       # 1030 (this rung)
+    "STAGE90_XNU_CALLER_PROBE",       # 1031 (tools/patch_d13_caller_probe.py)
 }
 
 
@@ -184,10 +185,14 @@ def verify_off(xnu):
               and t.count(f"#if defined({SWITCH}) && {SWITCH}\n") >= 1
               and t.count(f"#endif /* {SWITCH} */\n") >= 1)
     between = t.count("#endif /* STAGE90_XNU_READER_PROBE */\n#if defined(STAGE90_XNU_WRITER_PROBE)") == 1
-    tail = t.count("#endif /* STAGE90_XNU_WRITER_PROBE */\n#endif /* STAGE90_XNU_USTACK_PROBE */\n") == 1
+    # The writer block closes before EITHER 1025's #endif (if it is the LAST sibling) OR a LATER rung's
+    # `#if` (a new rung may be APPENDED after this one -- [[mi4-one-file-many-rungs]]: 1031's caller
+    # block sits between 1030's #endif and 1025's). Both are correct; only "nowhere to close" is wrong.
+    tail = (t.count("#endif /* STAGE90_XNU_WRITER_PROBE */\n#endif /* STAGE90_XNU_USTACK_PROBE */\n")
+            + t.count("#endif /* STAGE90_XNU_WRITER_PROBE */\n#if defined(STAGE90_XNU_")) == 1
     print(f"   trap.c [ON] : xnu_live_wrp_r4 row present + #if/#endif pair: {have_t}")
     print(f"   trap.c      : the writer block sits after 1029's block, inside 1025's publisher: {between}")
-    print(f"   trap.c      : it closes immediately before 1025's #endif: {tail}")
+    print(f"   trap.c      : it closes before 1025's #endif OR a later rung's #if: {tail}")
     if have_t and between and tail:
         print("patch_d13_writer_probe: --verify-off PASS (the block is gated on the switch; OFF removes "
               "it -> 1029 tree bytes).")

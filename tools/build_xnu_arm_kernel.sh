@@ -1101,6 +1101,29 @@ DEFINES=(
 # absence; the link-site clause in build_entry.sh refuses too).
 [[ ${STAGE90_XNU_WRITER_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_WRITER_PROBE=1)
 
+# ---------------------------------------------------------------------------------------------------
+# 1031: STAGE90_XNU_CALLER_PROBE -- READ THE CALLER (its registers at the fault) AND PRINT the stack
+# region's EXCLUSIVE TOP by value (docs/1031-design.md 2).
+#
+# 1030 read the writer's cursor `r4 == far == the region's exclusive top`, but the writer's prologue
+# (`add r7,sp,#12`) shows the boundary decision is the CALLER's, and 1030 could not see the caller frame.
+# 1031 publishes the caller's registers (r0/r1/r2/r3/r9/r10/r7/lr/pc), the writer's fp self-check
+# (`r7 - sp`, must be 0xC), and -- the crux -- the covering vm_map entry's `vme_end` for `far - 4`, which
+# IS the region's exclusive top when `far` is the top.  Pre-registered cells: CAL-CALLER-TOP /
+# CAL-CALLER-SIZE / CAL-CALLER-OTHER / CAL-MISSING; absent rows are CAL-MISSING, never a negative.
+#
+# WHY THE GLOBAL ARRAY AND NOT `EXTRA_DEFINES`.  Same reason as the 1024 ceiling and the
+# 1025/1026/1028/1029/1030 switches: the switch must be on the SAME argv every pool object gets, and
+# `EXTRA_DEFINES` (`XNU_KERNEL_EXTRA_DEFINES`, ~:1399) is appended LAST and is NOT seen by the
+# EABI-runtime block (~:1796) or the firehose block (~:1838).  `tools/build_xnu_arm_kernel.sh` is run
+# separately from `build_entry.sh` (which only LINKS the pool objects), so without the re-run of THIS
+# script the linked image keeps the old trap.o and the probe prints nothing (records/1020-build-defect.txt).
+# OFF the `#if` compiles the tree's original bytes (`defined()` comes first,
+# [[mi4-off-option-two-spellings]]); the by-value reading of whether the switch reached the object is the
+# format string the compiler materialized for the probe key in trap.o (build_1031.sh refuses on its
+# absence; the link-site clause in build_entry.sh refuses too).
+[[ ${STAGE90_XNU_CALLER_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_CALLER_PROBE=1)
+
 # 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
 # the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO
 # p->user_stack, so the word at the top is unowned and userspace's touch faults.  This switch makes the

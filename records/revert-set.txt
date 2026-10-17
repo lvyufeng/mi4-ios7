@@ -17108,3 +17108,101 @@ set=armed-d13-8034562e sha256=d7bd16a69aa7b95dacd9d3ede817eb786198d6e479380cbfc5
 set=armed-d13-8034562e sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1030-writer-probe;stage90_fixture.macho
 set=armed-d13-8034562e sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1030-writer-probe;stage90-build-config.txt
 set=armed-d13-8034562e sha256=a0817058e7a97fa75c02408e2d8bab8fad54796e41434c4c8d9aeca6776ce184 bytes=560 file=SHA256SUMS.txt role=1030-writer-probe;SHA256SUMS.txt
+# armed-d13-49031dcb  -  1031: THE CALLER PROBE - NAME HOW THE CALLER DERIVED THE WRITE ADDRESS.
+# 1030-s press RAN and its own console was recovered (records/1030-press-read.txt). The reading is
+# W-B-NAMED, BY VALUE - the faulting store target IS the region-#s EXCLUSIVE TOP:
+#   xnu_live_wrp_r4                == xnu_live_wrp_far        (r4 - far == 0)
+#   xnu_live_wrp_r6                == xnu_live_wrp_r4         (the caller passed r2 == r3)
+#   xnu_live_wrp_userstack         = 0x2bdad000
+#   xnu_live_wrp_r4_minus_ustack   = 0x00001000              (one PAGE above the block top)
+# The writer is /usr/lib/libobjc.dylib + 0x14756, `str.w r2,[r4],#4`, prologue
+# `push {r4,r5,r6,r7,lr}; add r7,sp,#12`, `mov r4,r3` -> **r4 IS THE CALLER-s 4TH ARGUMENT**.
+# WHO derived it is UNRESOLVED.  docs/1031-design.md sec.0-1. REPORT IT; DO NOT RE-FIX IT.
+# **THE PRIOR DISASSEMBLY CLAIM IS REFUTED BY THE RAW FRAME.**  A disassembly of the caller
+# claimed it derives r3 as `sub.w rN, sp, r#N, lsl #2` (a DOWNWARD alloca off sp).  The 1030
+# capture shows sp = 0x2bdac074 and r4 = sp + 0x1F8C, so r4 lies ABOVE sp - a sub-off-sp cannot
+# produce it.  The caller-s derivation is UNRESOLVED, and 1031 MEASURES it (no fix, no
+# allocation change).  docs/1031-design.md sec.5.
+# Switch set is 1030-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_CALLER_PROBE=1**.
+# THE ARM (TWO SITES, one switch), staged by tools/patch_d13_caller_probe.py:
+#   Site A  osfmk/arm/trap.c  - rows INSIDE 1025-s publisher, AFTER 1026/1027/1029/1030-s blocks
+#                              but WITHIN 1025-s block, so the caller rows ride the SAME fault the
+#                              discriminator fires on. Rows: r0, r1, r2, r3, r9, r10, r12, r7,
+#                              r7_minus_sp, lr, pc, far, ustack, far_minus_ustack, region_end_hit,
+#                              region_end, r3_minus_region_end -> xnu_live_cal_* (RAM console).
+#   Site B  bsd/kern/kern_exec.c - the accessor `xnu_live_cal_proc_region_top` (the region top BY
+#                              VALUE from the allocator-s own stash) beside 1026-s, PLUS two
+#                              p_live_stack_top stashes at create_unix_stack (FIXED + ANYWHERE).
+# *** THE REGION-TOP LOOKUP IS THE POINT OF Site A. ***  `vm_map_lookup_entry(map, trunc_page(far)
+# - 4, &e); e->vme_end` IS the region-s exclusive top when far is the top (region_end_hit == 1),
+# so r3 == region_end NAMES the derivation as "the region-s END" rather than a base+size.
+# THE CHANNEL IS THE GLOBAL DEFINES ARRAY of tools/build_xnu_arm_kernel.sh (env), NOT EXTRA
+# (build_1031.sh arrests a -DSTAGE90_XNU_CALLER_PROBE in EXTRA), so an EXTRA-only build cannot
+# ship a stale pool behind a green build.
+# THE POOL MOVES TWICE OVER: trap.c AND kern_exec.c are BOTH pool files, so the pool (and the
+# entry .bin whose sha8 IS the arm) MOVES (8034562e -> 49031dcb). build_entry.sh only LINKS the pool
+# objects, so a green entry build says nothing about this half.
+# [[mi4-one-file-many-rungs]]: FIVE rungs edit bsd/kern/kern_exec.c (1025 / 1026 / 1028 / 1029 /
+# 1031) and SEVEN edit osfmk/arm/trap.c (994 / 1020 / 1025 / 1026 / 1029 / 1030 / 1031); a
+# cleanup `git checkout --` reverts the others SILENTLY and the failure surfaces LATE.
+#
+# THE BY-VALUE PROOF OF 1031-S CHANGE (Site A rows ARE prints, so this rung has real strings
+# evidence):
+#   (0)  tools/check_1031_capture.py --selftest PASSes (the checker can fail; the emitted-row
+#        parity is asserted against the patcher);
+#   (1)  the POOL OBJECTS carry it: osfmk_arm_trap.o has `xnu_live_cal_r3=` AND the WHOLE row set,
+#        bsd_kern_kern_exec.o has `xnu_live_cal_proc_region_top` (Site A + Site B both reached the
+#        objects); the INHERITED 1025/1026/1027/1029/1030 rows SURVIVE the same rebuild;
+#   (2)  the LINKED out/stage90/xnu_arm_entry.elf carries 1031-s rows, 1030-s wrp row AND the
+#        inherited rows (the linker did not drop any of them);
+#   (6)  the FROZEN bytes still carry them AND the staged sources still carry the switch (the
+#        parked bytes are the certified bytes).
+#
+# THE CARRIERS ([[mi4-one-value-two-definitions]]). The record carries
+# STAGE90_XNU_CALLER_PROBE=1 (the switch the probe is gated by AND the readability carrier) AND
+# 1030-s STAGE90_XNU_WRITER_PROBE=1 AND 1029-s STAGE90_XNU_READER_PROBE=1 AND 1028-s
+# STAGE90_XNU_H2_STACK_HEADROOM=1 AND 1027-s STAGE90_XNU_ABT_ENTRY_PROBE=1 AND 1025-s
+# STAGE90_XNU_USTACK_PROBE=1 (the PARENT gate). The declaration carrier
+# out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS build-s tail as
+# STAGE90_XNU_GLOBAL_FIX=1 role=1031-caller-probe; the grep of it is the process check and the
+# pmap_flush_tlbs fingerprint is the proof.
+# THE INHERITED REGRESSIONS held (asserted by the park): STAGE90_XNU_GENERAL_REGS=1 (1021d-s
+# -msoft-float), STAGE90_XNU_UNDEF_RAISE=1, STAGE90_XNU_UNDEF_DIRECT=1, STAGE90_XNU_IOS7_TRAPS=1
+# and STAGE90_XNU_VM_MAX_SPLIT=1 in the record, 1024-s ceiling on the linked image, the
+# pmap_flush_tlbs kernel_pmap==3 fingerprint, the whole-pool NEON-free census + the linked
+# mach_msg_send NEON-free read, check_1023_trap24.py --expect on, check_d13_undef_raise.py
+# --expect on, and by value __wrap_sleh_undef branching to entry_write_kv (>=6) and NOT
+# entry_live_write (0).
+#
+# THE 1031 VERDICT CELLS (docs/1031-design.md sec.2; read via tools/check_1031_capture.py):
+#   CAL-CALLER-TOP  - region_end_hit == 1 AND region_end == far AND r3 == r2 == far AND
+#                    r7 - sp == 0xC => the caller derived the WRITE ADDRESS as the stack region-s
+#                    EXCLUSIVE TOP (the address IS the region-s END). The NEXT rung names WHAT
+#                    produced that value; 1031 self-selects NO fix.
+#   CAL-CALLER-SIZE - r3 == r2, r3 != region_end, 0 < (region_end - r3) <= 0x1000 => the caller
+#                    produced the address as a BASE+SIZE expression one page short of the region
+#                    end. NAME it; do NOT pick a fix.
+#   CAL-CALLER-OTHER - a complete frame naming NEITHER shape, or the loud frame shape is wrong
+#                    (r7 - sp != 0xC, an early return before the call). FAIL CLOSED: report it,
+#                    disassemble the caller (xnu_live_cal_pc / lr), do NOT choose a fix.
+#   CAL-MISSING     - the cal group did not print (probe did not run / incomplete) => WITHHOLD.
+#                    NEVER A NEGATIVE: an absent xnu_live_cal_* row means the PROBE DID NOT RUN.
+#   REGRESSION      - trap24 / port_construct(result=0) vanish, or a panic appears, or the 1023
+#                    storm is back => the probe changed the pool-s behaviour, not just its console.
+#   G-CTL / WITHHOLD - launchd never reached and no prior control live => no reading (fail closed).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible. fastboot boot only, NEVER flash.
+# =================================================================================================
+set=armed-d13-49031dcb sha256=49031dcb0aaeba1ac7e9062b5f8996dc2617ad7b034bb15a1ca954ac4ef9d2fb bytes=6331476 file=xnu_arm_entry.bin role=1031-caller-probe;xnu_arm_entry.bin
+set=armed-d13-49031dcb sha256=3335673a8cce6573e870cba457314a2e21f7387ac67faea995027b3ad6ea6f47 bytes=7369040 file=xnu_arm_entry.elf role=1031-caller-probe;xnu_arm_entry.elf
+set=armed-d13-49031dcb sha256=88cec71f7dc621e4710c99889a25aa8bbc0528e5bec5c9478501ca731115d631 bytes=1912 file=xnu_arm_entry.h role=1031-caller-probe;xnu_arm_entry.h
+set=armed-d13-49031dcb sha256=f949a037200e5a7417d776074bb4ceae77bc3eeccc28debaadf8935d86d97639 bytes=2304 file=xnu_arm_entry-config.txt role=1031-caller-probe;xnu_arm_entry-config.txt
+set=armed-d13-49031dcb sha256=4ee8afbd7bd8508439d0a968877f0f709364efc4b0abd6e552ce03a9ef3f0b25 bytes=48 file=xnu_arm_entry-arm-extra.txt role=1031-caller-probe;xnu_arm_entry-arm-extra.txt
+set=armed-d13-49031dcb sha256=239ef6702619688c48308845e0f045c9f0b19777e74c25839ed54ce6d6b949a6 bytes=3149 file=xnu_arm_entry-sources.txt role=1031-caller-probe;xnu_arm_entry-sources.txt
+set=armed-d13-49031dcb sha256=eb7e61d55df40b98ca70bcc4cf211d8fcaae8ca25e97b59db2895824306dbf3f bytes=6826884 file=stage90.bin role=1031-caller-probe;stage90.bin
+set=armed-d13-49031dcb sha256=7b680dc34247ded9e6ddcaf7892023f18aaed2429b766b278bdc2c1662daf4fa bytes=6888956 file=stage90.elf role=1031-caller-probe;stage90.elf
+set=armed-d13-49031dcb sha256=2fe0d11e79b73cd44b0b253626a6208067c57d1c54b18e3f6787d82d85b2e2ea bytes=6830080 file=stage90.img role=1031-caller-probe;stage90.img
+set=armed-d13-49031dcb sha256=fed2c1a15af6d54b73a36b4fdbb4bc9053bda40c0f90620414418eea78bc7028 bytes=9351168 file=stage90-qcdt.img role=1031-caller-probe;stage90-qcdt.img
+set=armed-d13-49031dcb sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1031-caller-probe;stage90_fixture.macho
+set=armed-d13-49031dcb sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1031-caller-probe;stage90-build-config.txt
+set=armed-d13-49031dcb sha256=5f476c68f8e7b84792131a009f450effd85203e38172dd24d4fda291531e7e4b bytes=560 file=SHA256SUMS.txt role=1031-caller-probe;SHA256SUMS.txt

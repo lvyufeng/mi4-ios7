@@ -104,6 +104,7 @@ ALLOWED_STAGE90 = {
     "STAGE90_XNU_H2_STACK_HEADROOM",  # 1028 (this rung)
     "STAGE90_XNU_READER_PROBE",       # 1029 (tools/patch_d13_reader_probe.py)
     "STAGE90_XNU_WRITER_PROBE",       # 1030 (tools/patch_d13_writer_probe.py)
+    "STAGE90_XNU_CALLER_PROBE",       # 1031 (tools/patch_d13_caller_probe.py)
 }
 
 
