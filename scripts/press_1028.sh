@@ -120,7 +120,7 @@ echo "   (0-POOL) by value: pmap_flush_tlbs carries the 3rd kernel_pmap material
 [[ -f tools/check_1028_capture.py ]] || {
   echo "REFUSING: tools/check_1028_capture.py is ABSENT - it is this press's capture reader and its by-value claim's checker, and there is no sound fallback. A press that skipped it could not adjudicate the pre-registered FIX-HOLDS/FIX-NOOP/REGRESSION cells"; exit 1; }
 _ke_src=$PWD/external/xnu-hd2-darwin13/xnu/bsd/kern/kern_exec.c
-_src_rec=$LIVE/xnu_kernel_src_d13.sha256
+_src_rec=out/xnu_kernel_src_d13.sha256
 [[ -f $_ke_src ]] || { echo "REFUSING: $_ke_src is absent - the staged kern_exec.c is where 1028's fix lives, and a press that cannot read it cannot certify the fix is in the pool"; exit 1; }
 [[ -f $_src_rec ]] || { echo "REFUSING: $_src_rec is absent - the pool's own source-content record is the ONLY by-value witness 1028's value-only fix has (it has no format string, so no `strings` fingerprint can exist). Without it the fix cannot be certified present. Re-run scripts/build_1028.sh"; exit 1; }
 # (i) the staged source carries the switch, the patched extent, and the patcher's marker, EXACTLY once.
