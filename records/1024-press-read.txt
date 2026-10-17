@@ -1,0 +1,79 @@
+1024 press read - the arm was SENT and BOOTED; the payload never enumerated
+=========================================================================
+Written 2026-10-16 ~10:05 UTC, while the device is dark and the operator's
+power press is owed. This is a RECORD, not an adjudication: no kmsg line from
+the 1024 arm exists, because the arm never reached the point of publishing one.
+
+ARM
+  armed-d13-64558b47  (entry bin sha256 prefix 64558b47)
+  qcdt image 5da7bf7e5cc142b42c484f2cdfbb057438dbeda31820eef6f1ac9b3cc9157cc8
+  switch set: STAGE90_XNU_TREE_D13=1 STAGE90_XNU_MEM_TOTAL=1 STAGE90_XNU_VM_MAX_SPLIT=1
+  record: out/stage90/xnu_arm_entry-arm-extra.txt ; park: frozen/armed-d13-64558b47
+  (this file was written by the press; the park + revert-set entry came first)
+
+WHAT THE HOST MEASURED (dmesg -T, usb 3-10, serial 4a2fe00b)
+  08:30:45  18d1:4ee7  bcdDevice 2.32  Product: MI 4LTE   <- pre-press fastboot
+  ~09:41:44  adb reboot bootloader -> Sending 'boot.img' (9128 KB) OKAY -> Booting OKAY
+  09:45:41  18d1:d00d  bcdDevice 1.00  Product: Android  Manufacturer: Google
+  09:45:42  USB disconnect, device number 77
+  09:45:41 -> 09:58  NOTHING. adb devices empty, fastboot devices empty, port silent.
+
+WHAT d00d IS - and this is the point of the record
+  18d1:d00d is the PHONE'S OWN FASTBOOT ADAPTER, already tabulated by the series:
+    experiment-517:168  "new device 50: idVendor=18d1 idProduct=d00d  Product: Android
+                          <- fastboot mode"
+    experiment-662:33   "idVendor=18d1, idProduct=d00d   <- fastboot mode"
+    experiment-617:55   port_enum_rollup: ... 18d1:4ee7=508 18d1:d00d=510 ...
+  and the 1.3 s / 4.2 s / 1.2 s "up then disconnect" AFTER `Booting OKAY` is the same
+  shape 517 logged: "USB disconnect, device number 50 <- fastboot boot handed off to
+  the payload" - whose handoff the series measured at ~17 s (experiment-566:62).
+  So the press DID execute: the bootloader accepted the image and handed control.
+  The 09:41:44 -> 09:45:41 gap (~4 min) is the BL stage of the boot.
+
+WHAT d00d IS NOT - the triage this record substitutes for
+  It is NOT a device/reader product-ID mismatch.  Our ladder's device descriptor is
+  `18d1:0910` and is emitted as a CONST table
+  (src/entry/entry_usb_enum.c:188-201, g_usb_dev_desc[18]; ID_VENDOR at
+  src/entry/entry_usb_enum.h:174, ID_PRODUCT at :175), verified in the LINKED image by
+  value: xnu_arm_entry.bin @0x004ad530 and stage90-qcdt.img @0x00526774 both read
+  bLength=18 bDescriptorType=1 idVendor=0x18d1 idProduct=0x0910 bcdDevice=0x0910 iSer=3.
+  tools/check_usb_host_reader.py passes by value: reader EP1-IN 0x81 of 18d1:0910 ==
+  entry_usb_enum.h (ID_VENDOR/ID_PRODUCT/DIR_IN|EP_IN).  A reader that "did not match"
+  is therefore not the cause, and no --pid/--vid edit to the reader is owed.
+  (The 910c:234 sentence "18d1:d00d is likewise a runtime value" is about the OTHER
+  tree - android.c / f_adb's sysfs-overridable gadget - and does not apply here.)
+
+THE READING
+  THE PAYLOAD NEVER ENUMERATED.  Our device descriptor is const, so the ladder could not
+  have advertised 0910 and been seen as d00d; and nothing re-enumerated at all after
+  09:45:42.  The phone went dark at the bootloader->payload handoff, exactly like every
+  prior non-returning rung (521, 522, 526, 662, 1023).  `xnu_live_usb_*` keys x0 is
+  consistent: the ladder never reached the idle path that publishes them.
+
+  Consequence: this press is a NON-RETURN, and it carries the SAME blind spot every
+  non-return has carried - the reading is lost with the cold boot because the carrier is
+  the flashed ROM.  The one lever that would have netted it, the USB RAM-console stream,
+  is itself the thing the payload never armed.  A non-returning arm whose only output is
+  a USB stream cannot be read on its first non-returning press; that is a property of the
+  arm design, written here so the next non-returning arm budgets for it.
+
+NOT ADJUDICATED, AND WHY
+  tools/check_1024_capture.py exists and its --selftest passes, but no 1024 CAPTURE exists.
+  The two files the runner recovered at 09:40 (recovered-unknown-arm-20261016-094010 and
+  -094019-last_kmsg.txt) are BYTE-IDENTICAL to each other, carry cap=0x6000, and carry
+  NONE of the 1024 switch - they are a pre-press reading of the FLASHED ROM, not this arm.
+  Running the 1024 checker against them yields STORM-PERSISTS, which is the checker being
+  right about the wrong bytes.  Left un-run as a verdict.
+
+  The 1023 storm pc (slide-corrected 0x38241790, far 0x40083008) and the 1024 falsifier
+  (same pc at a far below 0x40000000) therefore remain UNTESTED.  The question 1024 asks -
+  does raising VM_MAX_ADDRESS to the hardware's 1 GiB TTBR0 split move the abort off
+  far=0x40083008 - is still open.
+
+NEXT STEP OWED (operator)
+  The device is dark; only the power press brings it back.  Nothing else is pending on the
+  host: the build, the park and the revert-set record are all in place and verified.
+  After the press: Android comes up on the FLASHED ROM, whose last_kmsg is pre-1024 and
+  cannot answer 1024.  Either re-press 1024 (scripts/press_1024.sh) with a host-side
+  USB capture that keys on the PHONE'S fastboot id and then watches for 0910, or change the
+  arm so a non-return still yields a reading.

@@ -1,0 +1,67 @@
+==================================================================================================
+1026 PRESS — READ = H-OTHER (FAIL-CLOSED) — BUT THE INSTRUMENT, NOT THE DEVICE: THE H2 CELL CANNOT
+PRINT ITS OWN CONFIRMING CONJUNCT. BY VALUE THE COMBINATION IS H2's MECHANISM. NO FIX PICKED.
+==================================================================================================
+
+ARM.  armed-d13-5c1fb3ca  (built + parked + pressed 2026-10-16, role=1026-abt-entry-probe).
+Payload booted: out/stage90/stage90-qcdt.img sha256 366167379a9932fcdb96102da9627ca06493a6033c521eb3bb251540ce5ad1a0.
+Press: `fastboot boot` OKAY, did NOT return (resident, runner exit 2). The operator's power press
+returned the device; the run's OWN console was recovered:
+  out/stage90/captures/recovered-unknown-arm-20261016-182042-last_kmsg.txt
+
+THE READING (by value).  The 1026 discriminator fired on the failing fault and published:
+
+    xnu_live_abt_vmfkrv=1          (1025 re-reading HOLDS: code=1 = KERN_INVALID_ADDRESS)
+    xnu_live_abt_vmfkrv_far=0x2bdeb000
+    xnu_live_abt_vmfkrv_dfsr=0x00000807   (translation fault, page)
+    xnu_live_abt_vmfkrv_prot=write
+    xnu_live_abt_vmfkrv_pc=0x3b7c6756
+    xnu_live_abt_vmfkrv_sp=0x2bdea074
+    xnu_live_abt_vmfkrv_pid=2
+    xnu_live_abt_lookup_far=0      <- vm_map_lookup_entry(map, far) -> FALSE  (no entry AT far)
+    xnu_live_abt_entry_lo=0x00000000   <- suppressed (lookup_far==0)
+    xnu_live_abt_entry_hi=0x00000000   <- suppressed (lookup_far==0)
+    xnu_live_abt_far_in_map=1      <- vm_map_lookup_entry(map, far-4) -> TRUE  (far-4 IS in an entry)
+    xnu_live_abt_map=0xc0005688
+    xnu_live_abt_taskmap=0xc0005688  <- map == taskmap  => H1 (WRONG MAP) is RULED OUT BY VALUE
+    xnu_live_abt_ustack=0x2bdeb000   <- == far  (far is the requested region top)
+
+    far - sp = 0x2bdeb000 - 0x2bdea074 = 0xF8C   <- IDENTICAL to 1025 (0x2bd35000-0x2bd34074) and to
+                                                    1024.  Same userspace instruction, one word above
+                                                    the argv/env block exec_copyout_strings built.
+
+CHECKER VERDICT:  python3 -I tools/check_1026_capture.py <capture>  ->  H-OTHER (fail closed), exit 0.
+  [CTL] launchd_reached=True trap24=8 port_construct(result=0)=8 abt_pc_live=12 undef_seq=None panics=0
+  [FAULT-NAMED] far=0x2bdeb000 code=1 dfsr=0x807 prot=write pc=0x3b7c6756 pid=2  (the 1025 re-reading HOLDS)
+
+WHY H-OTHER IS A PROBE DEFECT, NOT A THIRD HYPOTHESIS (by value).
+  The pre-registered H2 cell (docs/1026-design.md s.4) reads:
+      H2 : lookup_far=0 AND far_in_map=1 AND entry_hi == far AND map == taskmap
+  Three of its four conjuncts are MEASURED TRUE: lookup_far=0, far_in_map=1, map==taskmap.
+  The fourth, `entry_hi == far`, is UNREADABLE BY CONSTRUCTION: the publisher writes
+      trap.c:878  printf("xnu_live_abt_entry_hi=0x%08x\n", (_abt_hit && _abt_e) ? _abt_e->vme_end : 0);
+  i.e. entry_lo/entry_hi are printed only when `_abt_hit` is TRUE — which is exactly FALSE in the
+  H2 case (`lookup_far=0`).  In the H2 case the covering entry is in `_abt_e2` (the far-4 lookup),
+  NOT in `_abt_e`; but the publisher reads `_abt_e`, so it prints 0.  So the H2 cell demands a value
+  the probe is built never to emit when H2 is true: the cell is INTERNALLY CONTRADICTORY.
+  => the H-OTHER verdict is a FAIL-CLOSED ARTIFACT of the instrument.  The by-value physics names
+  H2's mechanism, but the probe cannot print H2's confirming conjunct.
+
+WHAT THE BY-VALUE READING DOES AND DOES NOT SETTLE.
+  SETTLED (H1 ruled out): map == taskmap at the fault, so the walk used the task's own map. This
+  matches the source prior (docs/1026-design.md s.7-8) and p1026-h1's independent verdict
+  (thread->map is a cache assigned with task->map in one statement, bsd_kern.c:307; current_map()
+  IS current_thread()->map; the vfork/spawn switch window closes before any user instruction runs).
+  STRONG (but not printed as H2): lookup_far=0 AND far_in_map=1 AND ustack==far AND far-sp==0xF8C
+  (identical across three arms) is H2's mechanism to the letter: the region ends at `far`, the word
+  just below is mapped, `far == p->user_stack` (the requested top), and the faulting access is one
+  word past the argv/env block. The ONLY reason the cell did not print H2 is the entry_hi defect.
+  NOT SETTLED BY THIS PROBE: the entry's exact `vme_end` (that it equals `far`) — the number the fix
+  is chosen against. That requires the probe to read `_abt_e2` in the H2 case.
+
+DECISION (fail-closed, per docs/1026-design.md s.4): H-OTHER => PICK NO FIX. 1027 must be a probe
+that publishes `far` against the `far-4` entry's `vme_end` (read `_abt_e2`, not `_abt_e`), so the
+H2 cell can fire. Do NOT build the stack-headroom fix on an H-OTHER verdict ([[mi4-one-value-two-definitions]]
+- the cell must name its own confirming value before the fix is chosen against it).
+
+NO REGRESSION: the 1024 controls held (trap24=8, port_construct result=0 x8, no panic, resident).

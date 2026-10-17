@@ -1,0 +1,132 @@
+1025 SOURCE TRACE — the launchctl[2] stack fault, by value from the tree
+=======================================================================
+Written 2026-10-16.  READ-ONLY.  No build, no press, no device action.
+Purpose: decide, from the SOURCE ALONE, what the launchctl[2] crash at VA 0x2bdbe000 actually
+is — BEFORE building any 1025 rung.  The 1025 design (docs/1025-design.md §2.1) carried a
+COLLISION hypothesis (the child's map already holds [0x2BD00000,0x2BE00000) so the FIXED
+allocate fails).  THIS RECORD FALSIFIES THAT HYPOTHESIS and replaces it with the measured
+geometry.
+
+== 0. THE ANSWER, IN ONE LINE ==
+The collision hypothesis is DEAD: on the child-exec path the task map is FRESH and EMPTY
+(osfmk/kern/task.c:426-428, inherit_memory=FALSE), and the stack's FIXED target 0x2BD00000
+lies BELOW the shared-region window base 0x2C000000 — so mach_vm_allocate(FIXED) SUCCEEDS.
+The fault page 0x2bdbe000 is INSIDE the allocated, already-written stack region
+[0x2BD00000,0x2BE00000).  So the defect is NOT an allocation collision; it is a page that
+should be mapped and is not.  What removed it is the open question 1025 must answer at RUNTIME.
+
+== 1. THE CHILD'S MAP IS FRESH (osfmk/kern/task.c:422-428) ==
+  if (inherit_memory)
+          new_task->map = vm_map_fork(ledger, parent_task->map);
+  else
+          new_task->map = vm_map_create(pmap_create(ledger, 0, is_64bit),
+                          (vm_map_offset_t)(VM_MIN_ADDRESS),
+                          (vm_map_offset_t)(VM_MAX_ADDRESS), TRUE);
+
+The spawn path reaches this with inherit_memory = FALSE:
+  bsd/kern/kern_exec.c:839-852   exec_mach_imgact: `if (vfexec || spawn) { ... imgp->ip_new_thread =
+        fork_create_child(task, p, FALSE, ...); ... task = new_task = get_threadtask(thread);
+        map = get_task_map(task); }`
+  bsd/kern/kern_fork.c:776        fork_create_child -> task_create_internal(parent_task,
+        inherit_memory /* = FALSE from kern_exec.c:841 */, is64bit, &child_task)
+So the child's vm_map is a NEW map over [VM_MIN_ADDRESS, VM_MAX_ADDRESS) — EMPTY.  It does NOT
+carry launchd's stack region.  The FIXED allocate at [0x2BD00000,0x2BE00000) cannot collide.
+
+NOTE the map's ceiling: with the 1024 arm's STAGE90_XNU_VM_MAX_SPLIT=1, VM_MAX_ADDRESS is
+0x40000000; without it, 0x80000000.  Either way 0x2BD00000 < the ceiling, so the FIXED target is
+IN RANGE.  (This also decides §2.1's "the child's map could already contain the region" — it
+CANNOT.)
+
+== 2. WHAT IS MAPPED BEFORE create_unix_stack (kern_exec.c:916 -> :940) ==
+  kern_exec.c:916   vm_map_exec(get_task_map(task), ...)
+  osfmk/vm/vm_map.c:8674  vm_map_exec -> (void) vm_commpage_enter(new_map, task);
+                                     (void) vm_shared_region_enter(new_map, task, fsroot, cpu);
+
+vm_shared_region_enter (osfmk/vm/vm_shared_region.c:1221) maps the shared region with
+VM_FLAGS_FIXED from `shared_region->sr_base_address` / `sr_size`:
+  vm_shared_region.c:1261-1265  sr_address = sr_base_address; sr_size = sr_size;
+  vm_shared_region.c:1272-1287  if (sr_pmap_nesting_start > sr_address) { map [sr_address,
+        sr_pmap_nesting_start) UN-nested }
+  vm_shared_region.c:1311-1348  then map the pmap-NESTED range with VM_MEMORY_SHARED_PMAP
+  vm_shared_region.c:1349-1382  then the remaining UN-nested tail
+
+With STAGE90_XNU_SHREG_GEOM=1 (vm_shared_region.c:626-636, gated `ios7_shreg_geom_enabled()`):
+  base_address = 0x2C000000 ; size = 0x14000000   ->  sr_address = 0x2C000000, sr_size = 0x14000000
+  sr_pmap_nesting_start = SHARED_REGION_NESTING_BASE_ARM = 0x30000000 (shared_region.h:69, NOT
+        changed by the geometry switch)
+  sr_pmap_nesting_size  = SHARED_REGION_NESTING_SIZE_ARM  = 0x10000000 (shared_region.h:70)
+So: un-nested [0x2C000000, 0x30000000) (the "64 MiB prefix", vm_shared_region.c:628-633), then
+pmap-NESTED [0x30000000, 0x40000000), then nothing left.  The shared region occupies
+[0x2C000000, 0x40000000) — the boot's own printf says exactly that
+(vm_shared_region.c:634 `IOS7LAB shared region 0x2c000000..0x40000000; stack below 0x2be00000`).
+
+== 3. THE STACK GEOMETRY (the trap the design fell into) ==
+osfmk/arm/status.c:62-73 (gated the same switch): `ios7lab_user_stack()` returns 0x2BE00000;
+LAB_USER_STACK = that; thread_userstack/thread_userstackdefault return it.  So a new process's
+default user_stack is 0x2BE00000.
+bsd/kern/kern_exec.c:3619-3625 create_unix_stack:
+  size = mach_vm_round_page(user_stack_size) = round_page(MAXSSIZ) = round_page(0x100000) = 0x100000
+  addr = mach_vm_trunc_page(user_stack - size) = trunc(0x2BE00000 - 0x100000) = 0x2BD00000
+  mach_vm_allocate(map, &addr, 0x100000, VM_MAKE_TAG(VM_MEMORY_STACK)|VM_FLAGS_FIXED)
+Region [0x2BD00000, 0x2BE00000).  Guard (kern_exec.c:3647-3656):
+  prot_size = mach_vm_trunc_page(size - unix_stack_size(p)) = trunc(0x100000 - DFLSSIZ)
+            = trunc(0x100000 - 0xFF000) = trunc(0x1000) = 0x1000  (bsd/arm/vmparam.h:21 MAXSSIZ,
+              :18 DFLSSIZ; unix_stack_size = rlimit[RLIMIT_STACK].rlim_cur = DFLSSIZ per
+              bsd/kern/bsd_init.c:352 vm_initial_limit_stack = { DFLSSIZ, MAXSSIZ - PAGE_SIZE })
+  prot_addr = addr = 0x2BD00000 -> guard PROT_NONE at [0x2BD00000, 0x2BD01000)  (the BOTTOM page)
+Usable window = [0x2BD01000, 0x2BE00000) = 0xFF000 = DFLSSIZ.
+
+**CHECK, BY ARITHMETIC.**  0x2BD00000 < 0x2C000000.  The stack FIXED target is BELOW the shared
+window base.  The tree's own comment (src/entry/build_entry.sh:1740-1743) claims the moved top
+"falls below the window" — it does, if "the window" is its END 0x40000000; but the correct
+constraint is the window's BASE 0x2C000000.  Even so, 0x2BD00000 is below 0x2C000000, so the
+comment's CONCLUSION (no collision) is right for the WRONG reason, and the allocation SUCCEEDS.
+The design's §2/§2.1 ("inside the window" / "FIXED fails / ANYWHERE fallback") is ARITHMETICALLY
+FALSE: 0x2BD00000 is not inside [0x2C000000, 0x40000000).
+
+== 4. THE DEPLOYED EVIDENCE AGREES WITH §1-3 (the crash is NOT a fallback) ==
+recovered-unknown-arm-20261016-122008-last_kmsg.txt
+  - :4172 launchctl[2]: usermode data abort ... at 0x2bdbe000 ... (Translation fault on page)
+  - :4173-4178 register state: r4=r6=0x2bdbe000, r7=r11=0x2bdbd080, sp=0x2bdbd074,
+        lr=0x3adbc9af, pc=0x3adc4756, cpsr=0xa0000030
+  - :4146 mini4: the OS starts the process at 0x2be43028 (the thread's user pc was 0x2bdbdf0c)
+  - :4147 IOS7SHREG check_np pid=2 out=0x2bdbb980   -> the kernel WROTE 0x2bdbb980 (ret=0, :4148)
+  - :4153-4164 IOS7LAB trap15 frame ... r1=2bdbd108 / 2bdbd0b8 / 2bdbcb50 ... -> the kernel wrote
+        stack words around 0x2bdbd0b8 and 0x2bdbcb50, all with result=0.
+
+BY VALUE: sp = 0x2bdbd074 is 0x42F8C below the top 0x2BE00000 -> the process's initial sp is at the
+DEFAULT location (the strings frame consumed 0x42F8C).  If the FIXED alloc had failed and the
+ANYWHERE fallback fired, kern_exec.c:3635-3639 sets `user_stack = addr + size` (the NEW location)
+and kern_exec.c:958-966 `ap = p->user_stack; exec_copyout_strings(...); thread_setuserstack(thread,
+ap)` would put sp at the NEW location — NOT at 0x2bdbd074.  So the FIXED allocation SUCCEEDED.
+Windows around 0x2bdbb980 and 0x2bdbd0b8 were written successfully.  The crash VA 0x2bdbe000 is
+0xF8C ABOVE sp (inside the already-copied strings frame) and 0x20000 below the top.
+
+== 5. THE STANDING QUESTION (what 1025 must answer AT RUNTIME) ==
+A data access to 0x2bdbe000 — a page inside the allocated, written stack region — TRANSLATION-
+faulted.  The source cannot say why: the page is in range, the guard is at the BOTTOM
+[0x2BD00000,0x2BD01000), and the frame above sp was written by exec_copyout_strings.  Candidates
+that only a runtime publisher can separate:
+  (A) the pmap entry for that page was never installed even though the vm_map entry exists
+      (vm_map_enter populated the map but the pmap leaf is absent) — the 1013c/1015 class;
+  (B) the page was DEALLOCATED after exec (a later vm_deallocate64 / the process's own munmap);
+  (C) a STALE TLB / GLOBAL entry after the shared-region slide (the 1015b class): the boot has
+      STAGE90_XNU_GLOBAL_FIX=1 in the 1024 arm but this capture is an EARLIER arm — verify.
+  (D) the crash pc's instruction is a memcpy/strcpy whose SOURCE is the stack and the page was
+      never written (a read of an unwritten frame above sp).
+
+The crash pc (0x3adc4756, Thumb per cpsr T=1) is at cache file offset 0xbc26756 = mapping 0, and
+the disassembly (/tmp/dyld-extract/dyld_shared_cache_armv7, sha256 cad2df77...) begins
+`movs r3,r0 ; bic.w r1,r1,#3 ; ldr r2,[r1] ; orr.w r2,r2,#0x8000000 ; str r2,[r0]` — a
+pointer-tagging store loop (bic #3 + orr #0x8000000 = the tagged-pointer idiom).  Naming the
+exact libsystem dylib for 0x3adc4756 is owed (the shcache lane).
+
+== 6. WHAT THIS CHANGES IN THE 1025 PLAN ==
+docs/1025-design.md §2/§2.1 (the collision mechanism) are FALSIFIED and must be rewritten against
+this record before any build.  §3's instrumentation (a pool-side `xnu_live_ustack_*` publisher in
+create_unix_stack) remains the right instrument, but it must ALSO publish the page-fault side —
+the decisive number is not "did the FIXED alloc succeed" (it did) but "was the pmap leaf for
+0x2bdbe000 installed, and did anything deallocate/invalidate it".  The cheapest decisive first
+step is NOT a new build: it is to read the capture's OWN boot markers to fix which arm produced
+it (it has SHREG_GEOM shape + trap15/trap24 + SUBMAPSKIP but, per records/1024b §2, NO
+VM_MAX_SPLIT key), then decide whether GLOBAL_FIX (the stale-TLB fix) was in that arm.

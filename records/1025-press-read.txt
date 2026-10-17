@@ -1,0 +1,147 @@
+1025 PRESS — READ = FAULT-NAMED: the discarded vm_fault return is PUBLISHED
+==========================================================================
+Written 2026-10-16; the reading was added the same day, after the operator's power press
+returned the device and the 1025 run's OWN console was recovered.
+
+  capture : out/stage90/captures/recovered-unknown-arm-20261016-153359-last_kmsg.txt
+  reader  : tools/check_1025_capture.py <capture>  ->  FAULT-NAMED
+
+== THE READING (by value, from the recovered console) ==
+The launchctl fault's discarded `vm_fault` return is now a NUMBER in the capture:
+
+    xnu_live_abt_vmfkrv=1                 <- KERN_INVALID_ADDRESS
+    xnu_live_abt_vmfkrv_far=0x2bd35000
+    xnu_live_abt_vmfkrv_dfsr=0x00000807   <- translation fault, page (L2 descriptor invalid)
+    xnu_live_abt_vmfkrv_prot=write
+    xnu_live_abt_vmfkrv_pc=0x3b4ce756
+    xnu_live_abt_vmfkrv_sp=0x2bd34074
+    xnu_live_abt_vmfkrv_pid=2
+
+  and the stack's shape, once per exec:
+
+    xnu_live_ustack_req=0x2bd35000   size=0x00100000  fixed_addr=0x2bc35000  rc=0
+    xnu_live_ustack_final=0x2bd35000 prot_addr=0x2bc35000 prot_size=0x00001000
+    (pid 1 launchd: req=0x2bdcd000 fixed_addr=0x2bccd000 rc=0 guard=[0x2bccd000,+0x1000))
+
+So: `mach_vm_allocate(VMF_FIXED)` SUCCEEDED (rc=0, no ANYWHERE fallback) and created the
+entry [0x2bc35000, 0x2bd35000) = exactly 0x100000 = MAXSSIZ. The faulting VA 0x2bd35000 is
+that entry's **EXCLUSIVE TOP** — one byte past the last byte — and it is a WRITE at
+sp+0xF8C. `vm_fault` -> `vm_map_lookup_entry` returned FALSE, so `vm_map_lookup_locked`
+returned KERN_INVALID_ADDRESS (vm_map.c:8761ff, verified by source), i.e. **no vm_map entry
+covered the VA when the walk ran**.
+
+RESIDENT, not a wedge: after the crash `xnu_live_wdt_pets` climbs 0x1 -> 0x3 -> ... -> 0x61
+(lines 30390..32847) and the console prints
+`com.apple.launchd 1 ... (com.apple.launchctl.System) The System bootstrapper has crashed:
+Bus error: 10`. The kernel kept running; pid 2 died.
+
+== THE SHARPER FACT (why this is not just "one byte past the end") ==
+The earlier launchd crash (1024 arm) faults at far=0x2bdbe000 with sp=0x2bdbd074, where
+0x2bdbe000 lies **INSIDE** launchd's own entry [0x2bccd000, 0x2bdcd000). Both crashes have
+
+    far - sp == 0xF8C   (identical)
+
+so the faulting instruction is `[sp + 0xF8C]` in both — and in launchd's case a VA that IS
+covered by a live entry still failed the lookup. The ~0xF8C above the initial sp is the
+initial thread's argv/env/stack-top area. So the class is "a VA that the map SHOULD cover is
+not found by the walker" (the 1013c/1015 family), not a mere off-by-one at the region top.
+Both stacks live in the SHARED REGION [0x2c000000, 0x40000000) whose routing is governed by
+1024's STAGE90_XNU_VM_MAX_SPLIT switch (task map 4th arg 0x40000000 vs stock 0x80000000).
+
+== 1026'S QUESTION ==
+Name WHY an allocated entry's VA fails vm_map_lookup_entry, and fix it. Working hypotheses,
+to be decided by value before building: (H1) the stack lands in a SUBMAP / shared-region
+sub-map and the fault walks the parent map (map 0xc0005688 in the abort); (H2) the
+VM_MAX_SPLIT change routes [0x2c000000,0x40000000) to a different vm_map than the one
+`mach_vm_allocate` used; (H3) a hint/mask condition in vm_map_lookup_entry.
+
+--- the press log below is retained verbatim ---
+
+== 0. THE ARM THAT WAS PRESSED ==
+  arm      : armed-d13-d7f1e533
+  payload  : out/stage90/stage90-qcdt.img
+  sha256   : 51087b01e9af56cc12a2e882b6ee8a09ab84d9ae5aa6117059fd2647646235e7
+  record   : out/stage90/xnu_arm_entry-arm-extra.txt = "STAGE90_XNU_GLOBAL_FIX=1 role=1025-ustack-probe"
+  switch   : STAGE90_XNU_USTACK_PROBE=1 (1024's set verbatim otherwise: VM_MAX_SPLIT=1,
+             IOS7_TRAPS=1, GENERAL_REGS=1, UNDEF_RAISE=1, GLOBAL_FIX=1, DYLD_WITNESS=1)
+  park     : out/stage90/frozen/armed-d13-d7f1e533 (13 members)
+
+== 1. THE PRESS ITSELF (scripts/press_1025.sh) ==
+All PRE-DEVICE gates PASSED, by value:
+  (0-POOL) pmap_flush_tlbs carries the 3rd kernel_pmap materialization (GLOBAL-FIX in the pool)
+  (0a)     trap.o carries `xnu_live_abt_vmfkrv=`, kern_exec.o carries `xnu_live_ustack_req=`
+  (0a-0)   tools/check_1025_capture.py --selftest PASSes
+  (0b)     the LINKED image's task_create_internal passes 0x40000000 to vm_map_create
+  (0b-2)   NEGATIVE CONTROL: the frozen 1023 elf (10b79e5d, PRE-SPLIT) reads 0x80000000
+  (0c)     the LINKED image's mach_msg_send is NEON-free (1021d -msoft-float holds)
+  (0d)     tools/check_d13_undef_raise.py --expect on PASSes
+  (0e)     the LINKED image's mach_trap_table[24] IS the ios7lab_mach_port_construct_trap row
+  (0f)     the LINKED image carries BOTH publishers
+
+Hardware gate PASSED: 4a2fe00b present in adb (state: device); 33e80afe (the OTHER phone) ABSENT.
+Card image written to userdata's head (939524096 bytes; read-back sha matches — reversible).
+
+Boot:
+  sudo adb -s 4a2fe00b reboot bootloader ; fastboot boot out/stage90/stage90-qcdt.img
+  Sending 'boot.img' (9128 KB)   OKAY [  0.288s]
+  Booting                        OKAY [  0.012s]
+  the bytes sent were the bytes the gate read: 51087b01e9af...6235e7, unchanged across the send
+
+  ==> `fastboot boot` ONLY. Never flashed. The base is never written.
+
+== 2. THE RUN DID NOT RETURN ==
+  run_and_capture.sh exit 2 (a resident rung not returning shows as 2).
+  Bounded wait expired after 180s. Evidence:
+    adb      : serial 4a2fe00b not listed
+    host log : 33 -> 33 enumeration(s) of SerialNumber: 4a2fe00b (no new enumeration)
+    port 3-10: 33 -> 33 enumeration(s), any id (no new enumeration)
+
+  No USB console capture was produced (tools/usb_console_read.py armed it; the payload never
+  enumerated 18d1:0910 in the window). This is CONSISTENT with 1024's own non-return shape
+  ([[mi4-1024-non-return-fastboot-d00d]]): the arm reaches userspace and does not come back, and
+  the only stream that could read it never mounted.
+
+  No /tmp/cancro-last_kmsg.txt was created — step 4's recovery never got a device to read from.
+
+== 3. THE DEVICE IS DARK — THE OPERATOR'S POWER PRESS IS REQUIRED ==
+  After the press: 4a2fe00b is NOT in adb, NOT in fastboot, and there is NO phone-moded USB
+  device (lsusb shows no 18d1/0e8d/2717). This is the ONE case the goal permits surfacing:
+  the machine needs a manual restart.
+
+  Recovery order (aims to preserve the run's own log, per [[mi4-last-kmsg-reader-carrier]] — the
+  carrier is the FLASHED ROM, single-slot, destroyed by any later `fastboot boot`):
+    1. Hold Power ~10-15 s, release, press Power normally (bring it back).
+    2. Let it reach STOCK ANDROID (the flashed ROM's own kernel is what reads the RAM console).
+    3. `scripts/recover_last_kmsg.sh --read-only`  (NOT a press; read the PREVIOUS boot's console).
+    4. Read it: `tools/check_1025_capture.py <the recovered last_kmsg>`.
+
+  ⚠ Do NOT run a new `fastboot boot` before step 3: any later kernel clears the RAM console on
+  entry and destroys whatever the 1025 run produced. Do NOT boot TWRP first (its kernel has no
+  /proc/last_kmsg and its boot takes the slot the log is in).
+
+== 4. WHAT WOULD MAKE THIS A READING ==
+  The build side is CERTIFIED (object side at 5a, linked image at 6b, park by value at 7) and the
+  press ISSUED the certified bytes. The only unmet step is the CAPTURE. The moment the device
+  returns and the previous console is recovered, `tools/check_1025_capture.py` names the cell:
+    FAULT-NAMED    -> the discarded vm_fault return for far 0x2bdbe000 is PUBLISHED (the 1025 goal)
+    FAULT-NOT-RUN  -> launchd reached but the abort is NOT the data path (re-read: a PREFETCH?)
+    STACK-SHAPE    -> `xnu_live_ustack_*` with rc=0 confirms the FIXED alloc succeeded
+    REGRESSION     -> the 1023 storm returned (the arm's switch set is wrong)
+    G-CTL / NO-CELL-> fail closed; report what was present
+
+== 5. BUILD-SIDE DEFECTS FOUND AND FIXED THIS RUNG (so 1026 does not re-walk them) ==
+  * THREE rungs edit osfmk/arm/trap.c (994 witness / 1020 undef_raise / 1025 probe). A cleanup
+    `git checkout -- trap.c` reverts the others; build_1025.sh step 2 must RE-STAGE all three and
+    each patcher's ALLOWED_IF_IDENTIFIERS must carry the others' switches
+    ([[mi4-one-file-many-rungs]]).
+  * tools/check_fault_recovery.py's D13 mutations the_kernel_object_moves_the_field /
+    the_kernel_object_loses_the_read anchored on the literal objdump text `[sl, #552]`; the 1021d
+    -msoft-float recompile changed the base register to `fp`, so the mutation no-op'd and the
+    selftest reported RAISED. Fixed with a register-free `_rebase_offset(...)`
+    ([[mi4-mutation-anchors-are-code-spans]] instance m1025).
+  * scripts/{park,press}_1025.sh used `strings X | grep -q P` under `set -o pipefail`: when the
+    string IS present, grep exits early, strings takes SIGPIPE, and the pipeline returns 141 —
+    a gate that is fail-closed but UNPASSABLE. Fixed to `grep -qa P <(strings X)`.
+  * press_1025.sh's negative control pointed at armed-d13-64558b47 calling it "the FROZEN 1024
+    PRE-RUNG arm" — but 64558b47 IS 1024's own arm (role=1024-vm-max-split), so its ceiling is
+    0x40000000 and `--expect off` FAILS. Re-pointed at armed-d13-10b79e5d (1023, PRE-SPLIT).

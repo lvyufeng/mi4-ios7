@@ -1,0 +1,116 @@
+1025 — IS THE launchctl[2] STACK ABORT THE 1015b STALE-TLB CLASS, AND DOES THE 1024 ARM ALREADY CARRY THE FIX?
+===============================================================================================================
+Written 2026-10-16.  READ-ONLY.  By-value.  This changes the 1025 plan (see docs/1025-design.md §5).
+
+== 0. THE FINDING IN ONE LINE ==
+The capture that shows the launchctl[2] stack abort carries, for EVERY witnessed abort (including
+one ON A STACK VA), a VALID page-table leaf AND a SUCCESSFUL vm_fault — yet the hardware still took
+a translation fault.  That is the 1015b STALE-GLOBAL-TLB signature.  The 1024 arm's pool object
+(out/xnu_kernel_obj_d13/osfmk_arm_pmap.o, dated 09:17) ALREADY carries the 1015b fix
+(pmap.c:1358-1359 `else if (pmap != kernel_pmap) arm_tlb_flushID();`, verified in the disassembly at
+pmap_flush_tlbs 0x60c-0x61c).  So the launchctl crash may ALREADY be retired in 1024 — and 1024b's
+own chronology says the 1024 press reached launchd[1] and spawned launchctl[2].
+
+== 1. THE WITNESSES (capture recovered-unknown-arm-20261016-122008-last_kmsg.txt) ==
+Every recorded abort carries the same shape: leaf VALID, vm_fault SUCCESS, hardware fault.
+
+ (a) seq=4   far=0x2bd6af7c  (INSIDE the stack region [0x2BD00000,0x2BE00000))
+     pc=0x80490f54 (KERNEL text, 0x8049....)  fsr=0x805 (WnR=1, WRITE; status 0b0101 = translation
+       fault SECTION)  abtcpsr=0x20000193 (mode 0x13 = SVC, kernel)
+     ptel1=0x81b8f001 (L1 coarse table, VALID)   ptel2=0x81b6e1bb (L2 small page, bits[1:0]=0b10,
+       VALID)  pteu=1 (entry found)  pteoow=0  ptealias=0
+     wkl1=0x81b8f001  wkleaf=0x81b6e1bb  wkstable=1
+     AP decode of ptel2 bits[11:0]=0x1bb: AP[2:0]=0b011 -> PL1 RW / PL0 none; TEX=0b110; bit0=1
+       (this tree's XN/AP2 packing) -> a KERNEL (PL1) WRITE is authorized.
+     => the tree HAS the page and the kernel is ALLOWED.  The hardware faulted anyway.
+
+ (b) seq=0x400 far=0x3adc6031 (shared cache)  pc=0x3b3d7fe4 (user, shared cache)  fsr=0x7
+       (READ, translation fault PAGE)  abtcpsr=0x60000010 (mode 0x10 = USR)
+     ptel1=0x84219001  ptel2=0x8430c3ba (VALID)  vmeva=0x3adc7000  vmekr=0 (vm_map entry FOUND,
+       prot=5=RWX)  vmfret=0  (vm_fault SUCCEEDED)  wkleaf=0x8430c3ba  wkstable=1
+     => again: entry found, vm_fault succeeded, hardware faulted.
+
+ (c) TTBRs (same for both): wctb0=0x81a8605b  (TTBR0 base 0x81a86000)  wctb1=0x80a04018 (TTBR1).
+     Both fault VAs (< 1 GiB) are walked via TTBR0.  ptettbr=0x81a8605b in every row.
+     ttbcr (sleh): 0x00000002 = the 1 GiB TTBR0 split (set_mmu_ttbcr(2)) — consistent.
+
+== 2. WHAT THIS MEANS, BY VALUE ==
+A translation fault with a VALID leaf present in the table the hardware walks, and vm_fault
+returning KERN_SUCCESS, is NOT a page that is missing.  It is the page table (or TLB) the HARDWARE
+consults disagreeing with the tree the kernel maintains — the exact defect 1015/1015b established
+and fixed: a STALE GLOBAL TLB entry survives a permission/leaf change for a non-kernel pmap, so the
+hardware keeps faulting on a VA whose tree entry is now valid.  1015b's fix inserts
+`else if (pmap != kernel_pmap) arm_tlb_flushID();` into pmap_flush_tlbs.
+
+WHY seq=4 IS ESPECIALLY POINTED: it is a KERNEL-MODE (SVC) WRITE to a user STACK VA during pid 1's
+exec (copyout of the strings/args frame).  If a stale TLB entry — created while the stack page was
+still PROT_NONE (the create_unix_stack guard) or before the leaf was installed — survived, the
+kernel write faults on a page its own tree says is valid.  That is the SAME mechanism as the
+launchctl[2] crash at 0x2bdbe000, one process later.
+
+== 3. THE 1024 ARM CARRIES THE FIX (verified in the pool object) ==
+  objdump -dr out/xnu_kernel_obj_d13/osfmk_arm_pmap.o  <pmap_flush_tlbs>:
+    0x55c-0x56c: movw/movt r0,kernel_pmap ; ldr r0,[r0] ; cmp r0,r6 ; beq 630   (the original test)
+    0x630: ldrb r0,[r6,#52] ; bl arm_tlb_flushID_ASID                            (kernel_pmap branch)
+    0x60c-0x61c: movw/movt r0,kernel_pmap ; ldr r0,[r0] ; cmp r0,r4 ; bne 628    (the 1015b INSERT)
+    0x628: (return)
+  The 1015b fingerprint (records/1015b-press-blocked.txt:4-13: "kernel_pmap materializations x3 ON")
+  is present: kernel_pmap is materialized at 0x448, 0x55c, 0x60c (and 0x698, the source's own use).
+  The source line pmap.c:1358-1359 `else if (pmap != kernel_pmap) arm_tlb_flushID();` compiles to
+  exactly the 0x60c test.  => GLOBAL_FIX=1 is in this build, and the 1024 build script sets it
+  (scripts/build_1024.sh:160 `EXTRA="$EXTRA -DSTAGE90_XNU_GLOBAL_FIX=1"`).
+
+== 4. WHAT THE CAPTURE DOES **NOT** PROVE ==
+The crash capture is from an EARLIER arm than 1024 (records/1024b §2: no VM_MAX_SPLIT key).  I
+cannot read GLOBAL_FIX out of a runtime log, so I cannot say the CAPTURE's arm had it.  If the
+capture's arm predates 1015b, the launchctl crash it shows is the STALE-TLB class and the 1024 arm
+(GLOBAL_FIX) would retire it — and 1024b's chronology (1024 press reached launchd[1]) is consistent
+with a further-progressing boot.  The 1024 press was NON-RETURNING, so its own boot's VICTORY is
+unread; only its ram-console slot (which held the earlier arm) was recovered.
+
+== 5. THE DECISION THIS FORCES FOR 1025 ==
+Two candidate readings of the current state, and they need DIFFERENT rungs:
+  (R1) the launchctl crash is the 1015b class and is ALREADY fixed in the 1024 arm -> the right move
+       is to BOOT THE 1024 ARM TO A READING and see whether launchctl survives (a press, not a new
+       probe).  If it survives, 1025 is unnecessary and the frontier is past launchctl.
+  (R2) the crash persists even with GLOBAL_FIX -> the 1015b fix is INSUFFICIENT for this site (the
+       stack page's stale entry is created by a path pmap_flush_tlbs does not cover, e.g. the
+       create_unix_stack guard's mach_vm_protect, or a user-pmap flush while another pmap is
+       current) -> 1025 must publish the fault side (docs/1025-design.md §3).
+The 1025 probe (docs/1025-design.md) is still the decisive instrument: its
+`xnu_live_abt_vmfkrv_*` + stackfar walker keys separate R1 from R2 in ONE press.  But §0-3 above
+mean the probe should ALSO be read against a plain 1024-arm boot, because the cheapest possible win
+is that the launchctl wall is already gone and only needs a capturing boot to show it.
+
+OWED: resolve the capture's arm identity (which rung's build wrote this ram console).  The capture
+has no switch banner; the only way is to match its entry-side build markers
+(stage90_image_end, handoff_mode, ladder_level, symbol_count) against the per-arm records in
+out/stage90/.  Until that is done, §4's caveat stands.
+== 6. ARM IDENTITY OF THE CRASH CAPTURE — SETTLED (2026-10-16 later) ==
+The crash capture (recovered-unknown-arm-20261016-122008-last_kmsg.txt, sha256 685941a3c47c) is
+BYTE-IDENTICAL to its siblings 102040, 104740, 110241, ... (all sha 685941a3c47c).  Their common
+markers:
+  * xnu_live_abt_wdsplit = 0x40000000  -> the VM_MAX_ADDRESS split IS active in this image.
+  * ZERO "=0x40083008" rows, abt_pcn capped at 0x400 (not the 1M storm) -> the 1023 pthread storm
+    is ABSENT.
+  * launchd[1] has started up + launchctl[2] crash present.
+By contrast the 0830/094010 family (sha 4fed4354e6c2) is the STORM arm:
+  * xnu_live_abt_far=0x40083008 x10, abt_pcn=0x00100000 (1M), abt_ptel2=0x00000000 (UNMAPPED),
+    abt_pcfar=0x40083008 -> exactly the 1023 pthread storm (pc 0x38241790 / far 0x40083008).
+  * No VM_MAX_SPLIT behaviour; the boot does not reach launchd.
+So the crash family is a LATER, SPLIT-ON arm than the storm family.  Since 1024 is the rung that
+introduces VM_MAX_SPLIT=1, and the crash family exhibits the split and no storm, THE CRASH FAMILY IS
+THE 1024-SHAPED ARM (the 1024 press's own boot, whose ram console was preserved and then read as
+"stale").  This matches records/1024b's chronology.
+
+CONSEQUENCE, BY VALUE: the arm that shows the launchctl[2] stack abort at 0x2bdbe000 carries
+VM_MAX_SPLIT=1 AND (per §3) GLOBAL_FIX=1.  So the launchctl stack abort is NOT retired by
+GLOBAL_FIX.  This is case (R2) of §5, and it means 1025's probe (docs/1025-design.md §3) is the
+required instrument, aimed at the ONE question the tree cannot answer alone: what does vm_fault
+RETURN for 0x2bdbe000 in this exact arm, and what is the leaf for it at fault time.
+
+CAVEAT (honest): "1024-shaped" is inferred from the split+no-storm behaviour, not from a printed
+switch banner (the capture prints none).  A second, independent confirmation would be to read the
+1024 arm's OWN entry-config sha (out/stage90/xnu_arm_entry-config.txt
+STAGE90_XNU_ENTRY_SHA256=64558b47...) against the crash boot — but the boot does not print it.  Treat
+"the crash arm == 1024" as STRONGLY INDICATED, not proven.

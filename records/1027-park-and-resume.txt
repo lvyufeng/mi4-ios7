@@ -1,0 +1,26 @@
+1027 PARKED as armed-d13-d06ee14f (13 members); build_1027.sh 6b PASS: linked image carries xnu_live_abt_e2_hi=. Tree re-stage fixed: strip_old_block() removes the stale pre-amendment 1026 block (by-value signature: new token absent, old token present) before the amended block inserts; kern_exec accessor insert skipped when its done-mark already present (was double-landing). verify-off PASS. Newest recover 20261017-022805 (1026 arm, 7 keys, no e2 rows) = H-OTHER fail-closed, far==ustack==0x2bdeb000 far_in_map=1 map==taskmap -- H2-consistent geometry, stable across 4 arms. Not pressed.
+
+PRESS 1027 (arm armed-d13-d06ee14f) = NON-RETURN, NO CAPTURE:
+  'fastboot boot' of stage90-qcdt.img: Sending OKAY, Booting OKAY, bytes == gate hash 219fc578...
+  device did not return in 180s (resident rung: expected). Device is now DARK (adb absent, fastboot absent).
+  USB console reader (usb-console-1027-20261017-022934.txt) delivered NOTHING - no file written.
+  Same blind spot as 1024/521/522/526/662/1023: the one stream that could read the run did not attach
+  before the window closed; and the last_kmsg carrier is the FLASHED ROM (Android), not readable dark.
+  => 1027's question (H1 vs H2) is NOT YET MEASURED. Needs the operator's power press to return to
+     Android, THEN scripts/recover_last_kmsg.sh --read-only, THEN tools/check_1027_capture.py <capture>.
+  Do NOT power press (operator's action). Do NOT fastboot flash. Do NOT boot TWRP.
+
+AUDIT (lead, after agents stalled and were stopped):
+  - e2 token `xnu_live_abt_e2_hi=` is in EVERY gate: build 5a (object), build 6b (linked ELF), park
+    BY VALUE(1) (object) + BY VALUE(2) (linked ELF), checker ENTRY_KEYS + H2 predicate + 2 selftest
+    fixtures. No gate missing it.
+  - m1025 pipe hazard absent: the `grep -q` pipe form is NOT used; build 5a uses `strings X | grep -c`
+    (reads all input, no SIGPIPE) and park uses `grep -qa P <(strings X)`. Clean.
+  - checker --selftest PASS 10/10.
+  - H2 predicate uses `e2_hi == far` with fallback to entry_hi when e2 rows absent (old captures still
+    adjudicate; newest 1026-arm capture correctly reads H-OTHER).
+FIX DESIGN (docs/1027-design.md §7, by value, for the H2 case): block top == region top; the kernel's
+  own writes all land strictly below far, so the fault is a userspace write at far = one word past the
+  region's exclusive top. Minimal fix in create_unix_stack: (a) reserve the top 16 B so the block top is
+  strictly below the region top (honours the layout comment's "16b" slot); (b) is the alternative that
+  changes p->user_stack's meaning, so (a) is preferred. Falsifier: H1 (map != taskmap) makes this moot.
