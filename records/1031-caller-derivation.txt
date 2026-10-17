@@ -269,3 +269,112 @@ ADDENDUM 2026-10-17 (lead, independent objdump + arithmetic) — TWO CORRECTIONS
     => HONEST STATE: the mechanism is statically known (down-alloca block2 + upward table-bounded cursor),
        the count/T relation is a PREDICTION (T = 2*count + 0x7BC), and NO existing or built probe decides
        count. 1032 as a fix is UNJUSTIFIED; a fix-rung must first build a caller-frame probe.
+
+====================================================================================================
+(F) INDEPENDENT LANE (caller-derivation, 2026-10-17) — THE COUNT *IS* RECOVERABLE, = 0xFFFFFFFF.
+    This SUPERSEDES (E)'s "count is NOT recoverable from the 1030 frame". (E) used only the r4
+    constraint; it never used the capture's r4 == r6 EQUALITY, which is an independent equation on the
+    cursors' START values and pins count exactly.
+    Bulk of the disassembly/parse here was done independently (own extraction of the cache at
+    /mnt/data/ios7-payload/v2/ios7/rootfs.hfs @0x455d000, own objdump, own local-symbol parse) and
+    AGREES with (1)-(4),(D) byte-for-byte; the new content is the cursor-equality constraint.
+
+    THE MISSING EQUATION. The writer prologue is `mov r4,r3 ; mov r6,r2` (bytes 461c / 4616, CONFIRMED),
+    so writer r4_start = caller r3 and writer r6_start = caller r2. The loop INCREMENTS BOTH by +4 per
+    completed pass and NEVER reloads r4 or r6 (verified: no store to r4/r6 as a destination except the
+    two `str.w r2,[rX],#4`), so at EVERY point `r4 - r6 = (caller r3) - (caller r2)` is an INVARIANT.
+    The 1030 frame prints r4 = 0x2bdae000 AND r6 = 0x2bdae000  =>  caller r3 == caller r2.  But BOTH call
+    sites set r2 and r3 from TWO DIFFERENT allocas:
+        Site A/B: r2 = block1_lo = sp0 - 4*count ; r3 = block2_lo = sp0 - 8*count  =>  r2 - r3 = 4*count.
+    Setting caller r3 == caller r2 requires 4*count == 0 (mod 2^32)  =>  count in {0, 2^30, 2^31, 3*2^30}.
+    count==0 is excluded (the site tests `cmp r5,#2 ; bcc bail`).
+
+    THE FAULT'S PRECISE CURSOR PHASE. The r6 store @0x37C2674a runs BEFORE the r4 store @0x37C26756 in
+    the SAME pass. At the fault (r4-store faults), the pass's r6 store has ALREADY incremented r6 by +4,
+    while r4's is not yet incremented. So with j = # FULLY completed passes:
+        r4_fault = r3_init + 4*j        and        r6_fault = r2_init + 4*(j+1).
+    Frame: r4_fault = r6_fault = 0x2bdae000  =>  r2_init = r3_init - 4, i.e.  caller r2 = caller r3 - 4.
+    Combined with r2 - r3 = 4*count:   4*count == -4 (mod 2^32)  =>  **count = 0xFFFFFFFF (-1)**.
+
+    FULL FRAME RECONCILIATION with count = 0xFFFFFFFF (site A; site B is identical):
+        sp0 (caller frame sp, after `sub sp,#20`)      = 0x2bdac080
+        block1_lo = sp0 - 4*count = sp0 + 4            = 0x2bdac084   (= writer r6 start = caller r2)
+        block2_lo = sp0 - 8*count = sp0 + 8            = 0x2bdac088   (= writer r4 start = caller r3)
+        caller sp at the `bl` = r6 (site A: mov sp,r6) = 0x2bdac088   (== r3, as the code forces)
+        writer sp at fault = 0x2bdac088 - 20           = 0x2bdac074   == frame sp      OK
+        j = (0x2bdae000 - 0x2bdac088)/4                = 2014 (0x7DE)
+        r4_fault = 0x2bdac088 + 4*2014                 = 0x2bdae000   == frame r4      OK
+        r6_fault = 0x2bdac084 + 4*(2014+1)             = 0x2bdae000   == frame r6      OK
+    EVERY published row (r4, r6, sp, r4-sp=0x1F8C, pc, and the equality r4==r6) is reproduced EXACTLY.
+    (The separate block-bytes relation T = 2*count + 0x7BC of (4b)/(D) then gives T = 0x7BA, k = T>>1 =
+    0x3DD = 989 — see the NOTE below; it is a SECOND, weaker reading.)
+
+    WHY count = 0xFFFFFFFF. `count` is the return of `getClassAndHeader` @0x37C26698, which returns
+    `clshi.duplicateCount()` (u32) from the shared-cache `objc_clsopt_t` table when the class entry is a
+    DUPLICATE (see dyld-239.3 `include/objc-shared-cache.h` §objc_clsopt_t::getClassAndHeader, the iOS 7
+    era header — fetched and matched against the compiled class template). 0xFFFFFFFF is also the
+    `INDEX_NOT_FOUND` sentinel = `~0u` (objc-shared-cache.h `#define INDEX_NOT_FOUND (~(uint32_t)0)`),
+    so a mis-keyed / corrupt table lookup is the natural origin. A u32 count of -1 makes
+    `sub.w r4, sp, r5, lsl #2` ADD (the "alloca" runs UP past sp) — which is why the naive "downward
+    alloca" reading looked refuted by the frame: the INSTRUCTION is a down-subtraction, but a NEGATIVE
+    count flips its sense. The base-vs-cursor argument in (3) and the count sign here are the SAME fact.
+
+    CONSEQUENCE FOR THE YES/NO QUESTION ("base / end / base+size / other"):
+      * caller r3 (= writer r4 = far at fault) is `sp0 - 8*count` with count = 0xFFFFFFFF
+        = `sp0 + 8` — a **plain sp-RELATIVE VLA base**, NOT the region base, NOT the region END, and NOT
+        a base+size sum of the region. It reaches the region's exclusive top ONLY because the (bogus)
+        count wraps it upward by 8 bytes and the writer then walks it UP 2014 elements into the
+        unowned page. Verdict by value: **OTHER (a below-sp VLA base made positive by a negative count)**.
+      * So the fault is NOT a kernel region-geometry defect (1028/1029/1030 refutations stand) and NOT a
+        boundary write AT a legitimately-advertised top. It is a **libobjc VLA sizing driven by a corrupt
+        u32 `duplicateCount`**: the destination blocks are sized by a garbage 32-bit count, and the writer
+        then writes `min(k, ...)` entries into a zero/short-sized block. The boundary is decided in the
+        CALLER (`_getPreoptimizedClass` / `_copyPreoptimizedClasses`), matching (6) and the 1030 audit's
+        "the boundary decision is in the CALLER".
+
+    NOTE / OPEN. The block-bytes row (188) of 1030 does NOT equal 8*count for count=0xFFFFFFFF (it
+    equals the argv/env block, rdr_proc_argslen=188 — consistent with (E)'s warning). So the T = 2*count +
+    0x7BC relation is NOT the same count; it would predict k=989, contradicting the directly-forced
+    j=2014 from the cursor phase. Treat j=2014 (from r4/r6 equality + phase) as the load-bearing count;
+    the T-relation is a weaker, possibly-different-count reading and is NOT needed here.
+    WHAT WOULD FALSIFY (F): a 1031 capture whose r4 and r6 differ (then caller r2 != r3, count != -1, and
+    the cursor-phase equation gives a different count). A 1031 row publishing the caller's r3_init / the
+    `count` (r5 at the bl) would confirm count = 0xFFFFFFFF directly. This remains a STATIC reading; the
+    1031 capture is WITHHELD (records/1031-press-read.txt), so no fix is selected here.
+====================================================================================================
+
+====================================================================================================
+(G) LEAD ADVERSARIAL CHECK OF caller-derivation's "count = 0xFFFFFFFF" (2026-10-17)
+====================================================================================================
+caller-derivation (independent lane) wrote section (F) claiming count = 0xFFFFFFFF (-1), reconciling
+every 1030 row. VERIFIED vs REFUTED, from the bytes + the frame:
+
+VERIFIED:
+  - Caller is libobjc: Site A 0x37C26464 = `_getPreoptimizedClass`+0x98 (fn 0x37C263CC);
+    Site B 0x37C26550 = `_copyPreoptimizedClasses`+0xa8 (fn 0x37C264A8). Both `bl 0x37C266EC`.
+  - lr=0x37C1E9AF is a STALE value inside `objc_stringhash_t::getIndex` (0x37C1E950, returns via
+    `pop {..,pc}`, does NOT restore lr) — a RED HERRING. Consistent with the 1031 record.
+  - THE INVARIANT (decisive): writer `mov r4,r3; mov r6,r2` then the loop `str [r6],#4 ... str [r4],#4`
+    increments BOTH cursors +4/pass with NO reload => `r4 - r6` is INVARIANT. CONFIRMED from bytes
+    (0x37C2674a/0x37C26756).
+  - Site B mapping is the SAME shape as Site A (`mov r2,r5=sp0-4c; mov r3,r8=sp0-8c`), so the result is
+    site-INDEPENDENT.
+
+REFUTED (as stated):
+  - count = -1 requires `r4 - r6 = +4` at the fault. The 1030 frame prints `r4 == r6 == 0x2bdae000`
+    (EQUAL) — two DISTINCT reads (`_wrp_r4=arm_ctx->r[4]`, `wrp_r6=arm_ctx->r[6]`, trap.c:939/945), so
+    NOT a print artifact. `r4-r6 = 0` => `-4c = 0` => `4c ≡ 0 (mod 2^32)`.
+  - So the constraint is `4*count ≡ 0 (mod 2^32)`, i.e. count ∈ {0, 2^30, 2^31, 3·2^30} — NOT -1.
+    The guard `cmp r5,#2; bcc bail` forbids count<2, so count ∈ {0x40000000, 0x80000000, 0xC0000000}.
+
+WHAT SURVIVES — and it is the RIGHT conclusion by a different route:
+  - caller r3 is a plain sp-RELATIVE value (`sp0 - 8*count`), NOT the region base/end/base+size =>
+    the value's class is OTHER (caller-side). The boundary is decided in the CALLER (libobjc), NOT in
+    kernel region geometry — consistent with 1028/1029/1030 and the 1030 audit.
+  - count is a DEGENERATE/WRAPPED value (a multiple of 2^30). That is the signature of a WILD u32
+    (`duplicateCount`-style field) overflowing the `sub.w rN,sp,rN,lsl#2` size — so the agent's ROOT-
+    CAUSE DIRECTION (a bad objc-table count, not a kernel page) is SUPPORTED; only its exact value (-1)
+    is wrong. The exact value needs a probe that carries count (still absent — see (E)/(F)).
+  - Net: my (E)/(F) "count is not recoverable from the frame" STANDS for the EXACT value; but the
+    frame DOES pin count MOD 2^30 (r4==r6 => 4c≡0), which is enough to say count is WRAPPED, hence the
+    fix is in the caller's count source, not kernel geometry. This reconciles (E)/(F) with (F)new.
