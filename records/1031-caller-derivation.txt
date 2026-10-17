@@ -208,3 +208,28 @@ ADDENDUM 2026-10-17 (lead, independent objdump + arithmetic) — TWO CORRECTIONS
     table word) by value — or the 1030 `block_bytes`/`rdr_proc_argslen` row (188) must be checked against
     `8*count` to see if it IS this VLA (design-1032 says it is the argv/env block, not this VLA — that
     claim is UNVERIFIED here; 188/4 = 47, 188/8 = 23.5, so 188 is NOT 8*count for integer count).
+
+(D) BYTE-ACCURATE LOOP DATAFLOW (lead objdump 0x37C26710..0x37C26760) — settles the "which r2" question.
+    0x37C26716: f853 2030  ldr.w r2, [r3, r0, lsl #3]   ; r2 = TABLE WORD T
+    0x37C2671a: f012 0f01  tst.w r2, #1
+    0x37C2671e: d01e       beq.n 0x37C2675e             ; T&1==0 -> the OTHER (non-loop) path
+    0x37C26720: 2100       movs  r1, #0
+    0x37C26722: ebb1 0f62  cmp.w r1, r2, asr #1          ; compare 0 vs (T>>1)
+    0x37C26726: bf08       it    eq
+    0x37C26728: bdf0       popeq {r4,r5,r6,r7,pc}        ; if T>>1==0 return immediately
+    0x37C26736: 1050       asrs  r0, r2, #1              ; *** SEED r0 = T>>1 ; r2 STILL == T ***
+    ---- loop label ----
+    0x37C26742: f851 2c04  ldr.w r2, [r1, #-4]           ; loop body overwrites r2 (AFTER the seed)
+    0x37C26746: 3801       subs  r0, #1
+    0x37C26748: 442a       add   r2, r5
+    0x37C2674a: f846 2b04  str.w r2, [r6], #4            ; block1 (r6) cursor
+    0x37C2674e: 680a       ldr   r2, [r1, #0]
+    0x37C26750: f101 0108  add.w r1, r1, #8
+    0x37C26754: 442a       add   r2, r5
+    0x37C26756: f844 2b04  str.w r2, [r4], #4            ; block2 (r4) cursor  *** FAULT ***
+    0x37C2675a: d1f2       bne.n 0x37C26742
+    => The asrs SEED @0x37C26736 is ABOVE the loop label @0x37C26742, so at the seed r2 is still the
+       TABLE WORD T (the [r1] reloads clobber r2 only INSIDE the loop, after the seed). Loop trips
+       k = T>>1. (count-derivation's dissent — "r2 overwritten before the seed" — is REFUTED; it
+       mislocated the seed below the loop body.) Conclusion unchanged: k independent of count;
+       geometry fixes T = 2*count + 0x7BC.
