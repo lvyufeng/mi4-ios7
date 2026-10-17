@@ -760,7 +760,17 @@ ENTRY_CFG_KEYS=(STAGE90_XNU_ENTRY_SHA256 STAGE90_XNU_ENTRY_BYTES STAGE90_ENTRY_T
                 STAGE90_XNU_PERM_WITNESS
                 STAGE90_XNU_UNDEF_DIRECT
                 STAGE90_XNU_UNDEF_RAISE
-                STAGE90_XNU_GENERAL_REGS)
+                STAGE90_XNU_GENERAL_REGS
+                STAGE90_XNU_VM_MAX_SPLIT
+                STAGE90_XNU_USTACK_PROBE
+                STAGE90_XNU_ABT_ENTRY_PROBE
+                STAGE90_XNU_H2_STACK_HEADROOM)
+# **1024: `STAGE90_XNU_VM_MAX_SPLIT`, the task map's ceiling (`VM_MAX_ADDRESS`).** It went in at the
+# tail after `STAGE90_XNU_GENERAL_REGS`; like every key above it is a REQUIRED key whose value is
+# printed by name, and the CONVERSE check below now accepts it. A record that does not carry it is a
+# pre-1024 arm and is handled by its own grace branch in the loop (see the `-z` arm beside
+# `STAGE90_XNU_GENERAL_REGS`'s): every arm parked before 1024 was built with the tree's `#else`
+# ceiling 0x80000000 (`vm_param.h:63`), the only value a pre-1024 build could have written.
 # **1015: `STAGE90_XNU_PERM_WITNESS`, the permission-inputs witness (the passive half of rung 1015).**
 # It went in at the tail beside `STAGE90_XNU_FLUSH_WITNESS`, and the "variant subset / pair of counts"
 # arithmetic the 882/683/686 notes above describe was **already retired by 1005** - the counts they name
@@ -1204,6 +1214,52 @@ do
   # omits the key.
   if [[ -z $_v && $_k == STAGE90_XNU_GENERAL_REGS ]]; then
     printf '  %s=(absent, and a record that does not name the FP/NEON-codegen switch is one built before 1021d - the pool was compiled with the FP register file available, the only value a pre-1021d build could have written)\n' "$_k"
+    continue
+  fi
+  # **1024's switch, the same one-way rule as 911b ... 1021d, and for the same reason.** Every arm
+  # parked before 1024 was built with NO ceiling switch at all: the task map's `VM_MAX_ADDRESS` was
+  # this tree's `#else` 0x80000000 (`vm_param.h:63`), the only value a pre-1024 build could have
+  # written. Demanding the key would make every existing park unpressable (882's defect, repaired
+  # again here) and the ladder still owes those presses. A post-1024 record can never reach this
+  # branch: `build_entry.sh` writes the line unconditionally (0 or 1), its 678 two-way check refuses
+  # a record whose arm-key list omits the key, and the 1024 clause at the link site reads
+  # `osfmk_kern_task.o` by value against the recorded value.
+  if [[ -z $_v && $_k == STAGE90_XNU_VM_MAX_SPLIT ]]; then
+    printf '  %s=(absent, and a record that does not name the user-map-ceiling switch is one built before 1024 - the task map ceiling was 0x80000000, the only value a pre-1024 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1025's switch, the same one-way rule as 911b ... 1024, and for the same reason.** Every arm
+  # parked before 1025 was built with NO failed-fault probe at all: trap.c's usermode data-abort arm
+  # discarded the `vm_fault` return and `create_unix_stack` published nothing, so a pre-1025 record's
+  # only possible value is 0. Demanding the key would make every existing park unpressable (882's
+  # defect, repaired again here) and the ladder still owes those presses. A post-1025 record can never
+  # reach this branch: `build_entry.sh` writes the line unconditionally (0 or 1), its 678 two-way check
+  # refuses a record whose arm-key list omits the key, and the 1025 clause at the link site reads
+  # osfmk_arm_trap.o / bsd_kern_kern_exec.o by value against the recorded value.
+  if [[ -z $_v && $_k == STAGE90_XNU_USTACK_PROBE ]]; then
+    printf '  %s=(absent, and a record that does not name the failed-fault-probe switch is one built before 1025 - no publisher was compiled in, the only value a pre-1025 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1026's switch, the same one-way rule as 911b ... 1025, and for the same reason.** Every arm
+  # parked before 1026 was built with NO abort-entry discriminator at all: trap.c's data-abort arm
+  # published only the `vm_fault` return and `create_unix_stack` carried no accessor, so a pre-1026
+  # record's only possible value is 0. Demanding the key would make every existing park unpressable
+  # (882's defect, repaired again here) and the ladder still owes those presses. A post-1026 record can
+  # never reach this branch: `build_entry.sh` writes the line unconditionally (0 or 1), its arm-key
+  # list includes the key, and the 1026 clause at the link site reads osfmk_arm_trap.o /
+  # bsd_kern_kern_exec.o by value against the recorded value.
+  if [[ -z $_v && $_k == STAGE90_XNU_ABT_ENTRY_PROBE ]]; then
+    printf '  %s=(absent, and a record that does not name the abort-entry-discriminator switch is one built before 1026 - no discriminator was compiled in, the only value a pre-1026 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1028's switch, the same one-way rule as 1026 ... 1025, and for the same reason.** Every arm parked
+  # before 1028 was built with `create_unix_stack` allocating the FIXED extent as plain `size` (no
+  # headroom), so a pre-1028 record's only possible value is 0. Demanding the key would make every
+  # existing park unpressable and the ladder still owes those presses. A post-1028 record can never reach
+  # this branch: `build_entry.sh` writes the line unconditionally (0 or 1) and its arm-key list includes
+  # the key.
+  if [[ -z $_v && $_k == STAGE90_XNU_H2_STACK_HEADROOM ]]; then
+    printf '  %s=(absent, and a record that does not name the H2-stack-headroom switch is one built before 1028 - create_unix_stack allocated the FIXED extent as plain size, the only value a pre-1028 build could have written)\n' "$_k"
     continue
   fi
   [[ -n $_v ]] \

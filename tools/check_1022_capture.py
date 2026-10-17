@@ -176,7 +176,13 @@ KERN_INVALID_ARGUMENT = 4           # `osfmk/mach/kern_return.h`
 # top word with the guard's third field (the word `7`), the fast leg leaves a userspace pointer.
 SLOW_WORD = 7
 USER_PTR_LO = 0x00001000            # below this is not a userspace page address
-USER_PTR_HI = 0x80000000            # VM_MAX_ADDRESS on CANCRO (`vm_param.h:63`)
+# VM_MAX_ADDRESS of the kernel that produced THIS capture: the 1022 run was built with
+# STAGE90_XNU_VM_MAX_SPLIT=0, so vm_param.h:63 compiles the tree's `#else` (0x80000000).  Rung 1024
+# adds the switch that drops it to 0x40000000 on CANCRO; THIS checker reads a historical artifact and
+# must keep its own kernel's value - a capture reader is bound to the build that made it, not to the
+# current tree.  (The 1024 reader carries the tri-class: [0x40000000, 0x80000000) is its own
+# ABOVE-SPLIT shape, never "fast".)
+USER_PTR_HI = 0x80000000
 
 # ---- panic evidence ------------------------------------------------------------------------------
 PANIC_ENTERED_KEY = "xnu_entry_panic_entered"

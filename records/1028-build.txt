@@ -1,0 +1,51 @@
+1028 BUILD RECORD - give the initial user-stack block ONE WORD of headroom (the H2 FIX)
+========================================================================================
+
+ARM IDENTITY: armed-d13-35a7e83e
+  (sha256sum out/stage90/xnu_arm_entry.bin | cut -c1-8 == 35a7e83e)
+  entry bin: out/stage90/xnu_arm_entry.bin  6327380 bytes  (03:20)
+  pool:      out/stage90/stage90.elf        6884860 bytes  (03:28)
+
+WHAT THIS RUNG CHANGES (one pool switch, one source edit):
+  STAGE90_XNU_H2_STACK_HEADROOM=1
+  external/xnu-hd2-darwin13/xnu/bsd/kern/kern_exec.c create_unix_stack(), the FIXED
+  mach_vm_allocate:  `size` -> `size + 16`.  The user-stack region's EXCLUSIVE TOP moves up
+  by 16, so the word AT `user_stack` (which exec_copyout_strings' block top == user_stack
+  leaves flush with the region end, and which launchctl[2] touched) is now OWNED.
+  Everything else in the geometry is UNCHANGED: addr/trunc_page base, the guard
+  (prot_addr == addr), the block, `sp`, `p->user_stack`, `user_stack = addr + size`.
+
+BUILD-SCRIPT DEFECTS FOUND AND FIXED BEFORE THE RUN (records would otherwise lie):
+  1. The staging block labeled "1026" called `$PATCH` after `PATCH` had been repointed to
+     the 1028 patcher, so tools/patch_d13_abt_entry_probe.py (1027's instrument) was never
+     `--apply`'d.  Fixed: explicit 1026 block + a correctly-labeled 1028 block.
+  2. `export STAGE90_XNU_H2_STACK_HEADROOM=1` REPLACED `export STAGE90_XNU_ABT_ENTRY_PROBE=1`
+     instead of being added after it - 1027's discriminator would have been un-built while
+     the record still said 1 (the records/1020-build-defect.txt shape:
+     [[mi4-build-variant-comes-from-an-env-default]]).  Fixed: carried verbatim, added beside.
+  Proof both are fixed: `comm` of the two scripts' `export STAGE90_*` sets differs by
+  EXACTLY STAGE90_XNU_H2_STACK_HEADROOM; the log line 21 prints the new switch AND
+  STAGE90_XNU_ABT_ENTRY_PROBE=1 together as exported.
+
+BY-VALUE EVIDENCE (the fix is IN the image, not just in the record):
+  out/stage90/xnu_arm_entry.elf  create_unix_stack @ 0x8020a768:
+    8020a7c4: e3862010  orr  r2, r6, #16        <- FIXED call's size = r6|16
+    8020a7d8:           bl   mach_vm_allocate  <- 1st (FIXED) call
+    8020a7fc: e1a02006  mov  r2, r6            <- ANYWHERE fallback's size = r6 (UNCHANGED)
+    8020a800:           bl   mach_vm_allocate  <- 2nd (ANYWHERE) call
+    8020a814: e0807006  add  r7, r0, r6        <- user_stack = addr + size (UNCHANGED)
+  `size` is mach_vm_round_page(...) => page-aligned => bit 4 clear => `size | 16 == size + 16`.
+  The OFF arm cannot emit `orr r2, r6, #16` (it would emit `mov r2, r6`); this instruction is
+  the fix, by value, in the linked image.
+  Exact count in the D13 pool object out/xnu_kernel_obj_d13/bsd_kern_kern_exec.o: 1.
+
+CARRIED SET: 1027's FULL switch set verbatim (65 switches read out of the 1027 record) +
+  STAGE90_XNU_H2_STACK_HEADROOM=1.  The record carries BOTH
+  STAGE90_XNU_ABT_ENTRY_PROBE=1 and STAGE90_XNU_H2_STACK_HEADROOM=1 (lines 73-74).
+
+GATES: all staging/namespace/OFF proofs PASS (1025+1026+1028 compose in kern_exec.c;
+  1026's gate nested inside 1025's in trap.c).  1028 capture checker --selftest PASS.
+  The two `FAIL:` lines for entry_wdt_pet are the watchdog checker's BY-DESIGN mutation
+  fixtures ("--selftest: both D13 mutations were refused"), not gate failures.
+
+NOT PRESSED.  Park it, then press -- the press is read by tools/check_1028_capture.py.

@@ -1035,6 +1035,33 @@ def _bump(text, needle, replacement, count=1):
     return text.replace(needle, replacement, count)
 
 
+def _rebase_offset(kobj_dis, old_offset, new_offset, mnemonic, unique=True):
+    """Rewrite an objdump line's `[<base>, #<old>]` to `#<new>`, BASE-REGISTER-FREE and COMMENT-FREE.
+
+    A mutation pinned to a literal `mnemonic rN, [REG, #OFF]` text stops mutating the moment the
+    compiler's register allocator picks another base (`sl` -> `fp` after a flag change) or the
+    disassembler reformats the trailing comment: `_bump`'s `assert needle in text` then fires, the
+    selftest reports `RAISED`, and a mutation that mutates nothing is indistinguishable from a claim
+    that holds (the 228 class this file documents twice). The OFFSET, not the base register, is what
+    these claims are about, so the anchor is the offset. `unique=True` asserts exactly ONE line moved
+    (a field-MOVE mutates one access); `unique=False` rewrites EVERY access (a lost read or a moved
+    field must leave no correct site behind).
+    """
+    pattern = re.compile(r"(^\s*[0-9a-f]+:\s+[0-9a-f]+\s+%s\s+r\d+,\s*\[[a-z]+,\s*#)%d(\])"
+                         % (re.escape(mnemonic), old_offset), re.M)
+
+    def repl(match):
+        return match.group(1) + str(new_offset) + match.group(2)
+
+    new_text, n = pattern.subn(repl, kobj_dis)
+    assert n > 0, ("no `%s [<base>, #%d]` line in the kernel object - the mutation would mutate "
+                   "nothing" % (mnemonic, old_offset))
+    if unique:
+        assert n == 1, ("`%s [<base>, #%d]` occurs %d times; a field-MOVE mutation must move exactly "
+                        "one access" % (mnemonic, old_offset, n))
+    return new_text
+
+
 def _edit_line_at(facts, address, transform):
     """Rewrite the one disassembly line at `address`, found by its address and not by its text.
 
@@ -1115,22 +1142,28 @@ def mutate_facts(facts, mutate):
         elif mutate == "assym_forgets_the_offset":
             facts["assym"] = _bump(facts["assym"], "#define TH_RECOVER\t#552\n", "")
         elif mutate == "the_kernel_object_moves_the_field":
-            # **EVERY** access, not the first (`count=-1`), and the trailing comment moves with the
-            # offset. `sleh_abort` reads `thread->recover` TWICE in the source -- the `if
-            # (!thread->recover)` guard (trap.c:676) and `arm_ctx->pc = thread->recover;` (:705) --
-            # and after the 1021d `-msoft-float` recompile BOTH materialize as `ldr r0, [sl, #552]`
-            # (object offsets 0x504 and 0x548). The first version replaced only the first, so the
-            # second correct read still satisfied claim 4 and the mutation was ACCEPTED -- a mutation
-            # that mutates nothing is indistinguishable from a claim that holds (the 228 class this
-            # file already documents at `_edit_line_at`). A field that genuinely MOVED would move
-            # every access, so the honest mutation moves every access.
-            facts["kobj_dis"] = _bump(facts["kobj_dis"], "ldr\tr0, [sl, #552]\t; 0x228",
-                                      "ldr\tr0, [sl, #556]\t; 0x22c", count=-1)
+            # **EVERY** access, not the first, and the trailing comment moves with the offset.
+            # `sleh_abort` reads `thread->recover` TWICE in the source -- the `if (!thread->recover)`
+            # guard (trap.c:676) and `arm_ctx->pc = thread->recover;` (:705) -- and BOTH materialize as
+            # an `ldr r0, [<base>, #552]` load. A mutation that rewrites only the first leaves the
+            # second correct read satisfying the claim, and a mutation that mutates nothing is
+            # indistinguishable from a claim that holds (the 228 class). A field that genuinely MOVED
+            # would move EVERY access, so this moves all of them.
+            #
+            # The BASE REGISTER is not part of the claim: the object's base for that load is whatever
+            # the compiler chose (`sl` before, `fp` after the 1021d `-msoft-float` recompile), and a
+            # mutation pinned to a literal `[sl, ...]` STOPS MUTATING the moment the allocator's
+            # choice changes -- which is exactly what happened here, reported as `RAISED` because
+            # `_bump`'s `assert needle in text` fired. So the anchor is the OFFSET, register-free.
+            facts["kobj_dis"] = _rebase_offset(facts["kobj_dis"], OFFSET, OFFSET + 4, "ldr",
+                                               unique=False)
         elif mutate == "the_kernel_object_loses_the_read":
-            # Same reasoning as the field-move above: `count=-1`, because the loop in claim 4 accepts
-            # a match at ANY read site, so dropping only one of the two reads leaves the other.
-            facts["kobj_dis"] = _bump(facts["kobj_dis"], "ldr\tr0, [sl, #552]\t; 0x228",
-                                      "ldr\tr0, [sl, #548]\t; 0x224", count=-1)
+            # Same reasoning as the field-move above: EVERY read site, because the claim accepts a
+            # match at ANY read site, so dropping only one of the two reads leaves the other. Here the
+            # mutation points the loads at a DIFFERENT (also register-free) offset so nothing reads the
+            # field the assembly arms -- register-free for the same reason as the move mutation.
+            facts["kobj_dis"] = _rebase_offset(facts["kobj_dis"], OFFSET, OFFSET - 4, "ldr",
+                                               unique=False)
         elif mutate == "the_header_stops_defining_the_offset":
             facts["header"] = _bump(facts["header"],
                                     "#define STAGE90_TH_RECOVER     552",

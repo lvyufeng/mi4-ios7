@@ -100,6 +100,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_IOS7_TRAPS",       # 1023 (row-24 gate, drives mach_trap.c; allowed for the proof)
     "STAGE90_XNU_USTACK_PROBE",     # 1025 (this script)
     "STAGE90_XNU_ABT_ENTRY_PROBE",  # 1026 (tools/patch_d13_abt_entry_probe.py)
+    "STAGE90_XNU_H2_STACK_HEADROOM",  # 1028 (tools/patch_d13_h2_stack_headroom.py; edits kern_exec.c)
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

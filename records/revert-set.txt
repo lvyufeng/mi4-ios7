@@ -16570,3 +16570,415 @@ set=armed-d13-10b79e5d sha256=3c86c5cb4c8bf930e4e75fd00b4042acec41e7483968866ace
 set=armed-d13-10b79e5d sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1023-trap24;stage90_fixture.macho
 set=armed-d13-10b79e5d sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1023-trap24;stage90-build-config.txt
 set=armed-d13-10b79e5d sha256=eddb19dc2fe223b32bf9d14d2bec5d421589cc6653c69a926f68bbd8a1b0eff7 bytes=560 file=SHA256SUMS.txt role=1023-trap24;SHA256SUMS.txt
+# armed-d13-64558b47  -  1024: MAKE THE TASK MAP CEILING AGREE WITH THE HARDWARE SPLIT (VM_MAX_ADDRESS 0x80000000 -> 0x40000000).
+# (The 1023 press read T24-FIRES: trap 24 IS dispatched, mach_port_construct returns 0 x4, and the
+#  frontier moved to a ~2^20-iteration DATA-ABORT loop in pid 1 at user VA 0x40083008
+#  (records/1023-press-read.txt): abt_pc = 0x39ded790 - slide 0x01bac000 = 0x38241790 =
+#  libsystem_pthread.dylib + 0x2790 = _pthread_create+0xbc, the instruction `ldr r0,[r5,#8]` with
+#  r5 = 0x40083000 (out-param 1 of __pthread_allocate_stack), abt_ptel2 = 0.
+#  ROOT CAUSE, all read by value: set_mmu_ttbcr(2) (osfmk/arm/arm_vm_init.c:475) gives TTBR0
+#  exactly 1 GiB - [0, 0x40000000) - while task_create_internal links
+#  vm_map_create(pmap, 0, VM_MAX_ADDRESS, TRUE, ...) with VM_MAX_ADDRESS = 0x80000000 (MEASURED
+#  at 80085cf0 `mov r2,#-2147483648` before 80085cfc `bl vm_map_create` in the armed 1023 image),
+#  because vm_param.h:62-68 compiles the `#else` branch on CANCRO. The first big
+#  anywhere-allocation (pthread stack) was placed ABOVE the split, where the hardware walks TTBR1
+#  (the kernel tree) and finds nothing; vm_fault "succeeds" for ever. docs/1024-design.md.)
+# Switch set is 1023-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_VM_MAX_SPLIT=1**.
+# THE ARM: ONE header line - vm_param.h:63
+#   `#if BOARD_CONFIG_ARMPBA8 || BOARD_CONFIG_QSD8250_LEO`
+# ->` || (defined(STAGE90_XNU_VM_MAX_SPLIT) && STAGE90_XNU_VM_MAX_SPLIT)`, `defined()` FIRST so
+# OFF compiles the tree-s original line byte for byte; staged by tools/patch_d13_vm_max_split.py
+# with a two-arm real-preprocessor proof (OFF -> 0x80000000, ON -> 0x40000000).
+# THE CHANNEL IS THE GLOBAL DEFINES ARRAY of tools/build_xnu_arm_kernel.sh (env), NOT EXTRA: the
+# EABI-runtime and firehose blocks expand ${DEFINES[@]} but NOT ${EXTRA_DEFINES[@]}, so an
+# EXTRA-only build would leave those TUs on the old ceiling behind a green build.
+# THE POOL MOVES: vm_param.h is a HEADER every pool TU includes, so the WHOLE pool (and the
+# entry .bin whose sha8 IS the arm) MOVES (10b79e5d -> ). build_entry.sh only LINKS the pool
+# objects, so a green entry build says nothing about this half.
+#
+# THE BY-VALUE PROOF OF 1024-S CHANGE, asserted FIRST and re-run on the FROZEN bytes.
+# tools/check_vm_max_split.py reads task_create_internal BY VALUE (both ends resolved by NAME):
+#   (0) --selftest PASSes (the checker can fail);
+#   (1) --expect on PASSes on the LINKED out/stage90/xnu_arm_entry.elf: the mov r2,#imm feeding
+#       bl vm_map_create reads 0x40000000;
+#   (2) NEGATIVE CONTROL - the SAME checker --expect off PASSes on the frozen PRE-RUNG arm
+#       1023 (armed-d13-10b79e5d), whose ceiling IS 0x80000000 (1024 is the FIRST rung to move
+#       it), so the on direction is a reading and not a constant
+#       ([[mi4-a-claim-in-a-comment-is-not-a-check]]).
+#
+# THE CARRIERS ([[mi4-one-value-two-definitions]]). The record carries STAGE90_XNU_VM_MAX_SPLIT=1
+# (the switch the widened header line reads AND the readability carrier). The declaration carrier
+# out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS build-s tail as
+# STAGE90_XNU_GLOBAL_FIX=1 role=1024-vm-max-split (1015b-s GLOBAL_FIX is a POOL switch no writer
+# in src/entry/ echoes, so the record cannot carry it); the grep of it is the process check and
+# the pmap_flush_tlbs fingerprint is the proof.
+#
+# THE INHERITED REGRESSIONS held (asserted by the park): STAGE90_XNU_GENERAL_REGS=1 (1021d-s
+# -msoft-float; the WHOLE pool re-OBJECTed), STAGE90_XNU_UNDEF_RAISE=1 and
+# STAGE90_XNU_UNDEF_DIRECT=1 and STAGE90_XNU_IOS7_TRAPS=1 in the record, the pmap_flush_tlbs
+# kernel_pmap==3 fingerprint (1015b-s kernel fix), the whole-pool NEON-free census + the linked
+# mach_msg_send NEON-free read (1021d), check_1023_trap24.py --expect on (1023-s row 24 intact,
+# rows 25/41/42 still kern_invalid), check_d13_undef_raise.py --expect on on the linked image
+# (1020-s raise intact), and by value __wrap_sleh_undef branching to entry_write_kv (>=6) and
+# NOT entry_live_write (0).
+#
+# THE 1024 VERDICT CELLS (docs/1024-design.md sec.4; read via tools/check_1024_capture.py):
+#   STORM-GONE     - the 1023 storm signature (abt_pc 0x38241790 slide-corrected / abt_far
+#                    0x40083008) is ABSENT AND the prior controls still hold (trap24 frame x4,
+#                    port_construct result=0 x4, xnu_live_undef_seq = 0x, zero panics) =>
+#                    WALL MOVED (the checker reports the NEW frontier).
+#   STORM-PERSISTS - the storm recurs at 1023-s pc/far at scale => the patch did not reach the
+#                    compiled image; read check_vm_max_split.py <elf> --expect on first.
+#   STORM-MOVED    - a storm exists elsewhere; any abt_far >= 0x40000000 means the map was not
+#                    the only producer (1024-W-s registry names the culprit).
+#   PRIOR-RUNGS-REGRESSED - one of the prior rungs- controls regressed => the arm-s switch set
+#                    is wrong, not the fix.
+#   G-CTL / WITHHOLD - neither the live channel nor any IOS7LAB line is live => no reading.
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible. fastboot boot only, NEVER flash.
+# =================================================================================================
+set=armed-d13-64558b47 sha256=64558b47af7c70c5ca44a75ac2497ed90b59635017436545886221f935965590 bytes=6327380 file=xnu_arm_entry.bin role=1024-vm-max-split;xnu_arm_entry.bin
+set=armed-d13-64558b47 sha256=61c1d99f87384deb0421ec6fa7e7a1e5596c48cd0e4789580fa87cb68cfd95d9 bytes=7364776 file=xnu_arm_entry.elf role=1024-vm-max-split;xnu_arm_entry.elf
+set=armed-d13-64558b47 sha256=bf7208bd56f163b39c6412714eef785ca17d53d1ee831e2c2c42866d41eeba3f bytes=1912 file=xnu_arm_entry.h role=1024-vm-max-split;xnu_arm_entry.h
+set=armed-d13-64558b47 sha256=1cfaf2371455a2d2e23592b803890334272c01e3b10e68c78d76d79427b18690 bytes=2134 file=xnu_arm_entry-config.txt role=1024-vm-max-split;xnu_arm_entry-config.txt
+set=armed-d13-64558b47 sha256=95b1ac5808f037a6aec78fc670d11a8f7707a746771ae2fa0a830a8e07f64845 bytes=48 file=xnu_arm_entry-arm-extra.txt role=1024-vm-max-split;xnu_arm_entry-arm-extra.txt
+set=armed-d13-64558b47 sha256=ad4118da957c68084b179261916b8d0c5285cc53ea117e3a75e1bff9f90f32be bytes=3149 file=xnu_arm_entry-sources.txt role=1024-vm-max-split;xnu_arm_entry-sources.txt
+set=armed-d13-64558b47 sha256=8f89921366b7d32c2fd8fc2c8fa25c64a49a16701d15865e7d928cfe85cb808f bytes=6822788 file=stage90.bin role=1024-vm-max-split;stage90.bin
+set=armed-d13-64558b47 sha256=39183435595805c92bd764212e84cea8da59c89abc2e3ed341fce9102f21d836 bytes=6884860 file=stage90.elf role=1024-vm-max-split;stage90.elf
+set=armed-d13-64558b47 sha256=9a0a86312724185f7ef19d0f0f3fb5a0211128e9b487076c9eb1a2055014ade6 bytes=6825984 file=stage90.img role=1024-vm-max-split;stage90.img
+set=armed-d13-64558b47 sha256=5da7bf7e5cc142b42c484f2cdfbb057438dbeda31820eef6f1ac9b3cc9157cc8 bytes=9347072 file=stage90-qcdt.img role=1024-vm-max-split;stage90-qcdt.img
+set=armed-d13-64558b47 sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1024-vm-max-split;stage90_fixture.macho
+set=armed-d13-64558b47 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1024-vm-max-split;stage90-build-config.txt
+set=armed-d13-64558b47 sha256=0a49caf57f4751d7629fa3dd18c9e965968c290ab23e4996f97cd860aff961ac bytes=560 file=SHA256SUMS.txt role=1024-vm-max-split;SHA256SUMS.txt
+# armed-d13-d7f1e533  -  1025: PUBLISH THE DISCARDED vm_fault RETURN FOR THE launchctl[2] STACK ABORT + THE STACK SHAPE.
+# (The 1024 boot (records/1024b-frontier-launchctl-crash.txt) reached `*** launchd[1] has started
+#  up ***`, spawned pid 2 `launchctl`, then died in a USERSPACE DATA ABORT on a STACK VA:
+#  launchctl[2]: usermode data abort, EXC_BAD_ACCESS at 0x2bdbe000 in map 0xc0005688
+#  (pmap 0xc0ba3b28) (Translation fault on page); r4=r6=0x2bdbe000 sp=0x2bdbd074 lr=0x3adbc9af
+#  pc=0x3adc4756 cpsr=0xa0000030. 0x2bdbe000 is INSIDE the fixed stack window
+#  [0x2BD00000, 0x2BE00000) create_unix_stack allocates and sp shows the FIXED alloc SUCCEEDED
+#  (no ANYWHERE fallback) - records/1025-source-trace.txt sections 3-4 FALSIFIED v1-s collision
+#  hypothesis - so a page that SHOULD be mapped is TRANSLATION-faulting. In osfmk/arm/trap.c
+#  the usermode data-abort path CALLS vm_fault (trap.c:806) and, on a non-SUCCESS return
+#  (trap.c:809), prints the abort and delivers EXC_BAD_ACCESS (doexception, trap.c:968); the
+#  ONE assignment of the return code sits inside `#if BOARD_CONFIG_QSD8250_LEO` (trap.c:810-814),
+#  so on CANCRO the value that NAMES the cause is DISCARDED. docs/1025-design.md.)
+# Switch set is 1024-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_USTACK_PROBE=1**.
+# THE ARM IDENTITY SETTLEMENT (records/1025-globalfix-carrier.txt sec.6): the crash family
+# (sha 685941a3c47c) carries xnu_live_abt_wdsplit=0x40000000 + ZERO 0x40083008 storm rows +
+# launchd/launchctl, i.e. it IS the 1024-shaped arm; and per that record-s sec.3 GLOBAL_FIX=1 is
+# ALREADY in the 1024 arm - so GLOBAL_FIX did NOT retire the launchctl abort => case (R2) => the
+# probe is REQUIRED, not optional.
+# THE ARM (TWO POOL EDITS, one switch), staged by tools/patch_d13_ustack_probe.py:
+#   trap.c      -> `xnu_live_abt_vmfkrv=<code>` + _far=/_dfsr=/_prot=/_pc=/_sp=/_pid= (the
+#                  discarded vm_fault return for EVERY failed usermode data abort), NON-RINGED
+#                  because the xnu_live_abt_* RING capped at n=0x400 before the launchctl abort;
+#   kern_exec.c -> `xnu_live_ustack_req/size/fixed_addr/rc/fallback/final/prot_addr/prot_size`
+#                  (once per exec - the stack placement the fault leaves unknown).
+# THE CHANNEL IS THE GLOBAL DEFINES ARRAY of tools/build_xnu_arm_kernel.sh (env), NOT EXTRA
+# (build_1025.sh arrests a -DSTAGE90_XNU_USTACK_PROBE in EXTRA), so an EXTRA-only build cannot
+# ship a stale pool behind a green build.
+# THE POOL MOVES: trap.c/kern_exec.c are POOL files, so the pool (and the entry .bin whose sha8
+# IS the arm) MOVES (64558b47 -> ). build_entry.sh only LINKS the pool objects, so a green
+# entry build says nothing about this half.
+#
+# THE BY-VALUE PROOF OF 1025-S CHANGE, asserted FIRST and re-run on the FROZEN bytes.  The change
+# is a POOL-only switch, so it does NOT change the entry text - the only object-side evidence is
+# the publisher FORMAT STRING, read by `strings`:
+#   (0) tools/check_1025_capture.py --selftest PASSes (the checker can fail);
+#   (1) osfmk_arm_trap.o carries `xnu_live_abt_vmfkrv=` AND bsd_kern_kern_exec.o carries
+#       `xnu_live_ustack_req=` (the probe reached the TWO pool objects);
+#   (2) the LINKED out/stage90/xnu_arm_entry.elf carries BOTH (the linker did not drop them);
+#   (6) the FROZEN bytes still carry BOTH (the parked bytes are the certified bytes).
+#
+# THE CARRIERS ([[mi4-one-value-two-definitions]]). The record carries STAGE90_XNU_USTACK_PROBE=1
+# (the switch the two publishers are gated by AND the readability carrier). The declaration
+# carrier out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS build-s tail as
+# STAGE90_XNU_GLOBAL_FIX=1 role=1025-ustack-probe (1015b-s GLOBAL_FIX is a POOL switch no writer
+# in src/entry/ echoes, so the record cannot carry it); the grep of it is the process check and
+# the pmap_flush_tlbs fingerprint is the proof.
+#
+# THE INHERITED REGRESSIONS held (asserted by the park): STAGE90_XNU_GENERAL_REGS=1 (1021d-s
+# -msoft-float; the WHOLE pool re-OBJECTed), STAGE90_XNU_UNDEF_RAISE=1 and
+# STAGE90_XNU_UNDEF_DIRECT=1 and STAGE90_XNU_IOS7_TRAPS=1 and STAGE90_XNU_VM_MAX_SPLIT=1 in the
+# record, 1024-s ceiling on the linked image (task_create_internal -> 0x40000000), the
+# pmap_flush_tlbs kernel_pmap==3 fingerprint (1015b-s kernel fix), the whole-pool NEON-free
+# census + the linked mach_msg_send NEON-free read (1021d), check_1023_trap24.py --expect on
+# (1023-s row 24 intact, rows 25/41/42 still kern_invalid), check_d13_undef_raise.py --expect on
+# on the linked image (1020-s raise intact), and by value __wrap_sleh_undef branching to
+# entry_write_kv (>=6) and NOT entry_live_write (0).
+#
+# THE 1025 VERDICT CELLS (docs/1025-design.md sec.4; read via tools/check_1025_capture.py;
+# reader ORDER is G-CTL first, then REGRESSION before FAULT-NAMED):
+#   FAULT-NAMED    - a xnu_live_abt_vmfkrv_* row whose _far is INSIDE [0x2BD00000,0x2BE00000)
+#                    with a _vmfkrv return that NAMES the cause => report the cause (the goal).
+#   FAULT-NOT-RUN  - launchd reached but NO xnu_live_abt_vmfkrv= row => the abort is NOT this
+#                    (data) path; re-read (a PREFETCH abort? then instrument that arm too).
+#   STACK-SHAPE    - xnu_live_ustack_* present with _rc=0 and no ANYWHERE fallback => confirms
+#                    records/1025-source-trace.txt-s by-value claim independently.
+#   REGRESSION     - the 1024 controls regressed (the 1023 pthread storm returns, or trap24 /
+#                    port_construct result=0 vanish) => the arm-s switch set is wrong.
+#   G-CTL / WITHHOLD - neither launchd-reached nor any prior control is live => no reading.
+#   NO-CELL        - nothing in the table fired (report what was present; never fabricate).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible. fastboot boot only, NEVER flash.
+# =================================================================================================
+set=armed-d13-d7f1e533 sha256=d7f1e5338333174b2d4da6b9126f371494faa1d113bdd61c9e16e41d91b4ccc8 bytes=6327380 file=xnu_arm_entry.bin role=1025-ustack-probe;xnu_arm_entry.bin
+set=armed-d13-d7f1e533 sha256=c5dea0bb6b1707892d041f5dfd9ff0019fc2ca87fa16e2e100206e9cc2b42d21 bytes=7364776 file=xnu_arm_entry.elf role=1025-ustack-probe;xnu_arm_entry.elf
+set=armed-d13-d7f1e533 sha256=bf7208bd56f163b39c6412714eef785ca17d53d1ee831e2c2c42866d41eeba3f bytes=1912 file=xnu_arm_entry.h role=1025-ustack-probe;xnu_arm_entry.h
+set=armed-d13-d7f1e533 sha256=5c91010df1dec5c417260ed5694367f3a2e23fcb1fb060083693008dadf775e6 bytes=2161 file=xnu_arm_entry-config.txt role=1025-ustack-probe;xnu_arm_entry-config.txt
+set=armed-d13-d7f1e533 sha256=1b92a9eae0e222b242d1f6d2b7fcb226a5dd628631a21ee1a4f17de9ac81c1a8 bytes=48 file=xnu_arm_entry-arm-extra.txt role=1025-ustack-probe;xnu_arm_entry-arm-extra.txt
+set=armed-d13-d7f1e533 sha256=f09f63dfed46c9f05116042f4f4b677a72c00bf6e77bdf2a2bed252f881c1863 bytes=3149 file=xnu_arm_entry-sources.txt role=1025-ustack-probe;xnu_arm_entry-sources.txt
+set=armed-d13-d7f1e533 sha256=a9853066d7274326b0a9280ad2ee1add33122f0b4145cbe62265c89204634622 bytes=6822788 file=stage90.bin role=1025-ustack-probe;stage90.bin
+set=armed-d13-d7f1e533 sha256=3311f56c31b0db71ae20639658ee0d507b8a585758cc3ab6c31f2591e48d12f8 bytes=6884860 file=stage90.elf role=1025-ustack-probe;stage90.elf
+set=armed-d13-d7f1e533 sha256=cc2642016e06c1ed4663f64cf60a971b7ae0b201f45c0fe639787b997c898304 bytes=6825984 file=stage90.img role=1025-ustack-probe;stage90.img
+set=armed-d13-d7f1e533 sha256=51087b01e9af56cc12a2e882b6ee8a09ab84d9ae5aa6117059fd2647646235e7 bytes=9347072 file=stage90-qcdt.img role=1025-ustack-probe;stage90-qcdt.img
+set=armed-d13-d7f1e533 sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1025-ustack-probe;stage90_fixture.macho
+set=armed-d13-d7f1e533 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1025-ustack-probe;stage90-build-config.txt
+set=armed-d13-d7f1e533 sha256=28a1838c6994aa3d62d32da1a74f260b4af04d6e179e523122887ac3e8332d9f bytes=560 file=SHA256SUMS.txt role=1025-ustack-probe;SHA256SUMS.txt
+# armed-d13-5c1fb3ca  -  1026: NAME WHY THE launchctl[2] STACK VA HAS NO vm_map ENTRY (H1 wrong map vs H2 off-the-end).
+# 1025-s press RAN and its own console was recovered (records/1025-press-read.txt): the discarded
+#  `vm_fault` return is code=1 = KERN_INVALID_ADDRESS on far=0x2bd35000 (the EXCLUSIVE TOP of
+#  launchctl-s [0x2bc35000, 0x2bd35000)), dfsr=0x807 (translation/page), prot=write,
+#  sp=0x2bd34074, pc=0x3b4ce756, pid=2. By source, KERN_INVALID_ADDRESS means
+#  vm_map_lookup_entry(map, VA) returned FALSE (vm_map.c:8761ff) - no entry covered the VA when
+#  the walk ran. 1025-s own xnu_live_ustack_* rows then FALSIFIED the 1025 design-s premise
+#  (the region ENDS at far, it does not contain it). 1026 discriminates the two remaining
+#  causes, which predict DIFFERENT fixes: (H1) WRONG MAP - create_unix_stack allocated into
+#  get_task_map(task) but the walk uses thread->map; (H2) OFF-THE-END - the entry ends exactly
+#  at far and a legal word sits just below (cause upstream: the initial argv/env block / sp one
+#  word too high). docs/1026-design.md.
+# Switch set is 1025-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_ABT_ENTRY_PROBE=1**.
+# THE ARM (TWO POOL EDITS, one switch), staged by tools/patch_d13_abt_entry_probe.py:
+#   trap.c      -> `xnu_live_abt_lookup_far/entry_lo/entry_hi/far_in_map/map/taskmap/ustack`,
+#                  printed for the failing fault only and NESTED INSIDE 1025-s publisher block
+#                  (the fault path is SHARED: ONE gate for it), so it prints nothing unless BOTH
+#                  switches are on. NON-RINGED (the 1025 publishers are).
+#   kern_exec.c -> `xnu_live_abt_proc_ustack(void *)`, the p->user_stack accessor trap.c calls,
+#                  because `struct proc` is only FOWARD-declared in trap.c (osfmk/arm/trap.c:58)
+#                  and the FIELD cannot be read there without bsd/sys/proc_internal.h (which no
+#                  osfmk file includes). READ ONLY.
+# THE CHANNEL IS THE GLOBAL DEFINES ARRAY of tools/build_xnu_arm_kernel.sh (env), NOT EXTRA
+# (build_1026.sh arrests a -DSTAGE90_XNU_ABT_ENTRY_PROBE in EXTRA), so an EXTRA-only build
+# cannot ship a stale pool behind a green build.
+# THE POOL MOVES: trap.c/kern_exec.c are POOL files, so the pool (and the entry .bin whose sha8
+# IS the arm) MOVES (d7f1e533 -> 5c1fb3ca). build_entry.sh only LINKS the pool objects, so a green
+# entry build says nothing about this half.
+# [[mi4-one-file-many-rungs]]: FOUR rungs edit osfmk/arm/trap.c (994 / 1020 / 1025 / 1026); a
+# cleanup `git checkout -- trap.c` reverts the others SILENTLY and the failure surfaces LATE.
+#
+# THE BY-VALUE PROOF OF 1026-S CHANGE, asserted FIRST and re-run on the FROZEN bytes:
+#   (0)  tools/check_1026_capture.py --selftest PASSes (the checker can fail);
+#   (1)  osfmk_arm_trap.o carries `xnu_live_abt_lookup_far=` AND bsd_kern_kern_exec.o carries
+#        the `xnu_live_abt_proc_ustack` accessor (the discriminator reached the pool objects);
+#   (1b) 1025-s `xnu_live_abt_vmfkrv=` / `xnu_live_ustack_req=` SURVIVE the same rebuild
+#        (1026-s block is nested inside 1025-s, so a dropped parent gate means no reading);
+#   (2)  the LINKED out/stage90/xnu_arm_entry.elf carries BOTH (the linker did not drop them);
+#   (6)  the FROZEN bytes still carry them (the parked bytes are the certified bytes).
+#
+# THE CARRIERS ([[mi4-one-value-two-definitions]]). The record carries
+# STAGE90_XNU_ABT_ENTRY_PROBE=1 (the switch the discriminator is gated by AND the readability
+# carrier) AND STAGE90_XNU_USTACK_PROBE=1 (the PARENT gate). The declaration carrier
+# out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS build-s tail as
+# STAGE90_XNU_GLOBAL_FIX=1 role=1026-abt-entry-probe; the grep of it is the process check and
+# the pmap_flush_tlbs fingerprint is the proof.
+# THE INHERITED REGRESSIONS held (asserted by the park): STAGE90_XNU_GENERAL_REGS=1 (1021d-s
+# -msoft-float), STAGE90_XNU_UNDEF_RAISE=1, STAGE90_XNU_UNDEF_DIRECT=1, STAGE90_XNU_IOS7_TRAPS=1
+# and STAGE90_XNU_VM_MAX_SPLIT=1 in the record, 1024-s ceiling on the linked image, the
+# pmap_flush_tlbs kernel_pmap==3 fingerprint, the whole-pool NEON-free census + the linked
+# mach_msg_send NEON-free read, check_1023_trap24.py --expect on, check_d13_undef_raise.py
+# --expect on, and by value __wrap_sleh_undef branching to entry_write_kv (>=6) and NOT
+# entry_live_write (0).
+#
+# THE 1026 VERDICT CELLS (docs/1026-design.md sec.4; read via tools/check_1026_capture.py;
+# reader ORDER is G-CTL first, then REGRESSION before the H cells):
+#   FAULT-NAMED  - the 1025 re-reading still HOLDS => the discriminator is asked about the
+#                  RIGHT fault;
+#   H1           - lookup_far=0 AND far_in_map=0 AND map != taskmap AND ustack == far => WRONG
+#                  MAP; fix = walk the task-s map;
+#   H2           - lookup_far=0 AND far_in_map=1 AND entry_hi == far AND map == taskmap =>
+#                  OFF-THE-END; fix = a word of headroom (kernel-side; userspace is correct);
+#   H-OTHER      - any other combination => report it; pick NO fix (fail closed); 1027
+#                  instruments whatever the combination names;
+#   REGRESSION   - the 1024 controls regressed (the 1023 storm returns, or trap24 /
+#                  port_construct result=0 vanish) => the arm-s switch set is wrong;
+#   G-CTL / WITHHOLD - neither launchd-reached nor any prior control is live => no reading;
+#   NO-CELL      - nothing in the table fired (report what was present; never fabricate).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible. fastboot boot only, NEVER flash.
+# =================================================================================================
+set=armed-d13-5c1fb3ca sha256=5c1fb3ca0e2da62868a8c0eefeb310940da0199a1b23e8529d3b9cb0a38ccb47 bytes=6327380 file=xnu_arm_entry.bin role=1026-abt-entry-probe;xnu_arm_entry.bin
+set=armed-d13-5c1fb3ca sha256=3eb7f8d889b3790821ea2f4df11916f11f861e421678658557b47e4564cecbc5 bytes=7364820 file=xnu_arm_entry.elf role=1026-abt-entry-probe;xnu_arm_entry.elf
+set=armed-d13-5c1fb3ca sha256=bf7208bd56f163b39c6412714eef785ca17d53d1ee831e2c2c42866d41eeba3f bytes=1912 file=xnu_arm_entry.h role=1026-abt-entry-probe;xnu_arm_entry.h
+set=armed-d13-5c1fb3ca sha256=d1792a43bfb4e7a32bffa3f8c6ef2a82ee231d06af4332d8ea558e90149d927f bytes=2191 file=xnu_arm_entry-config.txt role=1026-abt-entry-probe;xnu_arm_entry-config.txt
+set=armed-d13-5c1fb3ca sha256=a4abe101f298173cb24207eb5bcf0da4d92954e91dcf13b1b34bc0c3b88dace3 bytes=51 file=xnu_arm_entry-arm-extra.txt role=1026-abt-entry-probe;xnu_arm_entry-arm-extra.txt
+set=armed-d13-5c1fb3ca sha256=cc68829528c4ab49a26af223e4535bb1227ce08d28d4e069bf6ef4774e115ffa bytes=3149 file=xnu_arm_entry-sources.txt role=1026-abt-entry-probe;xnu_arm_entry-sources.txt
+set=armed-d13-5c1fb3ca sha256=beba80f77e5b215e33efd1426a548323f4f8d4806463bc2c658084c25add78f8 bytes=6822788 file=stage90.bin role=1026-abt-entry-probe;stage90.bin
+set=armed-d13-5c1fb3ca sha256=15aa89957d4ec3a51c1bcc688ee25fe61da96315a5a4a9ad449a96329a7f6149 bytes=6884860 file=stage90.elf role=1026-abt-entry-probe;stage90.elf
+set=armed-d13-5c1fb3ca sha256=9e0aeb47ff9688a1ef6f0dcf24263ba2a0f7517acabcc950cd1b4a0fd85257eb bytes=6825984 file=stage90.img role=1026-abt-entry-probe;stage90.img
+set=armed-d13-5c1fb3ca sha256=366167379a9932fcdb96102da9627ca06493a6033c521eb3bb251540ce5ad1a0 bytes=9347072 file=stage90-qcdt.img role=1026-abt-entry-probe;stage90-qcdt.img
+set=armed-d13-5c1fb3ca sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1026-abt-entry-probe;stage90_fixture.macho
+set=armed-d13-5c1fb3ca sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1026-abt-entry-probe;stage90-build-config.txt
+set=armed-d13-5c1fb3ca sha256=40b23e2dbd40db6917503214d48f7539f38f49297b6bde192fc68b5e0f6dae2c bytes=560 file=SHA256SUMS.txt role=1026-abt-entry-probe;SHA256SUMS.txt
+# armed-d13-d06ee14f  -  1027: NAME WHY THE launchctl[2] STACK VA HAS NO vm_map ENTRY (H1 wrong map vs H2 off-the-end).
+# 1025-s press RAN and its own console was recovered (records/1025-press-read.txt): the discarded
+#  `vm_fault` return is code=1 = KERN_INVALID_ADDRESS on far=0x2bd35000 (the EXCLUSIVE TOP of
+#  launchctl-s [0x2bc35000, 0x2bd35000)), dfsr=0x807 (translation/page), prot=write,
+#  sp=0x2bd34074, pc=0x3b4ce756, pid=2. By source, KERN_INVALID_ADDRESS means
+#  vm_map_lookup_entry(map, VA) returned FALSE (vm_map.c:8761ff) - no entry covered the VA when
+#  the walk ran. 1025-s own xnu_live_ustack_* rows then FALSIFIED the 1025 design-s premise
+#  (the region ENDS at far, it does not contain it). 1027 discriminates the two remaining
+#  causes, which predict DIFFERENT fixes: (H1) WRONG MAP - create_unix_stack allocated into
+#  get_task_map(task) but the walk uses thread->map; (H2) OFF-THE-END - the entry ends exactly
+#  at far and a legal word sits just below (cause upstream: the initial argv/env block / sp one
+#  word too high). docs/1027-design.md.
+# Switch set is 1025-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_ABT_ENTRY_PROBE=1**.
+# THE ARM (TWO POOL EDITS, one switch), staged by tools/patch_d13_abt_entry_probe.py:
+#   trap.c      -> `xnu_live_abt_lookup_far/entry_lo/entry_hi/far_in_map/map/taskmap/ustack`,
+#                  printed for the failing fault only and NESTED INSIDE 1025-s publisher block
+#                  (the fault path is SHARED: ONE gate for it), so it prints nothing unless BOTH
+#                  switches are on. NON-RINGED (the 1025 publishers are).
+#   kern_exec.c -> `xnu_live_abt_proc_ustack(void *)`, the p->user_stack accessor trap.c calls,
+#                  because `struct proc` is only FOWARD-declared in trap.c (osfmk/arm/trap.c:58)
+#                  and the FIELD cannot be read there without bsd/sys/proc_internal.h (which no
+#                  osfmk file includes). READ ONLY.
+# THE CHANNEL IS THE GLOBAL DEFINES ARRAY of tools/build_xnu_arm_kernel.sh (env), NOT EXTRA
+# (build_1027.sh arrests a -DSTAGE90_XNU_ABT_ENTRY_PROBE in EXTRA), so an EXTRA-only build
+# cannot ship a stale pool behind a green build.
+# THE POOL MOVES: trap.c/kern_exec.c are POOL files, so the pool (and the entry .bin whose sha8
+# IS the arm) MOVES (d7f1e533 -> d06ee14f). build_entry.sh only LINKS the pool objects, so a green
+# entry build says nothing about this half.
+# [[mi4-one-file-many-rungs]]: FOUR rungs edit osfmk/arm/trap.c (994 / 1020 / 1025 / 1027); a
+# cleanup `git checkout -- trap.c` reverts the others SILENTLY and the failure surfaces LATE.
+#
+# THE BY-VALUE PROOF OF 1027-S CHANGE, asserted FIRST and re-run on the FROZEN bytes:
+#   (0)  tools/check_1027_capture.py --selftest PASSes (the checker can fail);
+#   (1)  osfmk_arm_trap.o carries `xnu_live_abt_lookup_far=` AND bsd_kern_kern_exec.o carries
+#        the `xnu_live_abt_proc_ustack` accessor (the discriminator reached the pool objects);
+#   (1b) 1025-s `xnu_live_abt_vmfkrv=` / `xnu_live_ustack_req=` SURVIVE the same rebuild
+#        (1027-s block is nested inside 1025-s, so a dropped parent gate means no reading);
+#   (2)  the LINKED out/stage90/xnu_arm_entry.elf carries BOTH (the linker did not drop them);
+#   (6)  the FROZEN bytes still carry them (the parked bytes are the certified bytes).
+#
+# THE CARRIERS ([[mi4-one-value-two-definitions]]). The record carries
+# STAGE90_XNU_ABT_ENTRY_PROBE=1 (the switch the discriminator is gated by AND the readability
+# carrier) AND STAGE90_XNU_USTACK_PROBE=1 (the PARENT gate). The declaration carrier
+# out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS build-s tail as
+# STAGE90_XNU_GLOBAL_FIX=1 role=1027-abt-entry-probe; the grep of it is the process check and
+# the pmap_flush_tlbs fingerprint is the proof.
+# THE INHERITED REGRESSIONS held (asserted by the park): STAGE90_XNU_GENERAL_REGS=1 (1021d-s
+# -msoft-float), STAGE90_XNU_UNDEF_RAISE=1, STAGE90_XNU_UNDEF_DIRECT=1, STAGE90_XNU_IOS7_TRAPS=1
+# and STAGE90_XNU_VM_MAX_SPLIT=1 in the record, 1024-s ceiling on the linked image, the
+# pmap_flush_tlbs kernel_pmap==3 fingerprint, the whole-pool NEON-free census + the linked
+# mach_msg_send NEON-free read, check_1023_trap24.py --expect on, check_d13_undef_raise.py
+# --expect on, and by value __wrap_sleh_undef branching to entry_write_kv (>=6) and NOT
+# entry_live_write (0).
+#
+# THE 1027 VERDICT CELLS (docs/1027-design.md sec.4; read via tools/check_1027_capture.py;
+# reader ORDER is G-CTL first, then REGRESSION before the H cells):
+#   FAULT-NAMED  - the 1025 re-reading still HOLDS => the discriminator is asked about the
+#                  RIGHT fault;
+#   H1           - lookup_far=0 AND far_in_map=0 AND map != taskmap AND ustack == far => WRONG
+#                  MAP; fix = walk the task-s map;
+#   H2           - lookup_far=0 AND far_in_map=1 AND entry_hi == far AND map == taskmap =>
+#                  OFF-THE-END; fix = a word of headroom (kernel-side; userspace is correct);
+#   H-OTHER      - any other combination => report it; pick NO fix (fail closed); 1027
+#                  instruments whatever the combination names;
+#   REGRESSION   - the 1024 controls regressed (the 1023 storm returns, or trap24 /
+#                  port_construct result=0 vanish) => the arm-s switch set is wrong;
+#   G-CTL / WITHHOLD - neither launchd-reached nor any prior control is live => no reading;
+#   NO-CELL      - nothing in the table fired (report what was present; never fabricate).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible. fastboot boot only, NEVER flash.
+# =================================================================================================
+set=armed-d13-d06ee14f sha256=d06ee14f78386f3df84fe73d5a07b6c28ae916bc6981e7433c775bfbf76a265c bytes=6327380 file=xnu_arm_entry.bin role=1027-abt-entry-probe;xnu_arm_entry.bin
+set=armed-d13-d06ee14f sha256=71aedfc2cdadc0b08bc59fe74aaae93f7598d61e4d1f89373ab1d9135dc77efe bytes=7364820 file=xnu_arm_entry.elf role=1027-abt-entry-probe;xnu_arm_entry.elf
+set=armed-d13-d06ee14f sha256=bf7208bd56f163b39c6412714eef785ca17d53d1ee831e2c2c42866d41eeba3f bytes=1912 file=xnu_arm_entry.h role=1027-abt-entry-probe;xnu_arm_entry.h
+set=armed-d13-d06ee14f sha256=f7dc7dbb4024af3197b35b9231124bb587475f378fd9197bdbb50d2bb67fc2db bytes=2191 file=xnu_arm_entry-config.txt role=1027-abt-entry-probe;xnu_arm_entry-config.txt
+set=armed-d13-d06ee14f sha256=0c5c594c58570688f67d09e5b4e1640f8d7dd8d18193ff5f43bef878013b0d5e bytes=51 file=xnu_arm_entry-arm-extra.txt role=1027-abt-entry-probe;xnu_arm_entry-arm-extra.txt
+set=armed-d13-d06ee14f sha256=7d5587d332133bd2d31e6eb5da15ae820f12d3eaa652f60fcaa32304db310072 bytes=3149 file=xnu_arm_entry-sources.txt role=1027-abt-entry-probe;xnu_arm_entry-sources.txt
+set=armed-d13-d06ee14f sha256=5a7e033f4e5903327d53339c833541a8ae60fd43a89cf2b19a470a952e045bb1 bytes=6822788 file=stage90.bin role=1027-abt-entry-probe;stage90.bin
+set=armed-d13-d06ee14f sha256=db5e295075506f190f71b04a20be54a00957b9956f83be867f495639108c4ad6 bytes=6884860 file=stage90.elf role=1027-abt-entry-probe;stage90.elf
+set=armed-d13-d06ee14f sha256=27944530ee867e3825efb793e75854fddd547e95b7a25717fdae9a33058bd0cc bytes=6825984 file=stage90.img role=1027-abt-entry-probe;stage90.img
+set=armed-d13-d06ee14f sha256=219fc578c6aa7986ef8062d1c8ee44bbd70a3e3606892a3ba849a5876ce5a024 bytes=9347072 file=stage90-qcdt.img role=1027-abt-entry-probe;stage90-qcdt.img
+set=armed-d13-d06ee14f sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1027-abt-entry-probe;stage90_fixture.macho
+set=armed-d13-d06ee14f sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1027-abt-entry-probe;stage90-build-config.txt
+set=armed-d13-d06ee14f sha256=2c7939426d7b7a8c90f39890137ee19e5f251c47599629966dca375d0d7df34e bytes=560 file=SHA256SUMS.txt role=1027-abt-entry-probe;SHA256SUMS.txt
+# armed-d13-35a7e83e  -  1028: THE H2 FIX - GIVE THE INITIAL USER-STACK BLOCK ONE WORD OF HEADROOM.
+# 1027-s press RAN and its own console was recovered (records/1027-press-read.txt). The reading is
+# H2 (off-the-end), BY VALUE, at the launchctl[2] stack fault:
+#   lookup_far=0  far_in_map=1  entry=[0,0)  e2=[0x2bce1000,0x2bde0000)
+#   e2_hi == far == ustack == 0x2bde0000     map == taskmap == 0xc0005688
+# The user-stack region is [0x2bce1000,0x2bde0000) and its EXCLUSIVE TOP IS far; the word just
+# below (far-4) IS in the map. H1 (wrong map) is refuted by value (map == taskmap). By source,
+# create_unix_stack sets p->user_stack to the requested top and allocates [user_stack-size,
+# user_stack), and exec_copyout_strings places the initial argv/env block with its TOP at
+# p->user_stack - so the word AT user_stack is UNOWNED and userspace-s touch of it faults.
+# docs/1028-design.md.
+# Switch set is 1027-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_H2_STACK_HEADROOM=1**.
+# THE ARM (ONE POOL EDIT, one switch), staged by tools/patch_d13_h2_stack_headroom.py:
+#   kern_exec.c -> in create_unix_stack, the FIXED `mach_vm_allocate(map,&addr,size,...)` extent
+#                  becomes `size + 16`. The base, the block, sp, p->user_stack, and the guard
+#                  math are UNCHANGED; only the region-s EXCLUSIVE TOP moves up by 16.
+# THE CHANNEL IS THE GLOBAL DEFINES ARRAY of tools/build_xnu_arm_kernel.sh (env), NOT EXTRA
+# (build_1028.sh arrests a -DSTAGE90_XNU_H2_STACK_HEADROOM in EXTRA), so an EXTRA-only build
+# cannot ship a stale pool behind a green build.
+# THE POOL MOVES: kern_exec.c is a POOL file, so the pool (and the entry .bin whose sha8 IS the
+# arm) MOVES (d06ee14f -> 35a7e83e). build_entry.sh only LINKS the pool objects, so a green entry
+# build says nothing about this half.
+# [[mi4-one-file-many-rungs]]: THREE rungs edit bsd/kern/kern_exec.c (1025 / 1026 / 1028) and
+# FOUR edit osfmk/arm/trap.c (994 / 1020 / 1025 / 1026); a cleanup `git checkout --` reverts the
+# others SILENTLY and the failure surfaces LATE.
+#
+# THE BY-VALUE PROOF OF 1028-S CHANGE (the fix has NO string - a value change, not a print):
+#   (0)  tools/check_1028_capture.py --selftest PASSes (the checker can fail);
+#   (1)  the staged kern_exec.c carries STAGE90_XNU_H2_STACK_HEADROOM with the FIXED extent
+#        = size + 16 AND the pool-s own source-content record names the SAME content (the pool
+#        compiled the fixed source); the INHERITED 1027 rows (lookup_far + e2_hi) AND 1025-s
+#        publishers SURVIVE the same rebuild (they are read the fix-s cells BESIDE);
+#   (2)  the LINKED out/stage90/xnu_arm_entry.elf carries the inherited rows (the linker did not
+#        drop them);
+#   (6)  the FROZEN bytes still carry them AND the staged source still carries the switch (the
+#        parked bytes are the certified bytes).
+#
+# THE CARRIERS ([[mi4-one-value-two-definitions]]). The record carries
+# STAGE90_XNU_H2_STACK_HEADROOM=1 (the switch the fix is gated by AND the readability carrier)
+# AND 1027-s STAGE90_XNU_ABT_ENTRY_PROBE=1 AND 1025-s STAGE90_XNU_USTACK_PROBE=1 (the PARENT
+# gate). The declaration carrier out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS
+# build-s tail as STAGE90_XNU_GLOBAL_FIX=1 role=1028-h2-stack-headroom; the grep of it is the
+# process check and the pmap_flush_tlbs fingerprint is the proof.
+# THE INHERITED REGRESSIONS held (asserted by the park): STAGE90_XNU_GENERAL_REGS=1 (1021d-s
+# -msoft-float), STAGE90_XNU_UNDEF_RAISE=1, STAGE90_XNU_UNDEF_DIRECT=1, STAGE90_XNU_IOS7_TRAPS=1
+# and STAGE90_XNU_VM_MAX_SPLIT=1 in the record, 1024-s ceiling on the linked image, the
+# pmap_flush_tlbs kernel_pmap==3 fingerprint, the whole-pool NEON-free census + the linked
+# mach_msg_send NEON-free read, check_1023_trap24.py --expect on, check_d13_undef_raise.py
+# --expect on, and by value __wrap_sleh_undef branching to entry_write_kv (>=6) and NOT
+# entry_live_write (0).
+#
+# THE 1028 VERDICT CELLS (docs/1028-design.md sec.5; read via tools/check_1028_capture.py):
+#   FIX-HOLDS   - the launchctl[2] data abort at far == p->user_stack is GONE (0 rows with
+#                 xnu_live_abt_vmfkrv=1 on a far in the stack window) AND launchd still starts
+#                 AND the next frontier is NAMED by the existing rows;
+#   FIX-NOOP    - the same abort at the same far - sp == 0xF8C recurs => the top word was not
+#                 the cause; report, do not re-fix;
+#   REGRESSION  - trap24 / port_construct(result=0) vanish, or a panic appears => the +16 moved
+#                 something the guard math depended on; report and revert;
+#   G-CTL / WITHHOLD - launchd never reached and no prior control live => no reading (fail closed);
+#   e2_hi       - must now read far + 16 (the region-s new exclusive top) if the fix landed; if it
+#                 still reads far, the allocation edit did not take effect (a build defect).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible. fastboot boot only, NEVER flash.
+# =================================================================================================
+set=armed-d13-35a7e83e sha256=35a7e83e02d3c27dfd2e684852a17967788f7b28452df0a26515117246de5c2f bytes=6327380 file=xnu_arm_entry.bin role=1028-h2-stack-headroom;xnu_arm_entry.bin
+set=armed-d13-35a7e83e sha256=698e62fa536761cc20ca2b0ad5a76462c1a10d35a027aa6f2b32a433c9e4c8c4 bytes=7364820 file=xnu_arm_entry.elf role=1028-h2-stack-headroom;xnu_arm_entry.elf
+set=armed-d13-35a7e83e sha256=bf7208bd56f163b39c6412714eef785ca17d53d1ee831e2c2c42866d41eeba3f bytes=1912 file=xnu_arm_entry.h role=1028-h2-stack-headroom;xnu_arm_entry.h
+set=armed-d13-35a7e83e sha256=e56e12816646bda80d1b385d148a5ec73c5012259ef4447a2b4bcc59e230d95f bytes=2223 file=xnu_arm_entry-config.txt role=1028-h2-stack-headroom;xnu_arm_entry-config.txt
+set=armed-d13-35a7e83e sha256=38cc7532e419bf8fe00b85cc27575f6dc9daeeec1794119bdc0ac2a2f22bd894 bytes=53 file=xnu_arm_entry-arm-extra.txt role=1028-h2-stack-headroom;xnu_arm_entry-arm-extra.txt
+set=armed-d13-35a7e83e sha256=5f14cea5676aa558ca39219c1dbb5053c577a5ae9b06ce23cf6be718b42da572 bytes=3149 file=xnu_arm_entry-sources.txt role=1028-h2-stack-headroom;xnu_arm_entry-sources.txt
+set=armed-d13-35a7e83e sha256=29a992c552e940fab904ce5a00f9898d90f287d439fba4b31d67867746a1c19a bytes=6822788 file=stage90.bin role=1028-h2-stack-headroom;stage90.bin
+set=armed-d13-35a7e83e sha256=acf8ac4ecba82fe731afe0aba464c35e427e9bf45e53f3d905a188ec51d91276 bytes=6884860 file=stage90.elf role=1028-h2-stack-headroom;stage90.elf
+set=armed-d13-35a7e83e sha256=78b97251a57c437100cfb68ec10fdc320c3be8b95803fcc32bb3f8b5724b0069 bytes=6825984 file=stage90.img role=1028-h2-stack-headroom;stage90.img
+set=armed-d13-35a7e83e sha256=fa57362ea3a48788fe6ae4f3977cfa6953d40a1efb92b25df4ad436cde7de003 bytes=9347072 file=stage90-qcdt.img role=1028-h2-stack-headroom;stage90-qcdt.img
+set=armed-d13-35a7e83e sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1028-h2-stack-headroom;stage90_fixture.macho
+set=armed-d13-35a7e83e sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1028-h2-stack-headroom;stage90-build-config.txt
+set=armed-d13-35a7e83e sha256=fe91fe8405fade0fa4f7c8661af836fa3d3414053b9183af5a32338b557e343a bytes=560 file=SHA256SUMS.txt role=1028-h2-stack-headroom;SHA256SUMS.txt

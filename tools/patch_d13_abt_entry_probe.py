@@ -219,6 +219,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_IOS7_TRAPS",       # 1023 (row-24 gate; allowed for the shared proof)
     "STAGE90_XNU_USTACK_PROBE",     # 1025 (tools/patch_d13_ustack_probe.py) - 1026's PARENT block
     "STAGE90_XNU_ABT_ENTRY_PROBE",  # 1026 (this script)
+    "STAGE90_XNU_H2_STACK_HEADROOM",  # 1028 (tools/patch_d13_h2_stack_headroom.py; edits kern_exec.c)
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

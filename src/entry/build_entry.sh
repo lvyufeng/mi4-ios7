@@ -2128,6 +2128,10 @@ ENTRY_ARM_KEYS=(STAGE90_ENTRY_TRACE STAGE90_ENTRY_REAL_ARM_INIT STAGE90_XNU_SLOT
                 STAGE90_XNU_UNDEF_DIRECT
                 STAGE90_XNU_UNDEF_RAISE
                 STAGE90_XNU_GENERAL_REGS
+                STAGE90_XNU_VM_MAX_SPLIT
+                STAGE90_XNU_USTACK_PROBE
+                STAGE90_XNU_ABT_ENTRY_PROBE
+                STAGE90_XNU_H2_STACK_HEADROOM
                 STAGE90_XNU_TREE_D13)
 #
 # **The seven switches are not the whole arm, and finding that out is what made this eleven.** Checking
@@ -2265,6 +2269,45 @@ do
         # same reason (this loop runs ~27000 lines above the assignment site). D13-only: the kernel
         # object is refused the switch on 4570 by `build_xnu_arm_kernel.sh`.
         STAGE90_XNU_MEM_TOTAL)        _v=${STAGE90_XNU_MEM_TOTAL:-0} ;;
+        # 1024: the TASK MAP's ceiling (`VM_MAX_ADDRESS`). `tools/patch_d13_vm_max_split.py` widens
+        # `osfmk/mach/arm/vm_param.h:63` so that with the define CANCRO's `VM_MAX_ADDRESS` is
+        # 0x40000000 - the hardware's 1 GiB TTBR0 split (`set_mmu_ttbcr(2)`, `arm_vm_init.c:475`) -
+        # instead of this tree's `#else` 0x80000000, which puts launchd's first big anywhere-allocation
+        # above the split where the hardware walks TTBR1 and finds nothing (the 1023 storm:
+        # `_pthread_create+0xbc` at VA 0x40083008, ~2^20 iterations). Read from the ENVIRONMENT with a
+        # default 0, like its MEM_TOTAL sibling above and for the same reason (this loop runs ~27000
+        # lines above the assignment site). The value is compiled into EVERY object that includes
+        # `vm_param.h`; the ONE site a by-value reading names is `task_create_internal`'s
+        # `vm_map_create(pmap, 0, VM_MAX_ADDRESS, TRUE, ...)` in `task.c` -> `osfmk_kern_task.o`, which
+        # is IN the link - which is why the 1024 clause at the link site below reads that object's own
+        # instruction and refuses a record over a stale pool.
+        STAGE90_XNU_VM_MAX_SPLIT)     _v=${STAGE90_XNU_VM_MAX_SPLIT:-0} ;;
+        # 1025: whether the FAILED-FAULT publishers are compiled into this image's pool objects
+        # (`osfmk_arm_trap.o`'s `xnu_live_abt_vmfkrv=*` + `bsd_kern_kern_exec.o`'s `xnu_live_ustack_req=*`,
+        # staged by tools/patch_d13_ustack_probe.py, gated `#if defined(STAGE90_XNU_USTACK_PROBE) &&
+        # STAGE90_XNU_USTACK_PROBE`).  Read from the ENVIRONMENT with a default 0, like its
+        # VM_MAX_SPLIT sibling above and for the same reason (this loop runs ~27000 lines above the
+        # assignment site).  The switch is a POOL-only probe: it does NOT change the entry image's own
+        # linked bytes (unlike VM_MAX_SPLIT), so the record is the ONLY place it appears - which is
+        # why the 1025 clause at the link site below reads the pool objects by value and refuses a
+        # record over a stale pool (the switch in the record with the objects not rebuilt).
+        STAGE90_XNU_USTACK_PROBE)     _v=${STAGE90_XNU_USTACK_PROBE:-0} ;;
+        # 1026: whether the ABORT-ENTRY discriminator is compiled into this image's pool objects
+        # (`osfmk_arm_trap.o`'s `xnu_live_abt_lookup_far=*` + `bsd_kern_kern_exec.o`'s
+        # `xnu_live_abt_proc_ustack`, staged by tools/patch_d13_abt_entry_probe.py, gated
+        # `#if defined(STAGE90_XNU_ABT_ENTRY_PROBE) && STAGE90_XNU_ABT_ENTRY_PROBE` and NESTED inside
+        # 1025's publisher block - so it prints nothing unless BOTH switches are on).  Read from the
+        # ENVIRONMENT with a default 0, like its USTACK_PROBE sibling.  Same POOL-only shape: the entry
+        # bin's hash is IDENTICAL with it on and off, so the record is the ONLY place the arm appears,
+        # which is why the 1026 clause at the link site reads the pool objects by value.
+        STAGE90_XNU_ABT_ENTRY_PROBE)  _v=${STAGE90_XNU_ABT_ENTRY_PROBE:-0} ;;
+        # 1028: whether the H2 fix is staged in this image's kern_exec.c (`create_unix_stack`'s FIXED
+        # `mach_vm_allocate` extent becomes `size + 16`, staged by tools/patch_d13_h2_stack_headroom.py,
+        # gated `#if defined(STAGE90_XNU_H2_STACK_HEADROOM) && STAGE90_XNU_H2_STACK_HEADROOM`).  Like its
+        # USTACK_PROBE/ABT_ENTRY_PROBE siblings it is a POOL-only switch: it has NO format string (the
+        # fix is a value change, not a print), so the entry bin's hash is IDENTICAL with it on and off and
+        # the record is the ONLY place the arm appears.  Read from the ENVIRONMENT with a default 0.
+        STAGE90_XNU_H2_STACK_HEADROOM)  _v=${STAGE90_XNU_H2_STACK_HEADROOM:-0} ;;
         # 912: read from the ENVIRONMENT directly and not from `$ENTRY_SIZE`, because this loop runs
         # ~27000 lines ABOVE the assignment (`:28651`) - the same reason `STAGE90_ENTRY_REAL_ARM_INIT`
         # is read with its own `${...:-0}`. The default is the same literal, so an unset switch and an
@@ -29134,6 +29177,94 @@ if [[ $REAL_ARM_INIT -eq 1 ]]; then
         on) say "  xnu_entry_958: the kernel's arm_vm_init.o carries entry_xnu_mem_total_arm_on and this build sets STAGE90_XNU_MEM_TOTAL=1 - the linked image reads /defaults hw.memsize into max_mem, so hw.memsize reports 0xC0000000 (3 GiB) while the linear map stays the boot bank" ;;
         *)  say "  xnu_entry_958: the kernel's arm_vm_init.o carries NO memory-total marker and this build sets STAGE90_XNU_MEM_TOTAL=0 - hw.memsize reports the boot bank, the default image (no 3 GB recognition)" ;;
     esac
+    # **1024's user-map ceiling - the SAME refusal MEM_TOTAL gets above, in the SAME shape.** The record
+    # writer far below writes `${STAGE90_XNU_VM_MAX_SPLIT:-0}`; until this clause existed NOTHING read
+    # the object against it, so a build could RECORD the ceiling switch over a pool compiled WITHOUT it
+    # (`build_entry.sh` only LINKS the pool objects; records/1020-build-defect.txt) and the first big
+    # user allocation would land above the split again - the exact 1023 storm this rung removes. The
+    # object's own instruction is read here by value, in BOTH directions, and a missing tool is a
+    # refusal, not a skip ([[mi4-a-claim-in-a-comment-is-not-a-check]], the 1021d clause's rule).
+    _vms_req=${STAGE90_XNU_VM_MAX_SPLIT:-0}
+    case $_vms_req in
+        1) _vms_exp=on ;;
+        *) _vms_exp=off ;;
+    esac
+    _vms_tool=$REPO_ROOT/tools/check_vm_max_split.py
+    _vms_obj=${XNU_KERNEL_OBJ_OUT}/osfmk_kern_task.o
+    [[ -f $_vms_tool ]] \
+        || layout_fail "tools/check_vm_max_split.py is MISSING ($_vms_tool). STAGE90_XNU_VM_MAX_SPLIT=$_vms_req says which ceiling the task map's vm_map_create carries, and the ONLY reading of that value is the immediate the compiler materialized in task_create_internal (osfmk_kern_task.o); without the tool this clause cannot read it, and a clause that skips itself is the defect class [[mi4-a-claim-in-a-comment-is-not-a-check]] -- so it is a refusal. CLI: <elf-or-.o> --expect on|off | --selftest"
+    [[ -f $_vms_obj ]] \
+        || layout_fail "the D13 kernel pool object $_vms_obj is MISSING - task.c's task_create_internal is where the user map's ceiling becomes an instruction and this build cannot read STAGE90_XNU_VM_MAX_SPLIT=$_vms_req without it (build the pool with tools/build_xnu_arm_kernel.sh under the current arm's switch set)"
+    python3 "$_vms_tool" "$_vms_obj" --expect "$_vms_exp" \
+        || layout_fail "REFUSING: STAGE90_XNU_VM_MAX_SPLIT=$_vms_req but $_vms_obj's own task_create_internal reads the OTHER ceiling - a record over a STALE pool (build_entry.sh only LINKS the pool objects; records/1020-build-defect.txt). The record would promise the 1 GiB-split ceiling while the linked image keeps placing launchd's first big allocation above the split (the 1023 storm). Rebuild the pool: STAGE90_XNU_VM_MAX_SPLIT=$_vms_req ./tools/build_xnu_arm_kernel.sh"
+    case $_vms_req in
+        1) say "  xnu_entry_1024: osfmk_kern_task.o's task_create_internal passes 0x40000000 to vm_map_create (== the hardware's 1 GiB TTBR0 split, set_mmu_ttbcr(2)) and this build sets STAGE90_XNU_VM_MAX_SPLIT=1 - the user map's ceiling agrees with the hardware" ;;
+        *) say "  xnu_entry_1024: osfmk_kern_task.o's task_create_internal passes 0x80000000 to vm_map_create (this tree's #else) and this build sets STAGE90_XNU_VM_MAX_SPLIT=0 - the pre-1024 image" ;;
+    esac
+    # **1025's FAILED-FAULT publishers - the SAME refusal the 1024 ceiling clause above gets, in the
+    # SAME shape, aimed at the two POOL objects the probe lives in.**  The record writer far below
+    # writes `${STAGE90_XNU_USTACK_PROBE:-0}`; this clause reads the objects by value so a build cannot
+    # RECORD the probe switch over a pool whose trap.o/kern_exec.o were NOT rebuilt under it
+    # (build_entry.sh only LINKS the pool objects; records/1020-build-defect.txt) - the capture would
+    # then be silent on the frontier while the record says the instrument was live
+    # ([[mi4-a-claim-in-a-comment-is-not-a-check]], [[mi4-silence-is-a-reading-only-if-success-is-silent]]).
+    # The reading is `strings` on the object for the publisher's own format string: the switch compiles
+    # in `printf("xnu_live_abt_vmfkrv=%d\n", ...)` and `printf("xnu_live_ustack_req=...")`, so the
+    # literal `xnu_live_abt_vmfkrv=` / `xnu_live_ustack_req=` is in the object IFF the block was
+    # compiled in.  A missing object or a missing `strings` tool is a refusal, not a skip.
+    _usp_req=${STAGE90_XNU_USTACK_PROBE:-0}
+    _usp_trap_obj=${XNU_KERNEL_OBJ_OUT}/osfmk_arm_trap.o
+    _usp_exec_obj=${XNU_KERNEL_OBJ_OUT}/bsd_kern_kern_exec.o
+    command -v strings >/dev/null 2>&1 \
+        || layout_fail "the \`strings\` tool is absent from PATH: STAGE90_XNU_USTACK_PROBE=$_usp_req says whether the FAILED-FAULT publishers are in this image's pool objects, and the ONLY reading of that is the pointer/format-string the compiler materialized for \`xnu_live_abt_vmfkrv=\`/\`xnu_live_ustack_req=\` in osfmk_arm_trap.o / bsd_kern_kern_exec.o; without the tool this clause cannot read it, and a clause that skips itself is the defect class [[mi4-a-claim-in-a-comment-is-not-a-check]] -- so it is a refusal"
+    [[ -f $_usp_trap_obj ]] \
+        || layout_fail "the D13 kernel pool object $_usp_trap_obj is MISSING - trap.c's usermode data-abort arm is where the discarded vm_fault return becomes the xnu_live_abt_vmfkrv=* publisher, and this build cannot read STAGE90_XNU_USTACK_PROBE=$_usp_req without it (build the pool with tools/build_xnu_arm_kernel.sh under the current arm's switch set)"
+    [[ -f $_usp_exec_obj ]] \
+        || layout_fail "the D13 kernel pool object $_usp_exec_obj is MISSING - kern_exec.c's create_unix_stack is where the stack-shape publisher xnu_live_ustack_req=* lives, and this build cannot read STAGE90_XNU_USTACK_PROBE=$_usp_req without it (build the pool with tools/build_xnu_arm_kernel.sh under the current arm's switch set)"
+    if [[ $_usp_req == 1 ]]; then
+        _usp_have_trap=$(strings "$_usp_trap_obj" | grep -c '^xnu_live_abt_vmfkrv=' || true)
+        _usp_have_exec=$(strings "$_usp_exec_obj" | grep -c '^xnu_live_ustack_req=' || true)
+        [[ $_usp_have_trap -ge 1 && $_usp_have_exec -ge 1 ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_USTACK_PROBE=1 but the pool objects do NOT carry the publishers (osfmk_arm_trap.o has xnu_live_abt_vmfkrv= x$_usp_have_trap, bsd_kern_kern_exec.o has xnu_live_ustack_req= x$_usp_have_exec; both want >= 1). A record over a STALE pool (build_entry.sh only LINKS the pool objects; records/1020-build-defect.txt). The record would promise the failed-fault probe while the linked image keeps the old trap.o/kern_exec.o and every capture would be silent on the launchctl[2] stack frontier. Rebuild the pool: STAGE90_XNU_USTACK_PROBE=1 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1025: osfmk_arm_trap.o carries the xnu_live_abt_vmfkrv= publisher and bsd_kern_kern_exec.o carries xnu_live_ustack_req=, and this build sets STAGE90_XNU_USTACK_PROBE=1 - the failed-fault probe is IN the linked image"
+    else
+        _usp_have_trap=$(strings "$_usp_trap_obj" | grep -c '^xnu_live_abt_vmfkrv=' || true)
+        _usp_have_exec=$(strings "$_usp_exec_obj" | grep -c '^xnu_live_ustack_req=' || true)
+        [[ $_usp_have_trap -eq 0 && $_usp_have_exec -eq 0 ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_USTACK_PROBE=0 but a pool object STILL carries a publisher (osfmk_arm_trap.o x$_usp_have_trap, bsd_kern_kern_exec.o x$_usp_have_exec; both want 0). A stale object built under the switch with a record that says it is off - the reverse of the 1024 ceiling clause's OFF arm. Rebuild the pool: STAGE90_XNU_USTACK_PROBE=0 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1025: neither pool object carries a publisher and this build sets STAGE90_XNU_USTACK_PROBE=0 - the plain 1024 image (no failed-fault probe)"
+    fi
+    # ================================================================================================
+    # 1026: THE ABORT-ENTRY DISCRIMINATOR CLAUSE.  The SAME shape and the SAME reason as 1025's above
+    # (docs/1026-design.md sections 3-4; team-lead instruction; records/1020-build-defect.txt).  The
+    # switch is a POOL-only switch: `osfmk_arm_trap.o` gains the `xnu_live_abt_lookup_far=*` (and
+    # `entry_lo`/`entry_hi`/`far_in_map`/`map`/`taskmap`/`ustack`) publisher, and `bsd_kern_kern_exec.o`
+    # gains `xnu_live_abt_proc_ustack` (the accessor trap.c calls, because `struct proc` is incomplete
+    # in trap.c).  build_entry.sh only LINKS the pool objects, so a record that says 1 over a pool that
+    # carries neither is a refusal (a capture that would be silent on the 1026 question while the
+    # record promises the discriminator is live).
+    _abt_req=${STAGE90_XNU_ABT_ENTRY_PROBE:-0}
+    _abt_trap_obj=${XNU_KERNEL_OBJ_OUT}/osfmk_arm_trap.o
+    _abt_exec_obj=${XNU_KERNEL_OBJ_OUT}/bsd_kern_kern_exec.o
+    command -v strings >/dev/null 2>&1 \
+        || layout_fail "the \`strings\` tool is absent from PATH: STAGE90_XNU_ABT_ENTRY_PROBE=$_abt_req says whether the abort-entry discriminator is in this image's pool objects, and the ONLY reading of that is the format string the compiler materialized for \`xnu_live_abt_lookup_far=\` in osfmk_arm_trap.o plus the \`xnu_live_abt_proc_ustack\` symbol in bsd_kern_kern_exec.o; without the tool this clause cannot read it, and a clause that skips itself is the defect class [[mi4-a-claim-in-a-comment-is-not-a-check]] -- so it is a refusal"
+    [[ -f $_abt_trap_obj ]] \
+        || layout_fail "the D13 kernel pool object $_abt_trap_obj is MISSING - trap.c's usermode data-abort arm is where the abort-entry discriminator publishes xnu_live_abt_lookup_far=*, and this build cannot read STAGE90_XNU_ABT_ENTRY_PROBE=$_abt_req without it (build the pool with tools/build_xnu_arm_kernel.sh under the current arm's switch set)"
+    [[ -f $_abt_exec_obj ]] \
+        || layout_fail "the D13 kernel pool object $_abt_exec_obj is MISSING - kern_exec.c is where the xnu_live_abt_proc_ustack accessor lives, and this build cannot read STAGE90_XNU_ABT_ENTRY_PROBE=$_abt_req without it (build the pool with tools/build_xnu_arm_kernel.sh under the current arm's switch set)"
+    if [[ $_abt_req == 1 ]]; then
+        _abt_have_trap=$(strings "$_abt_trap_obj" | grep -c '^xnu_live_abt_lookup_far=' || true)
+        _abt_have_exec=$(strings "$_abt_exec_obj" | grep -c '^xnu_live_abt_proc_ustack$' || true)
+        [[ $_abt_have_trap -ge 1 && $_abt_have_exec -ge 1 ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_ABT_ENTRY_PROBE=1 but the pool objects do NOT carry the discriminator (osfmk_arm_trap.o has xnu_live_abt_lookup_far= x$_abt_have_trap, bsd_kern_kern_exec.o has xnu_live_abt_proc_ustack x$_abt_have_exec; both want >= 1). A record over a STALE pool (build_entry.sh only LINKS the pool objects; records/1020-build-defect.txt). The record would promise the abort-entry discriminator while the linked image keeps the old trap.o/kern_exec.o and every capture would be silent on WHICH the launchctl stack fault is. Rebuild the pool: STAGE90_XNU_ABT_ENTRY_PROBE=1 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1026: osfmk_arm_trap.o carries the xnu_live_abt_lookup_far= publisher and bsd_kern_kern_exec.o carries the xnu_live_abt_proc_ustack accessor, and this build sets STAGE90_XNU_ABT_ENTRY_PROBE=1 - the abort-entry discriminator is IN the linked image"
+    else
+        _abt_have_trap=$(strings "$_abt_trap_obj" | grep -c '^xnu_live_abt_lookup_far=' || true)
+        _abt_have_exec=$(strings "$_abt_exec_obj" | grep -c '^xnu_live_abt_proc_ustack$' || true)
+        [[ $_abt_have_trap -eq 0 && $_abt_have_exec -eq 0 ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_ABT_ENTRY_PROBE=0 but a pool object STILL carries the discriminator (osfmk_arm_trap.o x$_abt_have_trap, bsd_kern_kern_exec.o x$_abt_have_exec; both want 0). A stale object built under the switch with a record that says it is off - the reverse of the 1025 clause's OFF arm. Rebuild the pool: STAGE90_XNU_ABT_ENTRY_PROBE=0 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1026: neither pool object carries the discriminator and this build sets STAGE90_XNU_ABT_ENTRY_PROBE=0 - the plain 1025 image (no abort-entry discriminator)"
+    fi
     # **The DOOR half of 888's check is the NEXT block's business, not this one's** - see the
     # `entry_storage_driver_read` clause the link block carries after `xnu_arm_entry.elf` exists. A
     # check placed HERE would read the PREVIOUS arm's elf (the link below has not run yet), which is
@@ -40439,6 +40570,37 @@ IDLE_STACK_FOR_RECORD=${STAGE90_XNU_IDLE_STACK:-1}
     # switch the D13 kernel pool's `osfmk_arm_arm_vm_init.o` was built with - the marker
     # `entry_xnu_mem_total_arm_on` is the object's own statement of it.
     echo "STAGE90_XNU_MEM_TOTAL=${STAGE90_XNU_MEM_TOTAL:-0}"
+    # **1024's user-map-ceiling switch, written here for 882's, 678's and 958's reason**: this writer
+    # is the one site a name-keyed diff does not visit and the only site the gate ever reads, so a
+    # switch that reached the compiler and the arm-key list but not this line would be a run whose arm
+    # nobody read. `vm_param.h` is a HEADER (task.c, vm_map.c, mach_vm.c ... all include it), so the
+    # pool's `-D` rides the global `DEFINES` array in `tools/build_xnu_arm_kernel.sh`; this record is
+    # the gate's only reading of whether the task map's ceiling moved, and the 1024 clause at the link
+    # site above reads `osfmk_kern_task.o` by value, which is what makes a record over a stale pool a
+    # refusal rather than a promise.
+    echo "STAGE90_XNU_VM_MAX_SPLIT=${STAGE90_XNU_VM_MAX_SPLIT:-0}"
+    # **1025's failed-fault-probe switch, written here for the SAME reason - and one MORE.**  Unlike
+    # every switch above, `STAGE90_XNU_USTACK_PROBE` does NOT change the ENTRY image's own linked bytes
+    # (the publishers live in POOL objects: osfmk_arm_trap.o, bsd_kern_kern_exec.o).  So the entry bin's
+    # hash is IDENTICAL with the switch on and off, and this line is the ONLY place the arm appears in
+    # any record - without it a probe-on build and a probe-off build whose entry images are the same
+    # bytes would carry records that name the same arm, the silent state 533 exists to refuse.  The
+    # 1025 clause at the link site above reads the two pool objects by value, which is what makes a
+    # record over a stale pool a refusal rather than a promise.
+    echo "STAGE90_XNU_USTACK_PROBE=${STAGE90_XNU_USTACK_PROBE:-0}"
+    # **1026's abort-entry discriminator switch, written here for the SAME reason as 1025's.**  Like
+    # USTACK_PROBE it is a POOL-only switch: the entry image's own linked bytes are IDENTICAL with it
+    # on and off (both edited files are POOL objects), so this record line is the ONLY place the arm
+    # appears - the 1026 clause at the link site above reads the two pool objects by value, which is
+    # what makes a record over a stale pool a refusal rather than a promise.
+    echo "STAGE90_XNU_ABT_ENTRY_PROBE=${STAGE90_XNU_ABT_ENTRY_PROBE:-0}"
+    # **1028's H2 headroom fix switch, written here for the SAME reason as 1025's and 1026's.**  The fix is
+    # a value change in `create_unix_stack`'s FIXED `mach_vm_allocate` extent (both edited files are POOL
+    # objects), so the entry image's own linked bytes are IDENTICAL with it on and off and this record line
+    # is the ONLY place the arm appears.  It carries NO format string, so unlike 1025/1026 there is no
+    # `strings` fingerprint on the object; the by-value evidence is that the staged kern_exec.c carries the
+    # switch and the pool was rebuilt with it (build_1028.sh's step 5a).
+    echo "STAGE90_XNU_H2_STACK_HEADROOM=${STAGE90_XNU_H2_STACK_HEADROOM:-0}"
     # **912's window, written here for a reason the other keys do not have.** Every switch above shapes
     # the ENTRY image's own linked bytes, so the record the gate reads (bound to the entry bin's hash)
     # already differs whenever they differ. `STAGE90_XNU_ENTRY_WINDOW` does NOT: it reaches only the

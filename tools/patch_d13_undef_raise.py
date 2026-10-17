@@ -113,6 +113,25 @@ ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_GLOBAL_FIX",
     "STAGE90_XNU_UNDEF_RAISE",
     "STAGE90_XNU_IOS7_TRAPS",
+    # 1025: the failed-fault publisher (tools/patch_d13_ustack_probe.py) edits the SAME file
+    # (osfmk/arm/trap.c) and adds a `#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE`
+    # block in the usermode DATA-abort arm, far below `sleh_undef`.  The identity proof below drives
+    # the OFF arm with the OTHER switch still `undefined`, so the probe block stays compiled OUT and
+    # the OFF text is still HEAD's - allowing the identifier is what makes the two edits compose
+    # ([[mi4-one-value-two-definitions]]: a file's directive identifiers are a shared namespace).
+    "STAGE90_XNU_USTACK_PROBE",
+    # 1026: the abort-entry discriminator (tools/patch_d13_abt_entry_probe.py) edits the SAME file and
+    # adds a `#if defined(STAGE90_XNU_ABT_ENTRY_PROBE) && STAGE90_XNU_ABT_ENTRY_PROBE` block INSIDE
+    # 1025's publisher in the usermode DATA-abort arm, still far below `sleh_undef`.  Same shared
+    # namespace rule, same OFF reasoning: the OFF arm drives this identifier `undefined` too, so the
+    # 1026 block is compiled OUT and the OFF text remains HEAD's ([[mi4-one-file-many-rungs]]).
+    "STAGE90_XNU_ABT_ENTRY_PROBE",
+    # 1028: the H2 stack-headroom FIX (tools/patch_d13_h2_stack_headroom.py) edits bsd/kern/kern_exec.c's
+    # `create_unix_stack`, NOT trap.c -- but a file's directive identifiers are a SHARED namespace and
+    # kern_exec.c already carries 1025/1026's switches ([[mi4-one-file-many-rungs]]).  The OFF arm below
+    # drives this identifier `undefined` too, so the 1028 block is compiled OUT and the OFF text remains
+    # HEAD's.
+    "STAGE90_XNU_H2_STACK_HEADROOM",
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

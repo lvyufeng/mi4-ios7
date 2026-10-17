@@ -393,7 +393,33 @@ CHUNKS = ((BLOCK_ANCHOR, BLOCK, "witness block"), (CALL_ANCHOR, CALL, "witness c
 # (the file's pre-existing bytes) is emitted, leaving the OFF byte-identity this proof certifies intact.
 # An identifier a HEADER could invent would still be caught, because such a name is not in this set.
 ALLOWED_IF_IDENTIFIERS = {"BOARD_CONFIG_QSD8250_LEO", "BOARD_CONFIG_ARMPBA8", SWITCH,
-                          "STAGE90_XNU_UNDEF_RAISE"}
+                          "STAGE90_XNU_UNDEF_RAISE",
+                          # 1025's failed-fault publisher (tools/patch_d13_ustack_probe.py) edits the
+                          # SAME file (osfmk/arm/trap.c) and adds its own
+                          # `#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE` block
+                          # in the usermode DATA-abort arm, far below `sleh_undef` where this patch's
+                          # witness lives.  The OFF arm below drives STAGE90_XNU_USTACK_PROBE as
+                          # `undefined`, so 1025's block is compiled OUT and the OFF text is still
+                          # HEAD's; allowing the identifier is what lets the two edits compose in one
+                          # file (a file's directive identifiers are a SHARED namespace -
+                          # [[mi4-one-value-two-definitions]]).
+                          "STAGE90_XNU_USTACK_PROBE",
+                          # 1026's abort-entry discriminator (tools/patch_d13_abt_entry_probe.py) edits
+                          # the SAME file (osfmk/arm/trap.c) and adds its own
+                          # `#if defined(STAGE90_XNU_ABT_ENTRY_PROBE) && STAGE90_XNU_ABT_ENTRY_PROBE`
+                          # block inside 1025's publisher in the usermode DATA-abort arm, far below
+                          # `sleh_undef` where this patch's witness lives.  The OFF arm below drives
+                          # STAGE90_XNU_ABT_ENTRY_PROBE as `undefined`, so 1026's block is compiled OUT
+                          # and the OFF text is still HEAD's; allowing the identifier is what lets the
+                          # three edits compose in one file (a file's directive identifiers are a
+                          # SHARED namespace - [[mi4-one-file-many-rungs]]).
+                          "STAGE90_XNU_ABT_ENTRY_PROBE",
+                          # 1028's H2 stack-headroom FIX (tools/patch_d13_h2_stack_headroom.py) edits
+                          # bsd/kern/kern_exec.c's `create_unix_stack`, NOT trap.c where this witness
+                          # lives -- but it is the same shared-namespace rule, same OFF reasoning: the OFF
+                          # arm below drives STAGE90_XNU_H2_STACK_HEADROOM as `undefined`, so 1028's block
+                          # is compiled OUT and the OFF text is still HEAD's.
+                          "STAGE90_XNU_H2_STACK_HEADROOM"}
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WORDS = {"defined", "if", "elif", "ifdef", "ifndef"}

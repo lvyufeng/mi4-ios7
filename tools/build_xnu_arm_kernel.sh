@@ -971,6 +971,96 @@ DEFINES=(
 # `defined()`-first, so switch OFF compiles each file's original bytes with no line moved).
 [[ ${STAGE90_XNU_SHREG_GEOM:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_SHREG_GEOM=1)
 
+# 1024's USER-MAP CEILING (`osfmk/mach/arm/vm_param.h:63`: the split-consistent branch's condition
+# gains ` || (defined(STAGE90_XNU_VM_MAX_SPLIT) && STAGE90_XNU_VM_MAX_SPLIT)`, so `-DSTAGE90_XNU_VM_MAX_SPLIT=1`
+# makes `VM_MAX_ADDRESS = 0x40000000` on CANCRO instead of this tree's `#else` 0x80000000).  1023's press
+# moved the wall - trap 24 dispatches and `mach_port_construct` returns 0 - and pid 1 then died in a
+# ~2^20-iteration DATA-ABORT LOOP on `_pthread_create+0xbc` at user VA 0x40083008: `set_mmu_ttbcr(2)`
+# (`arm_vm_init.c:475`) gives TTBR0 exactly 1 GiB, so the first big anywhere-allocation in launchd was
+# placed where the hardware walks TTBR1 (the KERNEL's tree) and `vm_fault` installed a PTE nothing reads.
+#
+# WHY THE GLOBAL ARRAY AND NOT `EXTRA_DEFINES`.  `vm_param.h` is a HEADER, included by every kernel
+# translation unit that bounds a user map (`task.c`'s `task_create_internal`, vm_map.c, mach_vm.c, ...),
+# so the switch has to be in the argv EVERY compile line carries.  `EXTRA_DEFINES` (`XNU_KERNEL_EXTRA_DEFINES`,
+# ~:1399) is appended LAST and is NOT seen by the EABI-runtime block (~:1796) or the firehose block
+# (~:1838) - a build that put it there would compile those extra TUs with the OLD ceiling while every
+# other object carried the new one, a partial fix behind a green build (`mi4-one-value-two-definitions`).
+# Not an ASFLAGS entry either: the whole VM_MAX_ADDRESS block sits inside `#ifndef __ASSEMBLER__`, so
+# the assembly layer is unaffected.  `tools/build_xnu_arm_kernel.sh` is run separately from
+# `build_entry.sh` (which only LINKS the pool objects), so without the re-run of THIS script the linked
+# image keeps 0x80000000 and the patch is invisible (`records/1020-build-defect.txt`).  The tree edit is
+# staged by `tools/stage_d13_vm_max_split.sh`; OFF the `#if` compiles the tree's original bytes
+# (`defined()` comes first), and the LINKED-image by-value clause is `tools/check_vm_max_split.py`.
+[[ ${STAGE90_XNU_VM_MAX_SPLIT:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_VM_MAX_SPLIT=1)
+
+# ---------------------------------------------------------------------------------------------------
+# 1025: STAGE90_XNU_USTACK_PROBE -- publish what `vm_fault` RETURNED, and the stack's shape.
+#
+# The 1024 boot reached `launchd[1] has started up`, spawned pid 2 `launchctl`, and died in a USERSPACE
+# DATA ABORT on a STACK VA: `launchctl[2]: usermode data abort, EXC_BAD_ACCESS at 0x2bdbe000
+# (Translation fault on page)` (records/1024b-frontier-launchctl-crash.txt; arm identity settled in
+# records/1025-globalfix-carrier.txt section 6 - it IS the 1024-shaped arm, so GLOBAL_FIX is already in
+# it and did NOT retire this fault).  0x2bdbe000 is INSIDE the fixed stack window [0x2BD00000,
+# 0x2BE00000) `create_unix_stack` allocates, and `sp=0x2bdbd074` shows the FIXED allocation SUCCEEDED
+# (no ANYWHERE fallback) - so a page that should be mapped is TRANSLATION-faulting (by value:
+# records/1025-source-trace.txt sections 3-4).  In `osfmk/arm/trap.c` the usermode data-abort path CALLS
+# `vm_fault` and, on a non-SUCCESS return, delivers `EXC_BAD_ACCESS`; the ONE assignment of the return
+# code sits inside `#if BOARD_CONFIG_QSD8250_LEO`, so on CANCRO the value that NAMES the cause is
+# DISCARDED.  This switch compiles in two guarded publishers (staged by tools/stage_d13_ustack_probe.sh):
+#   * trap.c          -> `xnu_live_abt_vmfkrv*` (the `vm_fault` return + far/dfsr/prot/pc/sp/pid)
+#   * kern_exec.c     -> `xnu_live_ustack_*`   (the stack's req/size/fixed_addr/rc/final/guard)
+#
+# WHY THE GLOBAL ARRAY AND NOT `EXTRA_DEFINES`.  Both files are POOL TUs, but the switch must be visible
+# on the SAME argv every object gets, so the two guarded `#if`s compile in; `EXTRA_DEFINES`
+# (`XNU_KERNEL_EXTRA_DEFINES`, ~:1399) is appended LAST and is NOT seen by the EABI-runtime block
+# (~:1796) or the firehose block (~:1838).  `tools/build_xnu_arm_kernel.sh` is run separately from
+# `build_entry.sh` (which only LINKS the pool objects), so without the re-run of THIS script the linked
+# image keeps the old trap.o/kern_exec.o and the probe keys never appear (`records/1020-build-defect.txt`).
+# OFF the two `#if`s compile the tree's original bytes (`defined()` comes first,
+# [[mi4-off-option-two-spellings]]); the by-value reading of whether the switch reached the objects is
+# the presence of the `xnu_live_abt_vmfkrv=` / `xnu_live_ustack_req=` format strings in the .o
+# (tools/check_1025_capture.py reads the CAPTURE; the build-side object check is a `strings` refuse in
+# build_1025.sh).
+[[ ${STAGE90_XNU_USTACK_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_USTACK_PROBE=1)
+
+# ---------------------------------------------------------------------------------------------------
+# 1026: STAGE90_XNU_ABT_ENTRY_PROBE -- name WHY the launchctl stack VA has no vm_map entry (H1 wrong map
+# vs H2 off-the-end), by value, on the kernel's ram console.
+#
+# 1025's press recovered its own console (records/1025-press-read.txt): the discarded `vm_fault` return
+# is `code=1` = KERN_INVALID_ADDRESS on `far=0x2bd35000` (the EXCLUSIVE TOP of launchctl's
+# [0x2bc35000, 0x2bd35000)), `dfsr=0x807`, `prot=write`, `sp=0x2bd34074`, `pc=0x3b4ce756`, `pid=2`.
+# KERN_INVALID_ADDRESS means `vm_map_lookup_entry(map, VA)` returned FALSE.  1026 publishes, for the
+# failing fault only, the lookups that DISCRIMINATE the two candidate causes (docs/1026-design.md 3-4):
+#   * trap.c       -> `xnu_live_abt_lookup_far/entry_lo/entry_hi/far_in_map/map/taskmap/ustack`
+#                     (NESTED inside 1025's `#if STAGE90_XNU_USTACK_PROBE` publisher block - ONE gate on
+#                     the shared fault path, so 1026 prints nothing unless BOTH switches are on);
+#   * kern_exec.c  -> `xnu_live_abt_proc_ustack`, the `p->user_stack` accessor trap.c calls (`struct
+#                     proc` is only FOWARD-declared in trap.c, so the FIELD is unreadable there).
+#
+# WHY THE GLOBAL ARRAY AND NOT `EXTRA_DEFINES`.  Same reason as the 1024 ceiling and the 1025 probe: the
+# switch must be on the SAME argv every pool object gets, and `EXTRA_DEFINES`
+# (`XNU_KERNEL_EXTRA_DEFINES`, ~:1399) is appended LAST and is NOT seen by the EABI-runtime block
+# (~:1796) or the firehose block (~:1838).  `tools/build_xnu_arm_kernel.sh` is run separately from
+# `build_entry.sh` (which only LINKS the pool objects), so without the re-run of THIS script the linked
+# image keeps the old trap.o/kern_exec.o and the keys never appear (records/1020-build-defect.txt).
+# OFF the two `#if`s compile the tree's original bytes (`defined()` comes first,
+# [[mi4-off-option-two-spellings]]); the by-value reading of whether the switch reached the objects is
+# the format string / symbol in the .o (build_1026.sh refuses on its absence).
+[[ ${STAGE90_XNU_ABT_ENTRY_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_ABT_ENTRY_PROBE=1)
+
+# 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
+# the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO
+# p->user_stack, so the word at the top is unowned and userspace's touch faults.  This switch makes the
+# FIXED mach_vm_allocate in create_unix_stack (bsd/kern/kern_exec.c) allocate `size + 16`, moving the
+# region's exclusive top to user_stack+16 while the block, sp, p->user_stack, and the guard are
+# unchanged.  Its channel is the GLOBAL DEFINES array (every compile line, incl. the EABI-runtime and
+# firehose blocks that do NOT get EXTRA_DEFINES -- records/1020-build-defect.txt).  OFF takes the #else
+# arm, which is the ORIGINAL call byte-for-byte ([[mi4-off-option-two-spellings]]); the by-value reading
+# of whether the switch reached the object is the `size + 16` immediate in create_unix_stack's
+# mach_vm_allocate (build_1028.sh refuses on its absence).
+[[ ${STAGE90_XNU_H2_STACK_HEADROOM:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_H2_STACK_HEADROOM=1)
+
 # Generated headers that are not MIG output: bsd/sys/sysproto.h comes from
 # bsd/kern/makesyscalls.sh, and it is included by 55 of the failing files. Produced by
 # tools/gen_bsd_headers.sh, and placed first so it wins over anything stale.  (`$GENERATED` is
