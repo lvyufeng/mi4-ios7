@@ -450,7 +450,39 @@ Author, in this order:
   (the reader lane owns it) — a static disassembly, not another press. 1031 should be pre-registered to
   say so: **if the caller's `lr` is unresolved, the fix is NOT picked and the next rung is a STATIC
   disassembly of `libobjc` around `lr`.**
-- **CORRECTION (2026-10-17, before the build) — a down-alloca caller derivation is REFUTED by the raw
+- **CORRECTION 2 (2026-10-17, after the press) — CORRECTION 1 (below) was ITSELF WRONG: the down-alloca
+  derivation is NOT refuted; the "contradiction" was a comparison of the alloca BASE against the
+  post-increment CURSOR.** A byte-accurate disassembly (`disasm-writer`, records/1031-caller-derivation.txt;
+  libobjc.dylib base `0x37C12000`, image 602/682) finds the caller at `0x37C263CC` with TWO VLA-copy call
+  sites into the writer prologue `0x37C266EC` (`0x37C26464`, `0x37C26550`). At BOTH sites the 4th argument
+  is built by a **downward** alloca off `sp`:
+  ```
+  sub.w  r4, sp, r5, lsl #2   ; alloca #1 (count r5 words) below sp
+  mov    sp, r4
+  sub.w  r6, sp, r5, lsl #2   ; alloca #2 (count r5 words) below sp
+  mov    sp, r6
+  mov    r3, r6               ; 4th arg = the SECOND block's LOW end
+  bl     0x37c266ec
+  ```
+  So the ORIGINAL static claim (`sub.w rN, sp, r#N, lsl #2`) is **CONFIRMED VERBATIM**. What was wrong was
+  MY inference: the writer does `str.w r2,[r4],#4`, i.e. `r4` is a **post-increment cursor**. Its INITIAL
+  value (= the caller's `r3` = the alloca base) is **below** `sp`; the OBSERVED `r4 = 0x2bdae000` is that
+  base **plus 4×k** for `k` completed iterations, which legitimately ends **above** `sp`. Comparing the
+  base to the cursor made an ordinary advancing pointer look impossible. **This is a
+  [[mi4-measurement-defects]] instance: my own reading of the raw frame was the thing that was wrong.**
+  **Consequence for the cells: NONE.** §2's cells are value-decided (`cal_r3`/`cal_far`/`cal_region_end`),
+  so 1031 still measures exactly the right thing — the caller passes `r3 == r2 == the region's exclusive
+  top`. The narrative that accompanies a CAL-CALLER-TOP reading is: *the caller alloca's a `count`-word
+  block below `sp` and the writer's cursor walks it UP until its last store lands on the region's exclusive
+  top* — i.e. **the count/block size is one element (or one page) short, not the alloca direction.**
+  **※ OWED (do not treat as settled):** the agent's model needs `count ≥ 2014` (≈8 KiB VLA) and the cursor
+  to end inside the SECOND block; it verified `4k = 0x1F78 + 8·count` has an integer `k` but never checked
+  `k ≤ count` — which my own recomputation shows is **FALSE for every count tried (0,1,3,0x100,0x200)**.
+  The block index/`count` relation is therefore NOT fully pinned; the honest state is "down-alloca
+  confirmed, cursor-overshoot plausible, the exact `count` UNVERIFIED". `records/1031-caller-derivation.txt`
+  and `records/1030-audit.txt` hold the raw. The fix DIRECTION (the region top / page ownership) is
+  unchanged; the MECHANISM is now "cursor overshoots an under-sized block", not "the region is short".
+- **CORRECTION 1 (2026-10-17, before the build) — SUPERSEDED BY CORRECTION 2 ABOVE; DO NOT ACT ON IT.**
   frame, so it must NOT enter any cell's premise.** A first pass at static disassembly proposed the caller
   derives `r3` as `sub.w rN, sp, r#N, lsl #2` — a *downward* `alloca` off `sp`. The captured frame
   (`records/1030-press-read.txt`; `recovered-unknown-arm-20261017-064216`) refutes it outright: `sp =
@@ -458,10 +490,11 @@ Author, in this order:
   and the faulting `r4 = 0x2bdae000 = sp + 0x1F8C` — the destination is **ABOVE `sp`**, one page above
   `user_stack` (`= user_stack + 0x1000`), at the region's exclusive top. A `sub.w rN, sp, …` places a
   pointer *below* `sp` and **cannot** produce `sp + 0x1F8C`. That alloca exists in the image but is not
-  the instruction that set this `r4`. The cells in §2 are value-decided (they read `cal_r3`/`cal_far`/
-  `cal_region_end` printed rows), so they need no change — but any narrative that says "the caller alloca's
-  a stack buffer downward" is pre-refuted and must not be asserted. The caller's derivation remains
-  UNRESOLVED (§5 first bullet stands); 1031 is the instrument that measures it.
+  the instruction that set this `r4`. *(SUPERSEDED — see CORRECTION 2: the comparison was base-vs-cursor.
+  The down-alloca IS the instruction; its base is below sp and the cursor ends above. Kept only as the
+  record of an inference that was wrong.)* The cells in §2 are value-decided (they read
+  `cal_r3`/`cal_far`/`cal_region_end` printed rows), so they need no change. The caller's exact `count`
+  remains UNRESOLVED; 1031 is the instrument that measures the at-fault register values.
 - **User-memory read.** Site A does NOT `copyin` the caller frame. Reading user memory on the failure path
   (`vm_fault` already returned `KERN_INVALID_ADDRESS`) risks a nested fault. 1031 reads ONLY kernel-side
   facts (registers from `arm_ctx`, the map entry via `vm_map_lookup_entry`, the proc's stashed top). This

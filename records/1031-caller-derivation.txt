@@ -1,0 +1,86 @@
+1031 CALLER DERIVATION — reconciled from the disasm-writer agent's byte-accurate disassembly.
+Written by the lead (main), 2026-10-17. READ-ONLY forensics; no build, no press, no device command.
+
+SOURCE OF THE FACTS
+  Agent `disasm-writer` (purple), messages at 2026-10-17T07:04 and 07:43. It parsed the ARM32 dyld
+  shared cache (3 maps, 0x20-byte 64-bit-field entries; map0 0x2C000000 size 0xC266000 fileOff 0 initProt
+  5 RX) and disassembled with arm-none-eabi-objdump (force-thumb). libobjc.dylib base = 0x37C12000
+  (dyld image index 602/682) so the writer = base + 0x14756 = 0x37C26756 == the faulting pc.
+  The lead INDEPENDENTLY re-ran the decisive arithmetic (below) and the objdump identity checks are
+  the kind already made for 1030's writer. This file states what is VERIFIED vs OWED.
+
+(1) THE WRITER — CONFIRMED (unchanged from 1030's reading).
+  Prologue at 0x37C266EC (boundary proven by a preceding `bf00` nop at 0x37C266EA):
+      b5f0        push {r4,r5,r6,r7,lr}
+      af03        add  r7, sp, #12
+      461c        mov  r4, r3        ; r4 = CALLER's 4th arg
+      4616        mov  r6, r2        ; r6 = caller's 3rd arg
+      4605        mov  r5, r0        ; r5 = caller's 1st arg (the dylib/table base)
+      f7f8 f92b   bl   0x37c1e950
+  The faulting store, bytes `44 f8 04 2b` (LE word 0xF8442B04) at unslid 0x37C26756:
+      f844 2b04   str.w r2, [r4], #4      ; *** FAULT ***  auto-increment cursor, +4 each pass
+  It is a table-rebase copy loop: `ldr.w r2,[r1,#-4]; add r2,r5; str.w r2,[r6],#4` then
+  `ldr r2,[r1,#0]; add.w r1,r1,#8; add r2,r5; str.w r2,[r4],#4; bne` — a counter-bounded loop
+  (r0 = (r2>>1)-1 by `asrs r0,r2,#1`), NOT an end-pointer bound. r5 = the base is ADDED to each word
+  (the agent's earlier note "NOT rebased" was corrected to "rebased by ADD r5").
+
+(2) THE CALLER — SOLVED BY BRUTE-FORCE BL SCAN.
+  The caller function begins at 0x37C263CC (`push {r4,r5,r6,r7,lr}; add r7,sp,#12; stmdb sp!,{r8,sl,fp};
+  sub sp,#20`). TWO call sites target the writer prologue 0x37C266EC:
+    Site A  0x37C26464
+      37c2644e:  ebad 0485   sub.w  r4, sp, r5, lsl #2   ; r4 = sp - 4*r5   (alloca #1, below sp)
+      37c26452:  46eb        mov    fp, sp               ; save real sp
+      37c26454:  46a5        mov    sp, r4
+      37c26456:  ebad 0685   sub.w  r6, sp, r5, lsl #2   ; r6 = sp - 8*r5   (alloca #2, below sp)
+      37c2645a:  46b5        mov    sp, r6
+      37c2645c:  4650        mov    r0, sl
+      37c2645e:  4641        mov    r1, r8
+      37c26460:  4622        mov    r2, r4               ; arg2 = block #1 low
+      37c26462:  4633        mov    r3, r6               ; arg3 = block #2 low  <-- THE 4th ARG
+      37c26464:  f000 f942   bl     0x37c266ec
+    Site B  0x37C26550  is the same shape (`sub.w r5,sp,r6,lsl #2; mov sp,r5; sub.w r8,sp,r6,lsl #2;
+      mov sp,r8; mov r2,r5; mov r3,r8; bl 0x37c266ec`).
+  => The 4th argument (r3) IS the LOW END of a `count`-word buffer carved BELOW sp; the writer's cursor
+     walks it UPWARD (+4/store). `count` is a runtime VLA length (a live local, NOT a pthread/mach field).
+
+(3) THE RECONCILIATION — the 1031 §5 "CORRECTION 1" was WRONG.
+  CORRECTION 1 compared the alloca BASE against the OBSERVED r4 and concluded a down-alloca "cannot
+  produce sp + 0x1F8C". That is a base-vs-cursor error: r4 is the post-increment CURSOR, so its INITIAL
+  value (below sp) and its OBSERVED value (base + 4*k after k iterations) are different points in its
+  life. The original static claim (`sub.w rN, sp, r#N, lsl #2`) is CONFIRMED VERBATIM.
+
+  Arithmetic (the agent's, re-run by the lead):
+    arm_ctx->sp at the fault   = 0x2bdac074
+    writer push {..,lr} = 20   => sp at the `bl` = S_bl = 0x2bdac088
+    r4_fault - S_bl            = 0x2bdae000 - 0x2bdac088 = 0x1F78
+    model: r3_init = S_bl - 8*count ; r4_fault = r3_init + 4*k  =>  4k = 0x1F78 + 8*count
+    => k integer and >= 0 for every count tested (count=0 -> k=0x7DE=2014, etc.). Consistent.
+    r4_fault - sp      = 0x1F8C  (matches the 1030 frame)
+    r4_fault - ustack  = 0x1000  (the region's exclusive top)
+
+(4) OWED / NOT SETTLED — DO NOT OVER-CLAIM.
+  The model REQUIRES, to be a complete account:
+    (a) `count >= 2014` (an ~8 KiB VLA, == the value of the second alloca) — NEVER VERIFIED. The agent
+        tested only that `k` is a non-negative integer.
+    (b) `k <= count` (the cursor cannot advance past the loop bound) — the lead's re-run shows this is
+        FALSE for count in {0,1,2,3,0x100,0x200,0x3EF}: 4k is always >= 0x1F78 (k >= 2014) while k must be
+        <= count. Numerically self-inconsistent for every count tried.
+    (c) whether the faulting cursor writes block #2 (r4 <- r3 = block2) or block #1 — the writer stores
+        to BOTH cursors each pass; site A passes block#1 as r2 and block#2 as r3, and r4 <- r3 = block#2.
+        So r4 walks block #2, whose span is [r3_init, r3_init + 4*count).
+  The honest state: **down-alloca CONFIRMED, cursor-overshoot PLAUSIBLE, the exact `count` and the
+  block-index relation UNVERIFIED.** A one-line `count` probe (or reading `xnu_live_wrp_block_bytes`,
+  already published by 1030 = xnu_live_rdr_proc_argslen) would close (a)/(b).
+
+(5) WHAT THIS DOES *NOT* CHANGE.
+  §2 of docs/1031-design.md (the cells) are value-decided and need NO change: 1031 still measures that the
+  caller passes r3 == r2 == the region's exclusive top. The fix DIRECTION (the region top / a page the
+  writer's cursor lands on) is unchanged. What changes is the MECHANISM narrative: the abort is a copy
+  loop whose UPWARD cursor runs to the region's exclusive top, i.e. the destination block's usable extent
+  (or `count`) is one element/page short — NOT "the alloca direction is wrong", and NOT "the region is
+  short" (1029/1030-audit: the region is 1 MiB = MAXSSIZ with ~1016 KiB unused BELOW sp; the writer goes
+  UP, not down).
+
+(6) THE FIX IS NOT PICKED HERE. 1031 is a PROBE. The reading is WITHELD (device dark after the press;
+records/1031-press-read.txt). This file is static forensics that must be reconciled WITH the 1031 capture
+when it is recovered, not used in its place.
