@@ -378,3 +378,23 @@ WHAT SURVIVES — and it is the RIGHT conclusion by a different route:
   - Net: my (E)/(F) "count is not recoverable from the frame" STANDS for the EXACT value; but the
     frame DOES pin count MOD 2^30 (r4==r6 => 4c≡0), which is enough to say count is WRAPPED, hence the
     fix is in the caller's count source, not kernel geometry. This reconciles (E)/(F) with (F)new.
+
+====================================================================================================
+(H) STRATEGIC CONSEQUENCE — the fix is in libobjc (shared cache), and it IS patchable here.
+====================================================================================================
+The root cause (G): a WRAPPED u32 `count` in libobjc's objc-optimization path makes the caller's VLA
+`sub.w rN, sp, rN, lsl #2` collapse (4·count ≡ 0 mod 2^32), so the writer's table-rebase copy walks 2016
+words off the stack end into the unowned page at the region's exclusive top. Every prior rung
+(1025..1030) looked at KERNEL stack-region geometry; the mechanism is in USERSPACE libobjc.
+  - The shared cache lives INSIDE /mnt/data/ios7-payload/v2/ios7/rootfs.hfs @0x455d000 (byte-identical to
+    /tmp/dyld-extract/dyld_shared_cache_armv7, docs/1017 §1.2). That file is an artifact WE build
+    (tools/build_hfs_root_image.sh, tools/hfs_patch_*.py) — so a byte patch IS within our control.
+  - CODESIGN IS NOT AN OBSTACLE HERE: memory mi4-1003-shared-cache-cs-frontier records that on CANCRO
+    `code_signed` is FALSE (the cache CS superblob, 1,535,514 B, exceeds CS_MAX_BLOB_SIZE 1280 KiB;
+    the 2 MiB allowance sits behind `#if IOS7_COMPAT_PLATFORM`, =0 on cancro). So there is no working
+    signature check to fail — patching libobjc bytes does not trip CS_INVALID. (dyld's own cache-header
+    /UUID consistency checks still need to be honored; that is a design question, not a CS one.)
+  - OPEN: (i) exactly which objc_clsopt_t field carries the count (caller-derivation owed); (ii) whether
+    the fix is a data patch (the table entry) or a code patch (clamp the count in
+    _getPreoptimizedClass/_copyPreoptimizedClasses); (iii) whether the wrapped value is a build/emit
+    defect in the cache we can avoid regenerating. NOT decided here.
