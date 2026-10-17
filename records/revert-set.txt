@@ -17072,3 +17072,39 @@ set=armed-d13-8355c712 sha256=2705cee3e56cce2cac278de7b29286b794ef95d12eec415a99
 set=armed-d13-8355c712 sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1029-reader-probe;stage90_fixture.macho
 set=armed-d13-8355c712 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1029-reader-probe;stage90-build-config.txt
 set=armed-d13-8355c712 sha256=3bc9d5d7b085d5f3e7cfa91366b248910a6d36af8ad582e4fdddfac284b81708 bytes=560 file=SHA256SUMS.txt role=1029-reader-probe;SHA256SUMS.txt
+#
+# armed-d13-8034562e  -  1030: THE WRITER PROBE - INSTRUMENT THE *DERIVATION* OF THE FAULTING STORE'S DESTINATION.
+# 1029's press RAN and its console was recovered (records/1029-press-read.txt): READER-NAMED / TOP-CONFIRMED
+# BY VALUE on 2026-10-17.  `xnu_live_rdr_far=0x2bd39000`, `xnu_live_rdr_ustack=0x2bd38000`,
+# `far-ustack=0x1000`, `blk_hi==ustack` (the block did NOT grow), `entry_at_hit=0` (far is UNOWNED).
+# Across the WHOLE 61-capture population `far` == the region's EXCLUSIVE TOP in EVERY run, and the only
+# run that ever moved it is 1028's extent-grow (page-exact).  => the failing store is a BOUNDARY WRITE AT
+# THE REGION'S MOVING TOP, and **NO allocation-geometry change can help** (docs/1030-design.md sec.0b;
+# records/1030-audit.txt CHECK 1: base-down + extent-up CANCEL, top stays user_stack).
+# Switch set is 1029's VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_WRITER_PROBE=1**.
+# THE ARM (ONE SITE, one switch), staged by tools/patch_d13_writer_probe.py: osfmk/arm/trap.c, INSIDE
+# 1025's failure arm and AFTER 1029's reader block (trap.c ~924).  The faulting store is
+# `/usr/lib/libobjc.dylib + 0x14756`, `str.w r2,[r4],#4`, a table-rebase copy whose DESTINATION cursor
+# `r4` is the CALLER's 4th argument.  Rows (xnu_live_wrp_*): r4, r3, r5, r6, r12, sp, pc, lr,
+# r4_minus_sp, userstack, r4_minus_ustack, far, r4_minus_far, block_bytes  -> RAM console, one per line.
+# THE CELLS (tools/check_1030_capture.py; docs/1030-design.md sec.2):
+#   W-A-NAMED  r4 - sp is a SMALL CONSTANT frame offset  => the initial stack is TOO SHALLOW.
+#   W-B-NAMED  r4 == thread_userstack / p->user_stack    => a stack-LIMIT / canary store, one page early.
+#   W-OTHER    neither                                   => name it; DO NOT pick a fix.
+#   REGRESSION launchd not reached / trap24 or port_construct marks gone / panic / 1023 storm back.
+#   G-CTL      no capture newer than this press's boot epoch, or no controls live => WITHHOLD.
+# This is a PROBE: it selects NO fix.  The recording set is the 13 files the gate reads (measured here,
+# by hand, BEFORE the press that produced them - the whole point of this record).
+set=armed-d13-8034562e sha256=8034562e70c9a0b1735716cd826d90b09667129a37c9f0831c7f868c418f4dfa bytes=6331476 file=xnu_arm_entry.bin role=1030-writer-probe;xnu_arm_entry.bin
+set=armed-d13-8034562e sha256=cf65365c96e1535b52bcdcd272a6f6f8efb9f9469a98f8617b7a9aa993d5b801 bytes=7368996 file=xnu_arm_entry.elf role=1030-writer-probe;xnu_arm_entry.elf
+set=armed-d13-8034562e sha256=88cec71f7dc621e4710c99889a25aa8bbc0528e5bec5c9478501ca731115d631 bytes=1912 file=xnu_arm_entry.h role=1030-writer-probe;xnu_arm_entry.h
+set=armed-d13-8034562e sha256=1121403f6708d454b721e57f46fa522087f668305d743fc10ef76a9e9069dec2 bytes=2277 file=xnu_arm_entry-config.txt role=1030-writer-probe;xnu_arm_entry-config.txt
+set=armed-d13-8034562e sha256=9e6a001443f25a0d9af39e4095191627b6848f8f523af03630892eeefa5e470c bytes=48 file=xnu_arm_entry-arm-extra.txt role=1030-writer-probe;xnu_arm_entry-arm-extra.txt
+set=armed-d13-8034562e sha256=2d69996e410d930c5bac8e9320f15154dbbfc37755badb27a4a6e51c998f40fc bytes=3149 file=xnu_arm_entry-sources.txt role=1030-writer-probe;xnu_arm_entry-sources.txt
+set=armed-d13-8034562e sha256=5ef7825f4c6450065bd83f588b2da7ee76afec4152e69c43cd5b7eb48439139b bytes=6826884 file=stage90.bin role=1030-writer-probe;stage90.bin
+set=armed-d13-8034562e sha256=4cc57c5081a789254e45fb7bb4f6107e41495591fe2cd9232c1f8672ad5430fb bytes=6888956 file=stage90.elf role=1030-writer-probe;stage90.elf
+set=armed-d13-8034562e sha256=56b233fc6a4536328e6e83b3ca8e0aaf5e7c9386def80c1f930cfda498e4c7b0 bytes=6830080 file=stage90.img role=1030-writer-probe;stage90.img
+set=armed-d13-8034562e sha256=d7bd16a69aa7b95dacd9d3ede817eb786198d6e479380cbfc564052d6c9c695c bytes=9351168 file=stage90-qcdt.img role=1030-writer-probe;stage90-qcdt.img
+set=armed-d13-8034562e sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1030-writer-probe;stage90_fixture.macho
+set=armed-d13-8034562e sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1030-writer-probe;stage90-build-config.txt
+set=armed-d13-8034562e sha256=a0817058e7a97fa75c02408e2d8bab8fad54796e41434c4c8d9aeca6776ce184 bytes=560 file=SHA256SUMS.txt role=1030-writer-probe;SHA256SUMS.txt
