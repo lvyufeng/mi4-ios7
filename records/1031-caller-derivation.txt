@@ -552,3 +552,31 @@ callee's saved-register slots) succeeded while the walk ran off the region top a
     is refuted by the writeback, not merely disfavored.
     ROOT CAUSE UNCHANGED either way (count is a wild/signed objc_classheader_t.clsOffset >> 1 from a
     corrupt objc_clsopt_t classOffsets[] entry) => the fix is the TABLE DATA / the cache, not the kernel.
+
+====================================================================================================
+(K) THE FIX — site located, ONE CRUX OPEN (lead, 2026-10-17; device now UP).
+====================================================================================================
+FAULT SITE (byte-verified): `getClassAndHeader` @0x37C26698, the duplicate path
+    0x37C266C4: f852 1030  ldr.w r1,[r2,r0,lsl #3]   ; classOffsets word (index r0 = getIndex return)
+    0x37C266C8: f011 0f01  tst.w r1,#1
+    0x37C266CC: d004       beq.n 0x37C266d8            ; bit0 clear -> the movs r0,#1 success path
+    0x37C266D4: 1048       asrs  r0, r1, #1           ; *** duplicate path: returns count = r1>>1 ***
+    0x37C266D6: bdf0       pop   {r4,r5,r6,r7,pc}
+  With r1 = 0xFFFFFFFF (a WILD table word) the function returns count = 0xFFFFFFFF.
+  IMPORTANT: the INDEX_NOT_FOUND case (getIndex r0 == 0xffffffff) is handled EARLIER
+  (0x37C266A6: cmp.w r0,#-1 ; 0x37C266AA: bne 0x266b4 ; fallthrough returns 0) — so the `asrs` acts on a
+  REAL table slot whose word is wild => a DATA defect in classOffsets[], not an index-out-of-range.
+
+THE CRUX (UNRESOLVED — do NOT patch blind): are `count` (the alloca SIZE, returned by
+  getClassAndHeader) and the writer's LOOP BOUND `T` (from the writer's OWN `asrs r0,r2,#1` @0x37C26736,
+  a DIFFERENT classOffsets read) the SAME lookup or INDEPENDENT?
+  - If INDEPENDENT: clamping `count` only resizes the alloca (block2_lo = sp0-8*count); the writer still
+    walks T>>1 words up, so the overrun MOVES, not stops => a count-clamp is the WRONG fix; the fix must
+    bound the CURSOR to the block.
+  - If the SAME: clamping count shrinks both the block and the walk => a clamp fixes it.
+  Static reading (0x37C26698 vs 0x37C266EC) shows DIFFERENT table bases/indices => most likely
+  INDEPENDENT, but this MUST be measured (a probe publishing T), not assumed.
+=> NEXT RUNG (1032) is EITHER (a) a clamp patch IF the loop is count-bound, OR (b) a cursor-bound patch
+   in the writer's loop IF independent, OR (c) a DATA fix to the classOffsets word. Design in flight
+   (fix-1032-libobjc). DO NOT press a guess: the 1031 lesson is that a wrong model costs a press cycle.
+   Device is UP — keep the slot; do NOT fastboot boot until the fix is chosen and built.
