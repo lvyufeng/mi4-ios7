@@ -1,0 +1,113 @@
+1030 AUDIT — ADVERSARIAL. Verdict on the CLAIM to attack: **REFUTED AT CHECK 1 (ARITHMETIC).**
+================================================================================================
+The fix as written is a THIRD NO-OP of the 1028 class: base down a page AND extent up a page CANCEL,
+so the region's exclusive top is UNCHANGED at `user_stack` — the SAME flush-top boundary. The design's
+own §1 prose ("top = user_stack + PAGE_SIZE") contradicts its own code ("top = user_stack").
+
+CHECK 1 — ARITHMETIC: **REFUTED.**
+  Code (§1): `addr = trunc_page(user_stack - size) - PAGE_SIZE; mach_vm_allocate(map,&addr,size+PAGE_SIZE,FIXED)`
+  `size` is mach_vm_round_page'd (+ optional +PAGE) => a PAGE multiple. `user_stack` is page-aligned on
+  EVERY measured arm (0x2bd35000/0x2bdeb000/0x2bde0000/0x2bd0d000/0x2bd38000, all %0x1000==0).
+    base   = (user_stack - size) - PAGE = user_stack - size - PAGE
+    extent = round_page(size + PAGE)     = size + PAGE            (already page-aligned: NO growth)
+    top    = base + extent = user_stack - size - PAGE + size + PAGE = **user_stack**
+  COUNTER-VALUE (1029 geometry, ustack=0x2bd38000,size=0x00100000): base=0x2bc37000, extent=0x101000,
+  top=0x2bd38000 == ustack. Claimed top user_stack+PAGE (0x2bd39000) is FALSE. The base-move and the
+  extent-grow cancel exactly. (1028's top moved because it grew ONLY the extent; 1030 does NOT grow the
+  top — it re-anchors the SAME top lower.) => CHECK 5 is therefore also answered: 1030 is NOT different.
+
+CHECK 2 — THE GUARD PAGE: **HOLDS (shape), but the guard is now the NEW lower base, and the old base
+  page becomes ordinary RW stack.** `prot_addr = addr` (moves down with the base);
+  `prot_size = trunc_page(size - unix_stack_size(p))` uses the ORIGINAL `size` local (NOT size+PAGE),
+  so prot_size is UNCHANGED (1028 measured 0x1000). Region moves from [old_base,ustack) to
+  [old_base-PAGE, ustack); the page that WAS the guard (old_base) is now INSIDE the RW region — i.e.
+  the guard just slides down one page with the base. LAB_USER_STACK/MAXSSIZ/VM_MAX_ADDRESS untouched.
+  No guard/LAB break — but note the guard-slide is IRRELEVANT to the fault (see CHECK 4).
+
+CHECK 3 — THE FALL-THROUGH: **HOLDS as a discriminator; the ANYWHERE branch re-creates flush-top.**
+  On FIXED failure: `addr=0; mach_vm_allocate(...,size,ANYWHERE); user_stack = addr + size;` — this
+  uses the ORIGINAL `size` (not size+PAGE) and re-sets p->user_stack to the new top. rc != 0 names the
+  fallback (`xnu_live_ustack_rc`). Note also the FIXED-at-lower-base is MORE likely to collide here: it
+  claims `[old_base-PAGE, ...)` — a page that was previously UNMAPPED/free for the stack (the design's
+  own §1.2 "the page below is occupied" NO-OP risk is REAL and now the allocate must also fit one page
+  lower, widening the collision surface). Distinguishing row exists (rc). OK as designed.
+
+CHECK 4 — THE WRITER / CRUX: **REFUTED — 1030 does NOT cover `far`.**
+  By value (1029 rows, far=0x2bd39000 ustack=0x2bd38000 blk_hi=0x2bd38000 blk_lo=0x2bd37f44):
+  `far == ustack + 0x1000`, `blk_hi == ustack` (block did NOT grow), `entry_at_hit == 0` (far UNOWNED).
+  1028 cross-check: far=0x2bd0e000, ustack=0x2bd0d000, far==region exclusive top (verified: base
+  0x2bc0d000 + round_page(size+16)=0x101000 => top 0x2bd0e000 == far EXACTLY). AND 1025/1026/1027 all
+  have far==ustack==region top (far-ustack==0). So **far == the REGION EXCLUSIVE TOP on 1025/1026/1027/
+  1028/1029 — it is the region top, NOT a fixed page above it.** Precisely: at 1029 the region top is
+  `far` (0x2bd39000 after the 1028 extent-grow), and the block top is `ustack` (0x2bd38000), one page
+  BELOW the region top. The design's parenthetical ("far sits one page above the block top — that page
+  is now owned") is TRUE for 1029, BUT 1030 does NOT own that page: 1030's region top is `ustack`
+  (CHECK 1), so the page at `ustack+farther` (far) is STILL UNOWNED. 1030 is a no-op on `far`.
+
+CHECK 5 — CROSS-CHECK vs 1028: **NOTHING IS DIFFERENT — the fault will FOLLOW (here, WILL NOT MOVE
+  either, because 1030 does not move the top at all).** 1028 moved the top UP by a page and far
+  followed. 1030 leaves the top where it was; if the mechanism is "the writer writes AT the region's
+  exclusive top," the SAME fault recurs at the SAME `far` (far-ustack stays 0x1000 — but now for the
+  degenerate reason that the top never moved, not a follow). Either way: FIX-NOOP.
+
+=== ADDENDUM (lead's question, settled BY VALUE from the 1029 CAPTURE itself) =====================
+Lead asked: on 1029 is the SOURCE region top base+size=0x2bd38000 or the owned top 0x2bd39000? which
+does far track? Settled from the capture (lines 4153-4159 + 4187/4196-4197/4201):
+    ustack_fixed_addr = 0x2bc38000   size = 0x00100000   (== addr AFTER the 1028 H2 edit)
+    ustack_final      = 0x2bd38000   (== p->user_stack == block top)
+    e2 = [0x2bc39000, 0x2bd39000)  far = 0x2bd39000   far_in_map=1
+Reconciles EXACTLY as: FIXED region = [0x2bc38000, 0x2bd39000)  (extent round_page(size+16)=size+0x1000,
+the 1028 H2 arm).  The guard `mach_vm_protect(0x2bc38000,0x1000,NONE)` SPLITS it:
+    entry A [0x2bc38000,0x2bc39000)  guard (prot NONE)
+    entry B [0x2bc39000,0x2bd39000)  RW  == e2 EXACTLY (B.lo==e2_lo, B.hi==e2_hi)
+=> **the OWNED (RW) region top IS 0x2bd39000 == far.  The SOURCE base+size (0x2bd38000) is the
+   pre-H2 top; e2/e2_hi==far proves the owned top, not base+size.**
+DISCRIMINATED HYPOTHESES (all five arms):
+    Hyp A  far == owned region top   : 1025 T 1026 T 1027 T 1028 T 1029 T   => **HOLDS**
+    Hyp B  far == ustack + 0x1000    : 1025 F 1026 F 1027 F 1028 T 1029 T   => **REFUTED**
+Hyp B is refuted by 1025/1026/1027 (far == ustack there, NO +0x1000).  `far - ustack == 0x1000` on
+1028/1029 is a CONSEQUENCE of 1028 having grown the top by a page, NOT a derivation distance.
+CONSEQUENCE FOR 1030: 1030's owned top (CHECK 1) = ustack, i.e. it LOWERS the owned RW top from
+`ustack+PAGE` (1029) back to `ustack`.  Under Hyp A (HOLDS) the writer then stores AT `ustack` — the
+fault does not vanish, it MOVES DOWN a page.  **Verdict: 1030's shape is REFUTED.** No extent/base
+change can help while far == the owned top: raising the top raises far (1028 proved it); lowering the
+top lowers far (1030 would).  The write is a boundary write AT the moving top => the fix must be at
+the WRITER's derivation, not at any allocation geometry.
+
+WHAT WOULD ACTUALLY LAND THE TOP ONE PAGE HIGHER: the extent must grow WITHOUT the base moving down.
+  To own [ustack, ustack+PAGE): keep `addr = trunc_page(user_stack - size)` and allocate
+  `size + PAGE` (no base shift) => extent rounds to size+PAGE, top = ustack + PAGE. That is the ONLY
+  shape that moves the exclusive top above the block top. But NOTE the 1028/1029 mechanism ("far IS the
+  region top, always"): moving the top up by a page makes far = ustack+PAGE (a MOVE), not a FIX —
+  the boundary-write READER at 1029 §8 says far == region top, so raising the top raises far. The
+  ACTUAL fix must make the writer's derived far land INSIDE an owned page, not at the (moving) boundary —
+  i.e. fix the READER's derivation, not another kernel allocation. 1030 as written does not even reach
+  the "top moves / far follows" case; it is a pure no-op.
+
+RECOMMENDATION: Do NOT build 1030 as designed. If the intent is "base down one page," DROP the
+`+ PAGE_SIZE` from the extent (allocate `size`): then base = ustack-size-PAGE, top = ustack — still
+flush (no help). To move the top ABOVE the block top, allocate `size + PAGE` with the base UNCHANGED.
+Neither removes the boundary write per the 1029 reader mechanism; instrument the WRITER's derivation
+(/usr/lib/libobjc.dylib+0x14756, str.w r2,[r4],#4) instead.
+LEAD'S POPULATION EVIDENCE (2026-10-17) — resolves the crux, refutes the "sp-track" idea
+======================================================================================
+Across ALL 60 captures out/stage90/captures/recovered-unknown-arm-2026101{6,7}-*-last_kmsg.txt:
+  ustack - sp   == 0xF8C  in ALL 60   (block size INVARIANT)
+  far - ustack  == 0      in 57       (pre-fix: far == SOURCE region top == base+size)
+  far - ustack  == 0x1000 in  3       (post-fix ONLY: 1028 x2 + 1029 x1; far == base+size+0x1000)
+  far == e2_hi  in EVERY run with an e2 row.
+Post-fix matched rows (faulting exec, req==ustack):
+  1028 base=0x2bc0d000 size=0x100000 -> far=0x2bd0e000 = base+size+0x1000
+  1029 base=0x2bc38000 size=0x100000 -> far=0x2bd39000 = base+size+0x1000
+Pre-fix matched rows:
+  1027 base=0x2bce0000 size=0x100000 -> far=0x2bde0000 = base+size
+=> far == the REGION'S EXCLUSIVE TOP in every run; the ONLY thing that moved it is H2 (region growth).
+   The "far = sp + 0x1F8C" I first noticed is a CONSEQUENCE (top moved up, sp/block stayed), NOT an
+   sp-derived writer. RETRACTED.
+
+VERDICT FOR 1030: 1030's base-move (top -> user_stack + PAGE_SIZE) moves the region top exactly as H2
+did => the writer's target follows => **1030 IS A NO-OP** (same class as 1028), NOT because of anything
+about sp, but because the writer stores AT the region's exclusive top. Any region-EXTENT change is
+useless. The rung must instead instrument WHY the writer stores at the top (libobjc+0x14756 VLA setup)
+and whether the store is a stack-growth that SHOULD fault (i.e. the VLA legitimately exceeds the
+advertised stack) -- i.e. this may be a real stack-overflow in the writer, not a kernel region defect.

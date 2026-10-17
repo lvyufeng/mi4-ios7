@@ -9,8 +9,9 @@ verdict:  **READER-NAMED / TOP-CONFIRMED BY VALUE.** The store address far sits 
           the block's advertised top (far - ustack == 0x1000), the block's TOP bound IS p->user_stack
           (blk_hi == ustack, so the block did NOT grow), and far is covered by NO vm entry
           (entry_at_hit == 0). => far IS the region's EXCLUSIVE END, UNOWNED at the fault. The fault is
-          a BOUNDARY WRITE at the region end; the region is short by exactly one page. Negatives below
-          are read as positives of the boundary-write branch, not as absence of a reading.
+          a BOUNDARY WRITE at the region end; the region is short by exactly one page.
+          (An intermediate "far tracks sp" reading was retracted -- see the CORRECTION section: across
+          ALL 60 captures far == the region's exclusive top, and only H2 moved it.)
 
 READING, BY VALUE (all 10 reader keys live; capture lines 4202-4211)
 -------------------------------------------------------------------
@@ -29,18 +30,48 @@ READING, BY VALUE (all 10 reader keys live; capture lines 4202-4211)
 
 WHAT THIS DECIDES (the 1029 question, answered)
 -----------------------------------------------
-  entry_at_hit == 0 selects the BOUNDARY-WRITE branch, NOT the adjacent-object-collision branch. far is
-  the region's exclusive end and is unowned. The writer's store lands there because the region ENDS
-  there -- the region is one page short of where the block's user needs to write.
+  entry_at_hit == 0 says far is covered by no entry -- TRUE, and consistent. But the DIRECTION of the
+  mechanism was mis-read: see the CORRECTION below. The store lands at far because far is where the
+  userspace VLA cursor sits (sp + 0x1F8C), not because the region "ends" there.
   Writer identity (reader lane, byte-verified 4 ways -- cache image table entries 602/682):
     /usr/lib/libobjc.dylib + 0x14756, function start 0x37c266ec, faulting instr 0x37c266ec+0x6a =
-    str.w r2,[r4],#4  (a userspace VLA/post-increment cursor store).
-  Mechanism of the page: map_size = vm_map_round_page(size+16) at osfmk/vm/vm_user.c:220, region
-  anchored at addr (kern_exec.c:3667-3680) -- so 1028's "+16" really grew the top by 0x1000 and the
-  fault FOLLOWED it (1028 = FIX-NOOP, page-exact).
+    str.w r2,[r4],#4  (a userspace VLA/post-increment cursor store; r4==r6==far, r9=0x1fff,
+    r12=0x4000 -> a 16 KiB VLA).
+
+CORRECTION (2026-10-17, lead; also records/1030-audit.txt) - WHAT ACTUALLY MOVES far
+-------------------------------------------------------------------------------------
+  ⚠ SECOND CORRECTION, 2026-10-17: an intermediate "far tracks sp, not the region extent" reading was
+  itself WRONG and is retracted. The population of ALL 60 captures (recovered-unknown-arm-20261016-*,
+  20261017-*) settles it by value:
+
+    - `ustack - sp == 0xF8C` in **ALL 60** runs -- the argv/env block size is INVARIANT.
+    - Pre-fix runs (1025/1026/1027 etc., 57 of them): `far - ustack == 0` and
+      `far == base + size == e2_hi` -- far IS the SOURCE region's exclusive top.
+    - Post-fix runs (1028 x2, 1029 x1, exactly 3): `far - ustack == 0x1000` and
+      `far == base + size + 0x1000 == e2_hi` -- far IS the (H2-grown) region's exclusive top.
+
+  So in EVERY run, **far == the region's EXCLUSIVE TOP**, and the ONLY thing that ever changed it is
+  H2 growing the region (base+size -> base+size+0x1000). `far - sp` grew from 0xF8C to 0x1F8C purely
+  because the TOP moved up while `sp` (and the block) stayed -- NOT because the writer reads `sp`. The
+  earlier "far = sp + 0x1F8C is an sp-derived VLA base" was a mis-read of a correlation.
+
+  => THE ORIGINAL 1029 CONCLUSION STANDS: far IS the region's exclusive end; the fault is a BOUNDARY
+  WRITE at the region end; the writer (libobjc+0x14756 VLA cursor) writes AT the top of the owned
+  region. This is why 1028 was a page-exact no-op and why 1030's base-move would ALSO be a no-op: any
+  change to the region's top moves the writer's target with it, because the writer stores AT the top.
+  The next rung cannot fix this by changing the region EXTENT. See records/1030-audit.txt.
+  The 1029 probe DATA stands (all 10 keys, unchanged); the interpretation (boundary write) stands.
 
 THE NEXT RUNG (1030) - what this reading licenses
 -------------------------------------------------
+  ⚠ The original "own the page at the region end" direction (make the region top land strictly above
+  the block top) is a NO-OP: the writer stores AT the region top, so growing the region moves the
+  writer with it (this is exactly why 1028's size+16 was page-exact no-op). The region-extent shapes
+  below cannot work. The real requirement is to make the writer's target land INSIDE an owned page:
+  either the writer must stop deriving its store from the (moving) top, or the region must extend far
+  enough that the writer's NEXT store after the boundary is still owned -- but since the writer moves
+  with the top, an extent change cannot do it. Instrument the writer's VLA-setup (libobjc+0x14756) to
+  learn how the base is derived. Original (now-refuted) text:
   Make the region's exclusive top land STRICTLY ABOVE the block top by a whole page: anchor the base one
   page LOWER (addr = trunc_page(user_stack - size) - PAGE_SIZE) or size so top >= round_page(user_stack)
   + PAGE_SIZE. **Do NOT add to `size`** -- size + delta always rounds up to the old +0x1000 (1028 proved
@@ -48,7 +79,8 @@ THE NEXT RUNG (1030) - what this reading licenses
 
 NOTE (docs/1029-design.md s.8, corrected 2026-10-17): the ORIGINAL 1029 premise -- "the writer derives
 its store by adding 0x1000 to p->user_stack" -- is FALSIFIED. far is ALWAYS the region's exclusive top
-(1025/1026/1027 had far-ustack == 0 == far == region top). 1029 was a PROBE (report, do not re-fix).
+(1025/1026/1027 had far-ustack == 0 == far == region top; the 1028 fix moved the region top a page and
+far followed). 1029 was a PROBE (report, do not re-fix).
 
 WHAT HAPPENED, BY VALUE (out/stage90/press-1029.log)
 ----------------------------------------------------
