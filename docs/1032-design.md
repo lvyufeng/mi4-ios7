@@ -518,6 +518,30 @@ refused until `patch_d13_h2_stack_headroom.py` carried the writer switch
 
 ## 6. THE STANDING FALSIFIER — caller resolution NOT achieved: the `pc − slide` rule
 
+**⚠ CORRECTED 2026-10-17 (after this doc was first written): THE CALLER IS NOW RESOLVED STATICALLY, so the
+"lr does not resolve" premise below is REFUTED.** A byte-accurate objdump (by the disasm lane AND
+independently re-verified by the lead — records/1031-caller-derivation.txt, "LEAD'S INDEPENDENT
+VERIFICATION") establishes:
+  * `lr = 0x38b4a9af` unslides (slide 0x00F2C000) to `0x37C1E9AF` = the return of a **direct `blx 0x37c26f90`**
+    at `0x37C1E9AA`. It IS a real call-return; the earlier search failed only because lr's target is
+    `0x37C26F90`, not the writer.
+  * The caller of the writer is at **`0x37C263CC`** with two call sites into the writer prologue
+    `0x37C266EC`: **`0x37C26464`** (Site A) and **`0x37C26550`** (Site B).
+  * At both, r3 (the writer's r4) is built by a **downward VLA alloca**: `sub.w r4,sp,r5,lsl #2; mov sp,r4;
+    sub.w r6,sp,r5,lsl #2; mov sp,r6; mov r2,r4; mov r3,r6; bl`. `r5` is the ELEMENT COUNT (the return of
+    `bl 0x37c26698` at `0x37C2641E`). So **r3 = the LOW end of a `count`-word block carved BELOW sp**.
+  **CONSEQUENCE (binds §1–§3):** the caller does NOT compute the region's exclusive top, and it is not an
+  obvious base+size of the region either. `r3 ≈ sp` (near `0x2bdac088`), far below `far = 0x2bdae000`; it
+  is the WRITER's post-increment cursor that walks UP to the region top. So 1031's cell is EXPECTED to
+  read **CAL-CALLER-OTHER** (r3 is neither `region_end` nor a base+size one page short) UNLESS the `count`
+  is large enough that block2 reaches the region top. **The fix location this points to is the CALLER's own
+  VLA block sizing / `count` — not any region geometry** (still consistent with §0.2). The `count` itself is
+  a runtime value (register `r5` at the bl → the writer's `r5`): 1031 publishes `r3` and `r12`, so if
+  `r12`/`r3` encode the block extent the cell can still discriminate it. **Read the capture before choosing
+  §1 vs §2 vs §3 of this doc; the branches may collapse to §3 + a caller-sizing fix.**
+  *(The rule below — require a by-value proof of identity before building on a disassembly — STILL STANDS
+  and is what made this resolution trustworthy; it is kept verbatim.)*
+
 **This clause binds EVERY branch of §1–§3. It does not depend on 1031's cell, on any capture, or on any
 press. It is the clause most likely to decide the next rung, and misapplying it is how PREVIOUS rungs lost
 a press cycle.**
