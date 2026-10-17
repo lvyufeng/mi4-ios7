@@ -1,17 +1,62 @@
-1031 PRESS = NON-RETURN, no capture; step 5 correctly printed NO READING - STALE SLOT.
-arm        : armed-d13-49031dcb (parked, records/revert-set.txt role=1031-caller-probe)
-boot epoch : 2026-10-17 07:35:36+00:00 (epoch 1792222536)
-fastboot   : Booting OKAY 0.012s; bytes fed fed2c1a15af6d54b73a36b4fdbb4bc9053bda40c0f90620414418eea78bc7028
-device     : dark after boot - no adb, no fastboot, no usb 3-10 enumeration (the 1024-1030 shape)
-usb reader : out/stage90/captures/usb-console-1031-20261017-073409.txt = ZERO BYTES, reader exit 143
-  (a resident rung that does not return keeps NO /proc/last_kmsg; the only stream that could carry
-   it is the USB console, which for a dark phone is not attached - the 1024/1025/1026/1027/662 blind spot)
-step 5     : NO READING - STALE SLOT. newest on disk = recovered-unknown-arm-20261017-064216-last_kmsg.txt
-             (mtime 06:42:16, epoch 1792219336) is OLDER than this boot (07:35:36, epoch 1792222536)
-             => NOT adjudicated ([[mi4-stale-slot-impersonates-a-reading]]).
-NEXT       : the device is DARK and needs the OPERATOR's power press. Then, while Android is up:
-             scripts/recover_last_kmsg.sh --read-only   (do NOT fastboot boot anything first - it
-             clears the single-slot RAM console). Re-run tools/check_1031_capture.py on a capture
-             NEWER than 07:35:36.
-VERDICT    : WITHHELD (no reading). 1031 is a PROBE: it selects NO fix. The caller derivation stays
-             UNRESOLVED until the capture is recovered.
+1031 PRESS-READ — THE CALLER PROBE.  Lead, 2026-10-17. READ-ONLY; device up; NO fastboot boot.
+====================================================================================================
+
+PRESS: 2026-10-17 ~07:35:36 UTC (boot epoch 1792217325). Arm `armed-d13-49031dcb`.
+Outcome at press time: NON-RETURN, USB zero bytes, step 5 printed NO READING - STALE SLOT (correct:
+newest capture then 06:42:16 was OLDER than the boot). The RAM console is single-slot and carried by the
+FLASHED ROM, so nothing could be read until the operator's power press.
+
+RECOVERY: the operator power-pressed the device; adb came up 2026-10-17 08:10:10 (uptime 83 s).
+`scripts/recover_last_kmsg.sh --read-only` (NO fastboot boot — that would clear the slot) produced:
+    out/stage90/captures/recovered-unknown-arm-20261017-081010-last_kmsg.txt   (08:10:10 > boot 07:35:36)
+Staleness LIFTED (capture newer than the boot). `tools/check_1031_capture.py` run on it.
+
+THE CELL, BY VALUE (the `xnu_live_cal_*` group):
+    r0 = 0xfffff820   r1 = 0x389a7f18   r2 = 0x3896dc00   r3 = 0xffffffff
+    far = 0x2bdd0000   region_end = 0x2bdd0000 (region_end_hit = 1)
+    r7 - sp = 0xC (12)   lr = 0x388199af   pc = 0x38821756
+  Slide from pc: 0x38821756 - 0x37C26756 = 0x00BFB000 (this boot; 1030's was 0x00F2C000).
+    pc unslid = 0x37C26756  === the writer's faulting store `str.w r2,[r4],#4` (SAME as 1030).
+    lr unslid = 0x37C1E9AF  === the SAME stale getIndex value as 1030.
+
+CHECKER VERDICT: **CAL-CALLER-OTHER** — "a complete caller frame but it matches neither shape".
+  - CAL-CALLER-TOP needs r3 == far; here r3 = 0xffffffff != far = 0x2bdd0000. NO.
+  - CAL-CALLER-SIZE needs 0 < (r3 - region_end) <= 0x1000 and r2 == r3; r3-region_end is NEGATIVE. NO.
+
+WHAT THE READING CONFIRMS (by value, on a FRESH base):
+  1. far == region_end == 0x2bdd0000 with region_end_hit = 1 => far IS the stack region's EXCLUSIVE TOP
+     (confirms 1029/1030 on a new boot: 1030 top 0x2bdae000, this boot 0x2bdd0000 — the boot re-ran).
+  2. r7 - sp = 0xC => this IS the writer's frame (the prologue's `add r7,sp,#12`), NOT a lookalike.
+  3. pc/lr unslide (slide 0xBFB000) to the writer's store 0x37C26756 and the stale getIndex lr.
+  4. r3 = 0xffffffff in the frame is the WRITER's leftover (it did `mov r4,r3` in its prologue), NOT the
+     caller's block base.
+
+WHY THE CELL IS CAL-CALLER-OTHER (a PROBE DESIGN artifact, NOT a caller fact):
+  1031's `xnu_live_cal_*` rows print `arm_ctx->r[N]` — the FAULT-TIME register file, which is the WRITER's
+  context (the fault is inside the writer's copy loop). So the probe CANNOT publish the caller's r3 (= the
+  VLA base sp0-8*count); it publishes the writer's clobbered r3 = 0xffffffff. NO register at the fault
+  carries the caller's block base or count. (Predicted in records/1031-caller-derivation.txt (E)/(F).)
+
+THE ACTUAL ANSWER CAME FROM THE STATIC DERIVATION (records/1031-caller-derivation.txt), which the live
+frame now CORROBORATES at every point:
+  - caller = libobjc `_getPreoptimizedClass`+0x98 (Site A 0x37C26464; return slot 0x37C26468) /
+    `_copyPreoptimizedClasses`+0xa8 (Site B 0x37C26550).
+  - caller r3 = a sp-RELATIVE VLA base `sp0 - 8*count`; writer `mov r4,r3`.
+  - count = 0xFFFFFFFF (PROVEN by the mid-pass-writeback consistency, section (I)/(J)): the caller's
+    `sub.w rN,sp,rN,lsl#2` wraps POSITIVE, the blocks land INSIDE the writer's own frame, and the
+    table-rebase copy walks 2016 words off the stack end into the unowned page at the region's top.
+  - So r3 <= far massively (0xffffffff is not even an address in the region); CAL-CALLER-OTHER is the
+    right cell, and its "neither shape" prose is correct — the shape it expected was a CALLER fact that
+    the probe never captured.
+
+ROOT CAUSE (settled): a corrupt `objc_classheader_t.clsOffset >> 1` in the shared cache's objc_clsopt_t
+table (int32, arithmetic shift @0x37C266D4) yields count = 0xFFFFFFFF for the optimised class; the
+caller's VLA size wraps; the writer overruns the stack. THE FIX IS IN libobjc (userspace, the dyld shared
+cache inside rootfs.hfs @0x455d000), NOT in kernel stack-region geometry (refuting the 1025..1030 framing).
+Writable-root/data tooling exists (tools/hfs_patch_*.py); on CANCRO `code_signed` is FALSE
+(kern_descrip.c:1543, CS_MAX_BLOB_SIZE 1280 KiB vs IOS7_COMPAT_PLATFORM=0), so codesign is not an obstacle
+— dyld cache-header consistency is the remaining design question.
+
+NEXT: rung 1032 = the libobjc count fix (design in flight). The device is UP; DO NOT fastboot boot (keep
+the slot for any further reading).
+====================================================================================================
