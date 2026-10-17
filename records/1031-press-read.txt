@@ -1,0 +1,17 @@
+1031 PRESS = NON-RETURN, no capture; step 5 correctly printed NO READING - STALE SLOT.
+arm        : armed-d13-49031dcb (parked, records/revert-set.txt role=1031-caller-probe)
+boot epoch : 2026-10-17 07:35:36+00:00 (epoch 1792222536)
+fastboot   : Booting OKAY 0.012s; bytes fed fed2c1a15af6d54b73a36b4fdbb4bc9053bda40c0f90620414418eea78bc7028
+device     : dark after boot - no adb, no fastboot, no usb 3-10 enumeration (the 1024-1030 shape)
+usb reader : out/stage90/captures/usb-console-1031-20261017-073409.txt = ZERO BYTES, reader exit 143
+  (a resident rung that does not return keeps NO /proc/last_kmsg; the only stream that could carry
+   it is the USB console, which for a dark phone is not attached - the 1024/1025/1026/1027/662 blind spot)
+step 5     : NO READING - STALE SLOT. newest on disk = recovered-unknown-arm-20261017-064216-last_kmsg.txt
+             (mtime 06:42:16, epoch 1792219336) is OLDER than this boot (07:35:36, epoch 1792222536)
+             => NOT adjudicated ([[mi4-stale-slot-impersonates-a-reading]]).
+NEXT       : the device is DARK and needs the OPERATOR's power press. Then, while Android is up:
+             scripts/recover_last_kmsg.sh --read-only   (do NOT fastboot boot anything first - it
+             clears the single-slot RAM console). Re-run tools/check_1031_capture.py on a capture
+             NEWER than 07:35:36.
+VERDICT    : WITHHELD (no reading). 1031 is a PROBE: it selects NO fix. The caller derivation stays
+             UNRESOLVED until the capture is recovered.
