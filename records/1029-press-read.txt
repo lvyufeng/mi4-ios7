@@ -1,12 +1,54 @@
-1029 PRESS - OUTCOME: NON-RETURN, NO CAPTURE (the device did not come back; a reading is OWED)
-===========================================================================================
+1029 PRESS - OUTCOME: NON-RETURN, then RECOVERED -> VERDICT **READER-NAMED (TOP-CONFIRMED BY VALUE)**
+=====================================================================================================
 date:     2026-10-17
 arm:      armed-d13-8355c712   (1029 = 1028's switch set + ONE NEW: STAGE90_XNU_READER_PROBE=1)
 role:     1029-reader-probe     (carrier: out/stage90/xnu_arm_entry-arm-extra.txt)
-verdict:  **G-CTL / NO READING** - the press ran, the device did not return, and the only capture
-          present is OLDER than this boot, so the staleness guard refused to adjudicate. This is a
-          reading OF THE INSTRUMENT ("no capture NEWER than this boot"), NOT a negative about the
-          reader. The 1029 question (who derives the store at user_stack + 0x1000) is UNANSWERED.
+capture:  out/stage90/captures/recovered-unknown-arm-20261017-052951-last_kmsg.txt  (05:29:52, NEWER than
+          this press's 04:55:11 boot epoch -- so the staleness guard's earlier refusal is now discharged)
+verdict:  **READER-NAMED / TOP-CONFIRMED BY VALUE.** The store address far sits EXACTLY ONE PAGE above
+          the block's advertised top (far - ustack == 0x1000), the block's TOP bound IS p->user_stack
+          (blk_hi == ustack, so the block did NOT grow), and far is covered by NO vm entry
+          (entry_at_hit == 0). => far IS the region's EXCLUSIVE END, UNOWNED at the fault. The fault is
+          a BOUNDARY WRITE at the region end; the region is short by exactly one page. Negatives below
+          are read as positives of the boundary-write branch, not as absence of a reading.
+
+READING, BY VALUE (all 10 reader keys live; capture lines 4202-4211)
+-------------------------------------------------------------------
+  xnu_live_rdr_far               = 0x2bd39000
+  xnu_live_rdr_ustack            = 0x2bd38000
+  xnu_live_rdr_far_minus_ustack  = 0x00001000   <- exactly one page above the advertised top
+  xnu_live_rdr_blk_hi            = 0x2bd38000   <- == ustack: the block did NOT grow
+  xnu_live_rdr_blk_lo            = 0x2bd37f44
+  xnu_live_rdr_blk_bytes         = 188
+  xnu_live_rdr_argc              = 4
+  xnu_live_rdr_entry_at_hit      = 0            <- far covered by NO entry (the decisive conjunct)
+  xnu_live_rdr_entry_at_lo       = 0x00000000
+  xnu_live_rdr_entry_at_hi       = 0x00000000
+  (xnu_live_ustack_rc = 0 at capture:4156 -- the FIXED allocate succeeded, no ANYWHERE fallback)
+  Controls: launchd_reached=True, trap24=8, port_construct(result=0)=8, abt_pc_live=12, panics=0.
+
+WHAT THIS DECIDES (the 1029 question, answered)
+-----------------------------------------------
+  entry_at_hit == 0 selects the BOUNDARY-WRITE branch, NOT the adjacent-object-collision branch. far is
+  the region's exclusive end and is unowned. The writer's store lands there because the region ENDS
+  there -- the region is one page short of where the block's user needs to write.
+  Writer identity (reader lane, byte-verified 4 ways -- cache image table entries 602/682):
+    /usr/lib/libobjc.dylib + 0x14756, function start 0x37c266ec, faulting instr 0x37c266ec+0x6a =
+    str.w r2,[r4],#4  (a userspace VLA/post-increment cursor store).
+  Mechanism of the page: map_size = vm_map_round_page(size+16) at osfmk/vm/vm_user.c:220, region
+  anchored at addr (kern_exec.c:3667-3680) -- so 1028's "+16" really grew the top by 0x1000 and the
+  fault FOLLOWED it (1028 = FIX-NOOP, page-exact).
+
+THE NEXT RUNG (1030) - what this reading licenses
+-------------------------------------------------
+  Make the region's exclusive top land STRICTLY ABOVE the block top by a whole page: anchor the base one
+  page LOWER (addr = trunc_page(user_stack - size) - PAGE_SIZE) or size so top >= round_page(user_stack)
+  + PAGE_SIZE. **Do NOT add to `size`** -- size + delta always rounds up to the old +0x1000 (1028 proved
+  it). Own the page at the region END.
+
+NOTE (docs/1029-design.md s.8, corrected 2026-10-17): the ORIGINAL 1029 premise -- "the writer derives
+its store by adding 0x1000 to p->user_stack" -- is FALSIFIED. far is ALWAYS the region's exclusive top
+(1025/1026/1027 had far-ustack == 0 == far == region top). 1029 was a PROBE (report, do not re-fix).
 
 WHAT HAPPENED, BY VALUE (out/stage90/press-1029.log)
 ----------------------------------------------------
