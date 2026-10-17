@@ -580,3 +580,58 @@ THE CRUX (UNRESOLVED — do NOT patch blind): are `count` (the alloca SIZE, retu
    in the writer's loop IF independent, OR (c) a DATA fix to the classOffsets word. Design in flight
    (fix-1032-libobjc). DO NOT press a guess: the 1031 lesson is that a wrong model costs a press cycle.
    Device is UP — keep the slot; do NOT fastboot boot until the fix is chosen and built.
+
+====================================================================================================
+(L) THE CRUX IS RESOLVED — count AND the loop bound T ARE THE SAME lookup (lead, 2026-10-17).
+====================================================================================================
+(K) asked: are `count` (the alloca SIZE) and the writer's LOOP BOUND `T` the SAME lookup or INDEPENDENT?
+Claim in (K): "DIFFERENT table bases/indices => most likely INDEPENDENT". THAT CLAIM IS WRONG.
+
+BY-VALUE TRACE of the two call sites (objdump, force-thumb, cache map0):
+  CALLER `_getPreoptimizedClass` fn @0x37C263CC:
+    0x37C26408:  eb01 0c02   add.w  r12, r1, r2      ; r12 = r1 + r2
+    0x37C2640C:  46e6        mov    r14(sl?) ...     ; (sl set up here; sl = r12-base, see below)
+    0x37C2641A:  4628        mov    r0, sl           ; r0 = TABLE BASE
+    0x37C2641C:  4641        mov    r1, r8           ; r1 = ARG
+    0x37C2641E:  f7ff f93b   bl     0x37C26698       ; getClassAndHeader(r0=sl, r1=r8) -> r0 = COUNT
+    0x37C26422:  4605        mov    r5, r0           ; r5 = COUNT
+    0x37C26424:  2d02        cmp    r5, #2
+    0x37C26426:  d3..        bcc    bail
+    ...  sub.w r4,sp,r5,lsl #2 ; mov sp,r4 ; sub.w r6,sp,r5,lsl #2 ; mov sp,r6
+    0x37C2645C:  4668        mov    r0, sl           ; r0 = TABLE BASE  (SAME value as 0x37C2641A)
+    0x37C2645E:  4641        mov    r1, r8           ; r1 = ARG        (SAME value as 0x37C2641C)
+    0x37C26460:  f7ff f844   bl     0x37C266EC       ; THE WRITER (r0=sl table base, r1=r8)
+
+  BOTH calls receive the IDENTICAL (r0, r1) = (sl, r8). NO register is written to r0/r1 between them
+  (r5=count, the alloca block runs on r4/r6/sp; r0/r1 untouched).
+
+  INSIDE BOTH: the first act is the SAME call to getIndex on the SAME base:
+    getClassAndHeader @0x37C26698: mov r6,r0 (=sl) ; bl 0x37C1E950 (getIndex) -> r0 = index
+                                   ldr.w r1,[r2,r0,lsl #3]        ; classOffsets[index]
+    writer          @0x37C266EC: mov r5,r0 (=sl) ; bl 0x37C1E950 (getIndex) -> r0 = index
+                                   ldr.w r2,[r3,r0,lsl #3]        ; classOffsets[index]
+  getIndex is PURE w.r.t. its argument => SAME r0 (sl) => SAME index => SAME classOffsets WORD.
+
+  getClassAndHeader RETURNS  count = word >> 1   (`asrs r0,r1,#1` @0x37C266D4, duplicate path).
+  the writer SEEDS its loop counter  r0 = (word2 >> 1) - 1 ... i.e. the loop runs `T>>1` times where
+  word2 is the SAME word. (The writer's `asrs r0,r2,#1` @0x37C26736 acts on the SAME classOffsets entry,
+  not a different one.)
+
+=> count == T>>1 == the SAME VALUE. THEY ARE **NOT** INDEPENDENT. (K)'s "most likely INDEPENDENT" is
+   REFUTED by the by-value argument identity + the pure getIndex + the identical row read.
+
+CONSEQUENCE (the (K) crux, now closed): a count-clamp DOES bound the loop — clamping count shrinks BOTH
+   the alloca block AND the walk (they are one value). The overrun does NOT merely move; it STOPS.
+   => The fix class is EITHER (a) clamp `count` (kernel-side is impossible; it is userspace libobjc), OR
+      (c) fix the classOffsets[] WORD (the DATA). Both are in the shared cache. (b) cursor-bound is ALSO
+      sound but strictly larger; (a)/(c) are preferred as they address the ROOT (count=-1 => the word).
+   NOTE: since count == T>>1 and the wild word is 0xFFFFFFFF, both the block size AND the loop count are
+   0xFFFFFFFF. Clamping count at the CALLER (after getClassAndHeader returns) is the minimal edit; fixing
+   the WORD in the cache table is the cleanest (it removes the cause, not the symptom).
+
+STILL OWED: the EXACT word and its location. `count = -1` => word = 0xFFFFFFFF (or any odd word with
+   bit0 set and >>1 == -1, i.e. word ∈ {0xFFFFFFFF, 0xFFFFFFFF only under int32 asrs}). Locate the
+   objc_clsopt_t entry whose classOffsets[index] == 0xFFFFFFFF IN THE CACHE IMAGE (the table the
+   ROOTFS.HFS @0x455d000 shared cache carries), then the fix is a DATA repair of that word (or the
+   matching clamp at 0x37C266D4, file off 0x455d000 + (0x37C266D4-0x2C000000)).
+====================================================================================================
