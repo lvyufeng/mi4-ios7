@@ -1,0 +1,47 @@
+1027 READ = H2 (OFF-THE-END): the launchctl[2] stack region ends EXACTLY at far
+=======================================================================================
+
+Arm: armed-d13-d06ee14f (STAGE90_XNU_ABT_ENTRY_PROBE=1, = 1025's set + the discriminator).
+Press: `fastboot boot out/stage90/stage90-qcdt.img` -- Sending OKAY, Booting OKAY, bytes ==
+       gate hash 219fc578c6aa7986ef8062d1c8ee44bbd70a3e3606892a3ba849a5876ce5a024.
+       Resident rung: the device went dark and the operator's power press brought Android back.
+Capture: out/stage90/captures/recovered-unknown-arm-20261017-030551-last_kmsg.txt (recover_last_kmsg
+         --read-only; carrier = the FLASHED ROM).
+
+VERDICT (tools/check_1027_capture.py): **H2 -- OFF-THE-END.**  [INSTR] entry_row_keys=9 (all nine
+rows fired, including the two NEW e2 rows).  By value:
+
+    xnu_live_abt_lookup_far=0            <- vm_map_lookup_entry(map, far) returned FALSE
+    xnu_live_abt_far_in_map=1            <- the far-4 lookup HIT (a legal word sits just below)
+    xnu_live_abt_entry_lo=0x00000000     <- entry suppressed (the 1026 defect this rung fixes)
+    xnu_live_abt_entry_hi=0x00000000     <-   ... its confirming conjunct was UNREADABLE BY CONSTRUCTION
+    xnu_live_abt_e2_lo=0x2bce1000        <- the far-4 entry's OWN bounds (NEW in 1027)
+    xnu_live_abt_e2_hi=0x2bde0000        <-   ... and e2_hi == far  =>  THE REGION ENDS AT far
+    xnu_live_abt_map=0xc0005688          <- H1 (wrong map) is FALSE: the walk's map
+    xnu_live_abt_taskmap=0xc0005688      <-   ... IS the task's map
+    xnu_live_abt_ustack=0x2bde0000       <- the exec's recorded stack top == far
+
+    FAULT-NAMED: the 1025 re-reading HOLDS -- far=0x2bde0000 code=1 (KERN_INVALID_ADDRESS)
+                 dfsr=0x00000807 prot=write pc=0x38e78756 pid=2.
+    REGRESSION controls intact: trap24=8, port_construct(result=0)=8, abt_pc_live=12, no panic.
+
+WHAT THIS DECIDES.  The region [0x2bce1000, 0x2bde0000) has its EXCLUSIVE TOP at far, and the word
+just below far (far-4) is mapped.  A write AT far is a write ONE WORD PAST the region's end.  H1
+(the walk using a different map than create_unix_stack allocated into) is REFUTED by value: map ==
+taskmap.  So the cause is upstream of vm_fault: the initial argv/env block / sp is placed so that its
+top EQUALS the region top, and userspace's first touch of the word at the top faults.
+
+THE FIX (docs/1027-design.md section 7, chosen against THIS number): kernel-side, give the initial
+block / sp one word (16 B) of headroom so the block top is STRICTLY below the region top.  The layout
+comment in exec_copyout_strings already DESCRIBES a "16b" reserved slot at p->user_stack that the
+placement does not HONOUR; the fix is to honour it in create_unix_stack (reserve the top so the block
+top < far), not to move sp's alignment or touch MAXSSIZ / LAB_USER_STACK / VM_MAX_ADDRESS.
+
+BY-PRODUCT (a real defect, fixed): the resident-rung press scripts (1024/1025/1026/1027) killed the
+background USB reader then ran an UNGUARDED `wait "$USB_PID"`; a SIGTERM'd reader makes wait return
+143 and `set -e` ABORTED THE SCRIPT before the USB verdict, the recovery, and the reading.  That is
+why the 1027 press's live log ended at the runner's line with no capture verdict -- the capture above
+came from the FLASHED ROM after the operator's power press, not from the USB stream.  Fixed with
+`set +e` around the wait ([[mi4-unguarded-wait-aborts-resident-press]]).
+
+NEXT RUNG: 1028 = the H2 fix, kernel-side, chosen against e2_hi == far == 0x2bde0000.
