@@ -113,6 +113,21 @@ need not literally become `far + 16` — what must change is that the region's t
 with the block top.  The DECISIVE cell is FIX-HOLDS (the `vmfkrv=1` stack-window row is GONE), not a
 single `e2_hi` literal; read them together, and only from a capture NEWER than the boot.
 
+**THE EXTENT LANDS ONE PAGE HIGH, NOT ONE WORD (measured 2026-10-17, source by value).**
+`mach_vm_allocate` (`osfmk/vm/vm_user.c`) does `map_size = vm_map_round_page(size)` BEFORE
+`vm_map_enter`, so the `size + 16` extent is rounded up and the region actually grows by a full
+**PAGE**: the new exclusive top is **`user_stack + 0x1000`**, not `user_stack + 16`.  This is
+functionally a superset (the word at `user_stack` is owned either way) and changes nothing about the
+block, `sp`, `p->user_stack`, or the guard — but it means (a) the staged comment in
+`patch_d13_h2_stack_headroom.py` is INACCURATE where it says the top becomes `user_stack + 16`, and
+(b) the `e2_hi` row, if it moves at all, is expected at `far + 0x1000`.  Do NOT treat "`e2_hi !=
+far + 16`" as a build defect — that was never the arithmetic.  **NO-OP RISK:** if `[req, req + 0x1000)`
+were already occupied the FIXED allocate would fail and fall through to the ANYWHERE branch
+(`8020a7fc: mov r2, r6`), which re-creates the SAME flush-top geometry — a silent no-op.  The
+`xnu_live_ustack_rc` row (0 = FIXED succeeded, non-zero = fell back) in the future capture tells which
+path was taken; if FIX-NOOP fires, read `xnu_live_ustack_rc` FIRST to distinguish "fix had no room"
+from "top word was not the cause".
+
 ## 6. FILE-LEVEL PLAN
 
 1. `tools/patch_d13_h2_stack_headroom.py` — NEW. Edits `create_unix_stack` in kern_exec.c: replace the
