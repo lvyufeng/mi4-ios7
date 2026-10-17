@@ -537,3 +537,18 @@ callee's saved-register slots) succeeded while the walk ran off the region top a
    SUPPORTED. The root cause stands and is STRENGTHENED: the count is a negative/wrapped value from the
    objc-classheader table, so the caller's VLA collapses and the writer overruns. (E)/(F) (count not on
    any wire) remain true for a NON-negative count, but the frame DOES pin count = -1 via the cursor sign.
+
+(J) count = 0xFFFFFFFF PROVEN BY INTERNAL CONSISTENCY (not just the cursor arithmetic).
+    A caller-derivation follow-up offered to re-accept (G) [count = a 2^30 multiple]. That is the ERROR.
+    The two models differ ONLY on whether the aborted r4-store's writeback is counted. Test both against
+    the frame's r4 == r6:
+      Model B (count = 2^30): caller r2 = sp0-4c ≡ sp0 (mod 2^32), caller r3 = sp0-8c ≡ sp0 => r4_i == r6_i.
+        The faulting r4-store aborts WITHOUT writeback => r4 = r4_i + 4(P-1) = r6_i + 4(P-1), while
+        r6 = r6_i + 4P  (its store in pass P completed) => r4 == r6 - 4.  Frame says r4 == r6. CONTRADICTION.
+      Model A (count = -1 = 0xFFFFFFFF): caller r3 = sp0+8, caller r2 = sp0+4 => r4_i == r6_i + 4.
+        Aborted r4-store: r4 = r4_i + 4(P-1) = r6_i + 4P = r6.  Frame r4 == r6. CONSISTENT.
+    Plus A reproduces the writer's entry sp exactly (sp0 = 0x2bdac080 => entry 0x2bdac088 => fault sp
+    0x2bdac074). => count = 0xFFFFFFFF is the ONLY internally-consistent value. (G)'s "2^30 multiple"
+    is refuted by the writeback, not merely disfavored.
+    ROOT CAUSE UNCHANGED either way (count is a wild/signed objc_classheader_t.clsOffset >> 1 from a
+    corrupt objc_clsopt_t classOffsets[] entry) => the fix is the TABLE DATA / the cache, not the kernel.
