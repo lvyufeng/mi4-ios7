@@ -252,3 +252,20 @@ ADDENDUM 2026-10-17 (lead, independent objdump + arithmetic) — TWO CORRECTIONS
     => To ACTUALLY decide it needs a row that carries count (or r3_init / block2_lo) AT THE FAULT —
        i.e. a genuine new probe, not a re-read of the 1030 frame. Until such a row exists, 1032 as a
        fix-selecting rung is UNJUSTIFIED and the honest deliverable is this record.
+
+(F) 1031's OWN cal_* ROWS ALSO DO NOT CARRY count — they are the FAULT-TIME (WRITER) register file.
+    tools/patch_d13_caller_probe.py prints `arm_ctx->r[0..12]`, `arm_ctx->lr/pc` — i.e. the register
+    file AT THE FAULT, which is the WRITER's context (the fault is inside the writer's copy loop).
+    Confirmed against the 1030 frame: the writer has already executed `mov r4,r3`, so its r3 is a
+    leftover (0xffffffff), and its r12 (0x4000) is whatever it holds mid-loop. So:
+      - cal_r3  != block2_lo (design-1032's "cal_r3 = r3_init" is WRONG; the fault frame's r3 = 0xffffffff)
+      - cal_r12 != "the second alloca's size" (it is the writer's r12, and the caller never writes r12)
+      - cal_r5  is NOT printed (WRP prints r5; it is the writer's base), and would not be count anyway.
+    => NEITHER 1030's WRP rows NOR 1031's CAL rows carry the caller's `count` or `block2_lo`. A recovered
+       1031 reading would show the writer's fault-time frame + region geometry = CAL-CALLER-OTHER-ish,
+       NOT a count/T reading. The count/T question needs a DIFFERENT probe that re-publishes the CALLER's
+       live registers at the CALL (0x37C2641E/0x37C26464) — which does not exist and cannot be read from
+       the fault handler without new code that captures the caller frame at call time.
+    => HONEST STATE: the mechanism is statically known (down-alloca block2 + upward table-bounded cursor),
+       the count/T relation is a PREDICTION (T = 2*count + 0x7BC), and NO existing or built probe decides
+       count. 1032 as a fix is UNJUSTIFIED; a fix-rung must first build a caller-frame probe.
