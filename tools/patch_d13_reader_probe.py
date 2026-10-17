@@ -96,6 +96,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_ABT_ENTRY_PROBE",    # 1026/1027
     "STAGE90_XNU_H2_STACK_HEADROOM",  # 1028 (edits kern_exec.c; allowed for the proof)
     "STAGE90_XNU_READER_PROBE",       # 1029 (this rung)
+    "STAGE90_XNU_WRITER_PROBE",  # 1030 (tools/patch_d13_writer_probe.py)
 }
 
 # ---------------------------------------------------------------- kern_exec.c (Site B)

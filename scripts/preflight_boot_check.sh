@@ -765,7 +765,8 @@ ENTRY_CFG_KEYS=(STAGE90_XNU_ENTRY_SHA256 STAGE90_XNU_ENTRY_BYTES STAGE90_ENTRY_T
                 STAGE90_XNU_USTACK_PROBE
                 STAGE90_XNU_ABT_ENTRY_PROBE
                 STAGE90_XNU_H2_STACK_HEADROOM
-                STAGE90_XNU_READER_PROBE)
+                STAGE90_XNU_READER_PROBE
+                STAGE90_XNU_WRITER_PROBE)
 # **1024: `STAGE90_XNU_VM_MAX_SPLIT`, the task map's ceiling (`VM_MAX_ADDRESS`).** It went in at the
 # tail after `STAGE90_XNU_GENERAL_REGS`; like every key above it is a REQUIRED key whose value is
 # printed by name, and the CONVERSE check below now accepts it. A record that does not carry it is a
@@ -1273,6 +1274,17 @@ do
   # value against the recorded value.
   if [[ -z $_v && $_k == STAGE90_XNU_READER_PROBE ]]; then
     printf '  %s=(absent, and a record that does not name the reader-probe switch is one built before 1029 - no reader identity was compiled in, the only value a pre-1029 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1030's switch, the same one-way rule as 1029 ... 1025, and for the same reason.** Every arm parked
+  # before 1030 was built with NO writer probe at all: trap.c's data-abort arm published no r4 derivation
+  # and no writer identity, so a pre-1030 record's only possible value is 0. Demanding the key would make
+  # every existing park unpressable (882's defect, repaired again here) and the ladder still owes those
+  # presses. A post-1030 record can never reach this branch: `build_entry.sh` writes the line
+  # unconditionally (0 or 1), its arm-key list includes the key, and the 1030 clause at the link site reads
+  # the pool object by value against the recorded value.
+  if [[ -z $_v && $_k == STAGE90_XNU_WRITER_PROBE ]]; then
+    printf '  %s=(absent, and a record that does not name the writer-probe switch is one built before 1030 - no r4 derivation was published, the only value a pre-1030 build could have written)\n' "$_k"
     continue
   fi
   [[ -n $_v ]] \

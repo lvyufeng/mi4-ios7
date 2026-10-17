@@ -2133,6 +2133,7 @@ ENTRY_ARM_KEYS=(STAGE90_ENTRY_TRACE STAGE90_ENTRY_REAL_ARM_INIT STAGE90_XNU_SLOT
                 STAGE90_XNU_ABT_ENTRY_PROBE
                 STAGE90_XNU_H2_STACK_HEADROOM
                 STAGE90_XNU_READER_PROBE
+                STAGE90_XNU_WRITER_PROBE
                 STAGE90_XNU_TREE_D13)
 #
 # **The seven switches are not the whole arm, and finding that out is what made this eleven.** Checking
@@ -2318,6 +2319,15 @@ do
         # shape: the entry bin's hash is IDENTICAL with it on and off, so the record is the ONLY place
         # the arm appears, which is why the 1029 clause at the link site reads the pool objects by value.
         STAGE90_XNU_READER_PROBE)  _v=${STAGE90_XNU_READER_PROBE:-0} ;;
+        # 1030: whether the WRITER probe is compiled into this image's pool objects (`osfmk_arm_trap.o`'s
+        # probe key for the r4 derivation, staged by the 1030 patcher, gated
+        # `#if defined(STAGE90_XNU_WRITER_PROBE) && STAGE90_XNU_WRITER_PROBE` and NESTED inside 1025's
+        # publisher block - so it prints nothing unless BOTH switches are on).  Read from the
+        # ENVIRONMENT with a default 0, like its USTACK_PROBE/ABT_ENTRY_PROBE/H2/READER siblings.  Same
+        # POOL-only shape: the entry bin's hash is IDENTICAL with it on and off, so the record is the
+        # ONLY place the arm appears, which is why the 1030 clause at the link site reads the pool objects
+        # by value.
+        STAGE90_XNU_WRITER_PROBE)  _v=${STAGE90_XNU_WRITER_PROBE:-0} ;;
         # 912: read from the ENVIRONMENT directly and not from `$ENTRY_SIZE`, because this loop runs
         # ~27000 lines ABOVE the assignment (`:28651`) - the same reason `STAGE90_ENTRY_REAL_ARM_INIT`
         # is read with its own `${...:-0}`. The default is the same literal, so an unset switch and an
@@ -40641,6 +40651,12 @@ IDLE_STACK_FOR_RECORD=${STAGE90_XNU_IDLE_STACK:-1}
     # ONLY place the arm appears - the 1029 clause at the link site above reads the two pool objects by
     # value, which is what makes a record over a stale pool a refusal rather than a promise.
     echo "STAGE90_XNU_READER_PROBE=${STAGE90_XNU_READER_PROBE:-0}"
+    # **1030's writer switch, written here for the SAME reason as 1025's, 1026's, 1028's and 1029's.**
+    # Like USTACK_PROBE/ABT_ENTRY_PROBE it is a POOL-only switch: the entry image's own linked bytes are
+    # IDENTICAL with it on and off (the edited file is a POOL object), so this record line is the ONLY
+    # place the arm appears - the 1030 clause at the link site above reads the pool object by value, which
+    # is what makes a record over a stale pool a refusal rather than a promise.
+    echo "STAGE90_XNU_WRITER_PROBE=${STAGE90_XNU_WRITER_PROBE:-0}"
     # **1028's H2 headroom fix switch, written here for the SAME reason as 1025's and 1026's.**  The fix is
     # a value change in `create_unix_stack`'s FIXED `mach_vm_allocate` extent (both edited files are POOL
     # objects), so the entry image's own linked bytes are IDENTICAL with it on and off and this record line

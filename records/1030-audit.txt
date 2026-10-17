@@ -50,6 +50,34 @@ CHECK 5 — CROSS-CHECK vs 1028: **NOTHING IS DIFFERENT — the fault will FOLLO
   exclusive top," the SAME fault recurs at the SAME `far` (far-ustack stays 0x1000 — but now for the
   degenerate reason that the top never moved, not a follow). Either way: FIX-NOOP.
 
+=== ADDENDUM 2 (population re-run + the VLA-overflow question) ====================================
+Q1 (independent reproduction) — **REPRODUCED, 61 far-rows** over recovered-unknown-arm-2026101{6,7}-*:
+  far == ustack_final (source/owned top)          : 58 runs   (all pre-H2)
+  far == ustack_final + 0x1000 (H2-grown top)      :  3 runs   (040854, 041142, 052951 -- post-fix)
+  no OTHER value of (far - final) appears. So far == the region EXCLUSIVE TOP in every run; the only
+  run that ever moved it is the H2 extent-grow. (Lead's "57/3" vs my "58/3": the 61st is 016-153359,
+  far==final==0x2bd35000, pre-fix -- counts as pre-fix; the totals agree.)
+  Matched values I used: 1027 base=0x2bce0000 size=0x100000 -> far=0x2bde0000 (=base+size);
+  1028 base=0x2bc0d000 -> far=0x2bd0e000 (=base+size+0x1000); 1029 base=0x2bc38000 -> far=0x2bd39000.
+Q2 (any capture where far != region top?) — **NONE.** All 61 far-rows equal the region's exclusive top.
+  `far - final == 0` or `== 0x1000` and nothing else. Hyp "far != region top" has ZERO instances.
+Q3 (is this a userspace STACK OVERFLOW -- correct behaviour -- or a genuinely short region?) —
+  **NEITHER of the two offered; it is a write in the WRONG DIRECTION.** DECISIVE ROWS (1029/052951):
+      sp=0x2bd37074  ustack=0x2bd38000  far=0x2bd39000
+      region RW body = [0x2bc39000, 0x2bd39000)  (1 MiB);  guard = [0x2bc38000,0x2bc39000)
+      space BELOW sp to the region bottom = sp - 0x2bc39000 = 0xFE074 = **1016 KiB FREE**
+      space ABOVE sp to the region top    = far - sp        = 0x1F8C  = **7.9 KiB**
+  The block is [sp, ustack) with `sp` at its BOTTOM (kern_exec.c layout comment 2642 `sp->`), so a
+  userspace stack frame / VLA grows DOWNWARD -- into 1016 KiB of untouched region. The writer does NOT
+  grow down: `far - sp = +0x1F8C` is ABOVE `sp`, past the block, past `ustack`, AT the region top.
+  So the VLA (r12=0x4000 = 16 KiB) is NOT overflowing a 1 MiB stack -- it has 1016 KiB below it and
+  uses none; it copies/lays out UPWARD from a dst derived from the region top. => NOT "correct behaviour
+  because the region is too small" and NOT "the region is short" -- the writer's DESTINATION is the
+  region top itself (`str.w r2,[r4],#4`, post-inc cursor, r4==far). The region is 1 MiB (= MAXSSIZ,
+  mach_loader.c:1086), not short; the store simply targets one byte past the last owned byte.
+  DECISIVE ROW: `xnu_live_abt_vmfkrv_sp=0x2bd37074` vs `xnu_live_abt_vmfkrv_far=0x2bd39000` --
+  the delta is +0x1F8C (ABOVE sp), whereas a stack overflow would fault BELOW sp near the guard.
+
 === ADDENDUM (lead's question, settled BY VALUE from the 1029 CAPTURE itself) =====================
 Lead asked: on 1029 is the SOURCE region top base+size=0x2bd38000 or the owned top 0x2bd39000? which
 does far track? Settled from the capture (lines 4153-4159 + 4187/4196-4197/4201):
@@ -111,3 +139,80 @@ about sp, but because the writer stores AT the region's exclusive top. Any regio
 useless. The rung must instead instrument WHY the writer stores at the top (libobjc+0x14756 VLA setup)
 and whether the store is a stack-growth that SHOULD fault (i.e. the VLA legitimately exceeds the
 advertised stack) -- i.e. this may be a real stack-overflow in the writer, not a kernel region defect.
+
+LEAD'S WRITER DISASSEMBLY (2026-10-17) — the fault site is a table-rebase COPY
+=============================================================================
+1029 slide = 0x3af6000 (IOS7SHREG rows). pc 0x3b71c756 -> unslid 0x37c26756 (libobjc, map0) == the
+reader-verified str.w r2,[r4],#4. Disassembled window (arm-none-eabi-objdump, force-thumb):
+
+  37c266ec: push {r4,r5,r6,r7,lr}
+  37c266f0: mov r4, r3        <-- r4 (faulting cursor) = the 4th ARGUMENT
+  37c266f2: mov r6, r2        ; 3rd arg = a second output cursor
+  37c266f4: mov r5, r0        ; 1st arg = a table base (vtable/data)
+  37c266f6: bl  0x37c1e950    ; helper (index lookup)
+  ...
+  37c26742: ldr.w r2,[r1,#-4]; subs r0,#1; add r2,r5; str.w r2,[r6],#4
+  37c2674e: ldr r2,[r1,#0]; add r1,#8; add r2,r5
+  37c26756: str.w r2,[r4],#4  <-- FAULT (r4 == far == 0x2bd39000)
+  37c2675a: bne.n 0x37c26742  ; loop
+  37c2675c: pop {r4-r7,pc}
+
+=> the routine adds r5 (a slide/base) to successive table entries and stores them into TWO output
+   cursors r6 and r4; r4 is the CALLER's 4th argument. It is a shared-cache / objc table REBASE
+   (dyld slide fixup) writing into a caller-provided buffer that lands at far = sp+0x1F8C.
+=> the boundary decision is in the CALLER (who passes r3 = far), not this function. The probe must
+   publish the caller's derivation of r4 (is it sp-relative? user_stack-derived? a selector-table
+   dest?). This NARROWS 1030's probe to: read r4 at the fault + the caller frame (lr=0x37c1e9af).
+
+=== ADDENDUM 3 (2026-10-17): the WRITER probe — disassembly + register reconciliation + row set ====
+TASK 1 — CONFIRM the writer from the CRIME-SCENE REGISTERS + DISASSEMBLY. **CONFIRMED (lead's
+disassembly is correct, verified byte-for-byte from the pinned cache).**
+  Disassembled libobjc cacheVA 0x37c266ec (file off 0xbc266ec; pc 0x3b71c756 - slide 0x3af6000):
+      push {r4,r5,r6,r7,lr} ; add r7,sp,#12 ; mov r4,r3 ; mov r6,r2 ; mov r5,r0
+      loop @0x56:  ldr.w r2,[r1,#-4] ; subs r0,#1 ; add r2,r5 ; str.w r2,[r6],#4   <- cursor #1
+                   ldr r2,[r1]      ; add r1,#8  ; add r2,r5 ; str.w r2,[r4],#4   <- cursor #2 = FAULT
+                   bne 0x56
+  fn+0x6a == 0x37c26756 == (pc - slide) EXACTLY  => the faulting insn is the r4-store. CONFIRMED.
+  So r4 <- caller r3 (4th arg), r6 <- caller r2 (3rd arg), r5 <- caller r0 (table base). The two stores
+  add the table base (r5) to a table entry and advance two INDEPENDENT output cursors by 4.
+
+  REGISTER RECONCILIATION (r4 == r6 == far): the function sets r4<-r3 and r6<-r2 SEPARATELY, so r4==r6
+  implies the CALLER PASSED r2 == r3 == 0x2bd39000 — the SAME destination address for both cursors.
+  (Not two adjacent buffers: identical base.) Also r5 == r10 == r2 == 0x3b868c00 confirms r5 is the
+  table base loaded into r10 (an objc table iterator) — consistent with a table-rebase pass.
+  r7 == sp+0xC confirms the prologue frame pointer. r4 = r7 + 0x1F80 (far above THIS frame).
+
+  far vs the two candidate derivations (by value):
+      r4 - sp     = 0x1F8C = 8076   (NOT a compiler frame-offset shape: not 4/8/16-aligned, odd const)
+      r4 - r7     = 0x1F80 = 8064 = 0x7E0*4   (large, round-ish; r0 = 0xfffff820 = -0x7E0)
+      r4 - ustack = 0x1000 EXACTLY  (== region exclusive top; ustack = p->user_stack = block top)
+      r4 - far    = 0 (r4 IS far == region top)
+  => r4 == the region's EXCLUSIVE TOP == 0x2bd39000. It is ONE PAGE ABOVE p->user_stack (0x2bd38000),
+  so r4 is NOT thread_userstack/p->user_stack directly. Whether the CALLER derived it as sp+const (W-A),
+  as the region top (W-B), or from a shared-cache size (W-C) is DECIDED BY THE CALLER (lr=0x3b7149af),
+  which this lane could not resolve to a call site (the lr does not land at a call of the fault fn in
+  the mapped image — likely a tail call / different image; the reader lane owns the image table).
+  NEGATIVE (do not over-claim): the fault function ALONE does NOT discriminate W-A/W-B/W-C.
+
+TASK 2 — EXACT ROWS the probe should publish (launchctl[2] usermode DATA-abort arm, inside 1025's
+publisher in osfmk/arm/trap.c, AFTER the 1026/1027/1029 blocks). READ-ONLY; each printed
+UNCONDITIONALLY (the 1026 lesson, [[mi4-1026-abt-entry-probe]]). Minimal set — 8 rows:
+    xnu_live_wr_r4       = arm_ctx->r[4]                      <- the faulting cursor (== far)
+    xnu_live_wr_r6       = arm_ctx->r[6]                      <- the LOCKSTEP cursor (r6==r4?)
+    xnu_live_wr_sp       = arm_ctx->sp                        <- the frame sp (have: abt_vmfkrv_sp)
+    xnu_live_wr_r4_minus_sp = r[4] - arm_ctx->sp              <- W-A tell: a small const => frame off
+    xnu_live_wr_ustack   = p->user_stack (REUSE 1026 accessor) <- W-B tell: r4 - ustack == 0 ? page ?
+    xnu_live_wr_r4_minus_ustack = r[4] - p->user_stack         <- expect 0x1000 (region top) or 0
+    xnu_live_wr_lr       = arm_ctx->lr                        <- the caller to disassemble next
+    xnu_live_wr_blk_bytes= p->p_argslen (REUSE 1029 accessor)  <- block size sanity (invariant 0xBC/0xF8C)
+  DECISION (by value, no fix):
+    W-A-NAMED : wr_r4_minus_sp is a small aligned constant (<= a few KiB, 4/8-aligned) AND wr_r4_minus_ustack != 0
+    W-B-NAMED : wr_r4 == p->user_stack (wr_r4_minus_ustack == 0) OR wr_r4 == region top (==0x1000, plus
+                the caller's own saved top) -- i.e. r4 is the ADVERTISED/region top, not an sp offset
+    W-OTHER   : neither; then disassemble the CALLER (wr_lr) frame by frame.
+  NOTE the region top is NOT directly readable in trap.c (it is vm_map_entry.end of the stack entry);
+  publish `wr_r4_minus_ustack` and compare to 0x1000 (H2-post) vs 0 (H2-pre) — that, with
+  `entry_at_hit`, already separates "r4 == the owned top" from "r4 == p->user_stack".
+  Also add (cheap, one row): `xnu_live_wr_r5 = arm_ctx->r[5]` to confirm the table base slid
+  (r5 == r10 == objc table iterator) — names the routine as an objc table-rebase copy.
+FAIL CLOSED: absent rows => the probe did not run (W-OTHER-missing), never a negative.

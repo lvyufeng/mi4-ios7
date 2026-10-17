@@ -1075,6 +1075,32 @@ DEFINES=(
 # build_entry.sh refuses too).
 [[ ${STAGE90_XNU_READER_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_READER_PROBE=1)
 
+# ---------------------------------------------------------------------------------------------------
+# 1030: STAGE90_XNU_WRITER_PROBE -- name the WRITER's derivation of r4, by value, on the kernel's ram
+# console (docs/1030-design.md 0b/1, records/1030-audit.txt).
+#
+# 1030 was designed as a region-extent fix and REFUTED BEFORE BUILD: base-down and extent-up CANCEL
+# (size is already page-aligned, so the exclusive top is unchanged), and across all 60 captures
+# `far == the region's EXCLUSIVE TOP` in every run -- raising the top raises `far` (1028, page-exact),
+# lowering it lowers `far`. NO allocation-geometry change can help.  So 1030 is a PROBE of the writer,
+# not a fix: libobjc+0x14756's `str.w r2,[r4],#4` faults with `r4 = r6 = far`, and this switch makes the
+# data-abort arm publish the values that separate W-A (r4 = sp + const, a compile-time frame offset --
+# the initial stack is too shallow), W-B (r4 derived from a saved region top -- a stack-limit store) and
+# W-C (r4 from a shared-cache/objc structure -- an undersized userspace buffer).  Pre-registered cells:
+# W-A-NAMED / W-B-NAMED / W-OTHER; if the rows are absent it is W-OTHER-missing, never a negative.
+#
+# WHY THE GLOBAL ARRAY AND NOT `EXTRA_DEFINES`.  Same reason as the 1024 ceiling and the
+# 1025/1026/1028/1029 switches: the switch must be on the SAME argv every pool object gets, and
+# `EXTRA_DEFINES` (`XNU_KERNEL_EXTRA_DEFINES`, ~:1399) is appended LAST and is NOT seen by the
+# EABI-runtime block (~:1796) or the firehose block (~:1838).  `tools/build_xnu_arm_kernel.sh` is run
+# separately from `build_entry.sh` (which only LINKS the pool objects), so without the re-run of THIS
+# script the linked image keeps the old trap.o and the probe prints nothing (records/1020-build-defect.txt).
+# OFF the `#if` compiles the tree's original bytes (`defined()` comes first,
+# [[mi4-off-option-two-spellings]]); the by-value reading of whether the switch reached the object is the
+# format string the compiler materialized for the probe key in trap.o (build_1030.sh refuses on its
+# absence; the link-site clause in build_entry.sh refuses too).
+[[ ${STAGE90_XNU_WRITER_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_WRITER_PROBE=1)
+
 # 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
 # the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO
 # p->user_stack, so the word at the top is unowned and userspace's touch faults.  This switch makes the

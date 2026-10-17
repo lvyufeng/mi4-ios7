@@ -137,6 +137,10 @@ ALLOWED_IF_IDENTIFIERS = {
     # namespace rule, same OFF reasoning: the OFF arm drives this identifier `undefined` too, so the
     # 1029 block is compiled OUT and the OFF text remains HEAD's ([[mi4-one-file-many-rungs]]).
     "STAGE90_XNU_READER_PROBE",
+    # 1030's WRITER PROBE (tools/patch_d13_writer_probe.py) edits the SAME file (osfmk/arm/trap.c),
+    # adding a Site A block in the usermode DATA-abort arm, far below `sleh_undef` where this witness
+    # lives.  Same shared-namespace rule, same OFF reasoning ([[mi4-one-file-many-rungs]]).
+    "STAGE90_XNU_WRITER_PROBE",
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
