@@ -398,3 +398,142 @@ words off the stack end into the unowned page at the region's exclusive top. Eve
     the fix is a data patch (the table entry) or a code patch (clamp the count in
     _getPreoptimizedClass/_copyPreoptimizedClasses); (iii) whether the wrapped value is a build/emit
     defect in the cache we can avoid regenerating. NOT decided here.
+
+====================================================================================================
+AGENT-2 VERIFICATION (caller-derivation lane, 2026-10-17) — closes the lead's gaps (a)/(b)/(c).
+Method: SAME read-only objdump lane, own extraction of the ARM32 dyld shared cache from
+/mnt/data/ios7-payload/v2/ios7/rootfs.hfs @0x455d000 (map0 VA 0x2c000000 fileOff 0 size 0xC266000),
+own local-symbol parse (nlist@0x10233000+0x1e48, 790345 syms), own python3 -I scripts in /tmp/ios7-work
+(NOT inside the extracted dir). No build, no device. Each fact below is a machine reading.
+
+GAP (a) — WHAT `count` IS, AND ITS VALUE. The one call site into `_getPreoptimizedClass`/the writer
+that is STATICALLY reachable is `bl 0x37c26698` (@0x37c2641e in Site A, @0x37c264fe in Site B); its
+return in r0 IS `count` (`mov r5,r0` @0x37c26422 / `mov r6,r0` @0x37c26502). Disassembly of
+`getClassAndHeader` @0x37C26698 (bytes verified) gives its exact definition:
+    37c266a2  bl  0x37c1e950            ; getIndex(key)  (0xFFFFFFFF == INDEX_NOT_FOUND)
+    37c266a6  cmp.w r0, #0xffffffff
+    37c266aa  bne 0x37c266b4             ; not found -> return 0
+    37c266b4  ldr  r1,[r6,#0]            ; r1 = capacity
+    37c266b6  ldr  r2,[r6,#12]           ; r2 = capacity2 (== capacity, header layout)
+    37c266b8  add  r2,r1 ; add r2,r6
+    37c266bc  add.w r1,r2,r1,lsl #2      ; r1 = &classOffsets()  = this + C + 4C
+    37c266c0  addw r2,r1,#1057           ; r2 = &classOffsets()[?] + 0x421  (entry stride 8)
+    37c266c4  ldr.w r1,[r2,r0,lsl #3]    ; r1 = the objc_classheader_t word (clsOffset|dup bit)
+    37c266c8  tst.w r1,#1
+    37c266cc  beq 0x37c266d8             ; bit0==0 -> exactly one -> return 1
+    37c266ce..d4  movs r0,#0 ; str r0,[r5] ; str r0,[r4] ; asrs r0,r1,#1 ; pop   <-- THE DUPLICATE PATH
+    37c266d8..e6  (single path) str r1,[r5] ; ldr r0,[r0,#4] ; str r0,[r4] ; movs r0,#1
+  => **`count` = (classheader_word) >> 1, taken only when the entry's BIT 0 is SET** (the duplicate
+     marker). This is `objc_classheader_t` in dyld-239.3 `include/objc-shared-cache.h` (the iOS 7 era
+     header, fetched and matched to the compiled template). It is a RUNTIME value read from the
+     shared-cache table — NOT statically a constant, so a bare "value" is not decidable from the image
+     alone; BUT it is pinned BY THE 1030 FRAME via the cursor phase (see GAP (b)).
+
+GAP (b) — THE BLOCK-INDEX MODEL IS RIGHT; THE "k <= count" CONSTRAINT WAS THE ERROR, AND THE FRAME
+FIXES count EXACTLY. Which block r4 walks: the writer stores the SAME table word to BOTH cursors each
+pass (`str.w r2,[r6],#4` @0x37C2674A then `str.w r2,[r4],#4` @0x37C26756). The caller passes
+r2=block1_lo (`mov r2,r4`), r3=block2_lo (`mov r3,r6`); the writer sets r4<-r3, r6<-r2 (prologue
+`mov r4,r3`/`mov r6,r2`, bytes 461c/4616). So:
+    writer r4 walks block2 (span [block2_lo, block2_lo + 4*count))
+    writer r6 walks block1 (span [block1_lo, block1_lo + 4*count))
+  with block1_lo = sp0 - 4*count, block2_lo = sp0 - 8*count (Site A) — the two blocks are ADJACENT
+  (block2 immediately below block1), NOT overlapping, NOT 8*count apart per block. My block-index model
+  is correct: each block is 4*count bytes, one block per cursor.
+  THE "k <= count" CONTRADICTION DISSOLVES, and the frame PINS count:
+    * loop trips k = T>>1 where T = the classheader word (SEED `asrs r0,r2,#1` @0x37C26736 reads the
+      TABLE word, independent of count) — so k and count are NOT the same quantity (already in (4b)/(D)).
+    * the cursor EQUALITY r4==r6 in the frame is an INDEPENDENT equation: `r4-r6` is INVARIANT because
+      both cursors are incremented +4/pass and never reloaded, so r4==r6 => caller r2 == caller r3
+      => block1_lo == block2_lo => 4*count == 0 (mod 2^32).
+    * the r6-store runs ONE PHASE AHEAD of the faulting r4-store (r6 already +4 this pass), giving
+      r2_init = r3_init - 4, i.e. 4*count == -4 (mod 2^32) => **count = 0xFFFFFFFF**.
+  FULL, exact frame reconciliation (Site A; Site B identical), count = 0xFFFFFFFF:
+    sp0 = 0x2bdac080 ; block1_lo = 0x2bdac084 (= writer r6_start) ; block2_lo = 0x2bdac088
+    (= writer r4_start == caller sp at the bl) ; writer sp at fault = 0x2bdac088-20 = 0x2bdac074
+    (== frame sp) ; j = (0x2bdae000-0x2bdac088)/4 = 2014 ; r4_fault = 0x2bdac088+4*2014 = 0x2bdae000
+    (== frame r4) ; r6_fault = 0x2bdac084+4*2015 = 0x2bdae000 (== frame r6). EVERY ROW REPRODUCED.
+  => (a) AND (b) ARE CLOSED: count = 0xFFFFFFFF, both blocks are 4*count bytes, r4 walks block2, and
+     the fault is block2's cursor having walked 2014 elements into the region's EXCLUSIVE TOP because
+     the (garbage, all-ones) count made block2's "size" 4 bytes short of covering the walk — the base
+     landed at sp0+8 (the `sub.w ...,lsl#2` wrapping on a NEGATIVE count) instead of below sp.
+  => The 1030 `block_bytes` = 188 row is NOT `count` (188 is the argv/env block, rdr_proc_argslen); the
+     lead's (E) note stands on that point, but it does NOT block (b) — the cursor phase alone pins count.
+
+GAP (c) — WHICH SITE FIRES. Byte scan of ALL of map0 for `bl`/`blx` into the two functions:
+    * `_copyPreoptimizedClasses` @0x37C264A8  <- ONE static caller: `bl 0x37c264a8` @0x37C17474 in
+      `__class_getNonMetaClass` @0x37C17320 (+0x154). That path is guarded by
+      `cmp.w r1,#0x40000000 ; ldrcs r0,[r0,#8]` (class-data dispatch) at 0x37C17466-0x6E — the runtime
+      CLASS-LOOKUP-by-name path.
+    * `_getPreoptimizedClass` @0x37C263CC <- NO static `bl` anywhere in map0 (0 hits). It is reached
+      INDIRECTLY — consistent with `getPreoptimizedClass` being called through the objc hook/message
+      dispatch used during `+load`/`_class_lookupMethodAndLoadCache`, not a direct call in this image.
+  => STATIC DISAMBIGUATION IS NOT AVAILABLE: the writer's r5 = caller arg0 = the clsopt table base does
+     NOT by itself separate A from B (both pass the SAME kind of table base — Site A passes `sl`
+     =`r1+r2`, Site B passes `sl` too). What r5 DOES confirm: the frame's r5 = 0x38c9ec00 unslides to
+     0x37D72C00, whose first word is `0x4000` — exactly the frame's r12 = 0x00004000. That is the
+     `objc_stringhash_t.capacity` field (`ldr.w ip,[r5]` @0x37C26700 in the writer = capacity = 0x4000),
+     a REAL csopt table (capacity 16384), so r5 IS a genuine `objc_clsopt_t*` — the objc table base, as
+     claimed. The lead's "0x3b868c00" value is NOT this frame's r5; the frame's r5 = 0x38c9ec00
+     (unslid 0x37D72C00). Do NOT repeat 0x3b868c00.
+  => Which site fires for launchctl[2] is NOT decidable from the registers alone; it needs a row that
+     names the return address AT THE FAULT. NAMED PROBE ROW that closes (c): publish, at the fault,
+     the writer's SAVED lr from its own frame — i.e. `*(uint32_t *)(arm_ctx->sp + 0x10)` (the writer's
+     prologue `push {r4,r5,r6,r7,lr}` stores lr at sp+16) — NOT arm_ctx->lr (which is a STALE leftover
+     from getIndex's internal `blx`, see (F)). That slot holds 0x37C26468 (Site A) or 0x37C26554 (Site B).
+     (arm_ctx->lr itself = 0x37C1E9AF is a red herring in BOTH cases.)
+
+SUMMARY OF THE OWED LIST vs THIS SECTION:
+  (a) count  = classheader_word>>1 (runtime) — PINNED to 0xFFFFFFFF by the 1030 cursor phase. CLOSED.
+  (b) block-index model correct (r4 walks block2); "k<=count" was a wrong constraint; frame pins count.
+      CLOSED.
+  (c) site A vs B NOT statically separable; probe row named: read the writer's saved lr at
+      arm_ctx->sp+0x10. OWED (needs the capture; 1031 reading is WITHHELD, device dark).
+====================================================================================================
+
+COROLLARY (Agent-2, decisive): THE BLOCKS OVERLAP THE WRITER'S OWN FRAME — independent confirmation of
+count = 0xFFFFFFFF. With count = 0xFFFFFFFF the caller's two "allocas" ran UP (block1_lo = sp0+4 = 
+0x2bdac084, block2_lo = sp0+8 = 0x2bdac088), i.e. ABOVE the caller's frame — the exact opposite of a
+VLA. The writer then pushed its own frame `push {r4,r5,r6,r7,lr}` (20 B) at [0x2bdac074, 0x2bdac088).
+So:
+    writer frame  = [0x2bdac074, 0x2bdac088)
+    block1_lo     =  0x2bdac084   <-- INSIDE the writer's pushed frame (its saved-r5/r6/r7/lr slots)
+    block2_lo     =  0x2bdac088   <-- exactly at the writer frame's top
+A genuinely below-sp VLA would be entirely BELOW the writer's frame; here the destination blocks land
+INSIDE/AT it. That is only possible because count is NEGATIVE (the `sub.w rX,sp,r5,lsl #2` wrapped).
+This is an independent, by-value confirmation of the count sign, and it also explains why the cursor's
+first stores (into the writer's own saved-register slots) SUCCEEDED while the walk continued upward into
+the unowned region top: the block "base" is inside mapped stack (the callee frame), so the +4 walk
+starts valid and runs off the region end at 0x2bdae000 after j=2014 elements.
+
+====================================================================================================
+(I) RETRACTION OF (G) — the lead's "refutation" of count=-1 was WRONG; count = 0xFFFFFFFF STANDS.
+====================================================================================================
+(G) claimed caller-derivation's count=-1 was "REFUTED" because the frame has r4==r6 and "both cursors
+advance +4/pass, so r4-r6=0 => 4c=0". THAT WAS MY ERROR — the SAME [[mi4-measurement-defects]] class the
+record warns about. The writer's two stores are in ONE pass, and the r6-store (0x37C2674a) runs BEFORE
+the faulting r4-store (0x37C26756). An aborting store does NOT write back its base. So at the fault:
+    r6 = r6_i + 4*P          (its store in pass P completed)
+    r4 = r4_i + 4*(P-1)      (its store in pass P FAULTED -> no writeback)
+  => r6 - r4 = (r6_i - r4_i) + 4 = 4c + 4     [since r4_i - r6_i = -4c]
+The frame's r6 - r4 = 0 therefore gives **4c + 4 = 0 => c = -1 = 0xFFFFFFFF**, EXACTLY caller-derivation's
+value. My "-4c=0 => c=0" ignored the mid-pass fault. (I also wrongly said "r4==r6 needs r4=r6+4": it is
+r6 that is one store ahead BEFORE r4's writeback, and r4==r6 is measured AFTER the pass's r6-store.)
+
+EXACT RECONCILIATION (c = 0xFFFFFFFF, from the frame alone):
+    writer entry sp = 0x2bdac088 = caller r6 = sp0 - 8c  => sp0 = 0x2bdac080
+    block1_lo (caller r2) = sp0 - 4c = 0x2bdac084
+    block2_lo (caller r3) = sp0 - 8c = 0x2bdac088   (= writer entry sp)
+    writer frame = [0x2bdac074, 0x2bdac088)  -> block1_lo 0x2bdac084 is INSIDE it
+    faulting pass P: r4 = r4_i + 4(P-1) = 0x2bdae000 => P = 2015 ; r6 = 0x2bdae000  ✓
+    sp at fault = 0x2bdac088 - 20 = 0x2bdac074  ✓ (matches the frame)
+
+DECISIVE COROLLARY (caller-derivation, independently verified by the lead): the caller's blocks land
+INSIDE/AT-TOP-OF the writer's own pushed frame — impossible for a real below-sp VLA, possible ONLY if
+count is NEGATIVE (the `sub.w rX, sp, rN, lsl #2` wrapped). That is a by-value confirmation of the SIGN
+of count, independent of the cursor arithmetic. It also explains why the cursor's first stores (into the
+callee's saved-register slots) succeeded while the walk ran off the region top at 0x2bdae000.
+
+=> (G)'s REFUTATION IS WITHDRAWN. count = 0xFFFFFFFF (a WRAPPED u32; classheader_word >> 1 per (a)) is
+   SUPPORTED. The root cause stands and is STRENGTHENED: the count is a negative/wrapped value from the
+   objc-classheader table, so the caller's VLA collapses and the writer overruns. (E)/(F) (count not on
+   any wire) remain true for a NON-negative count, but the frame DOES pin count = -1 via the cursor sign.
