@@ -95,6 +95,17 @@ rows (`IOS7LAB cache mapping 0/1`, capture `:4105`,`:4106`), not from a memory o
 ⚠ The capture lists **4** mappings (`:4105-4108`), init_prot `5,23,1,1`. 1016-A quoted only 2. The
 spin's pc is in mapping 0 (`init=5`, `r-x`) either way; §4 of this doc uses all four.
 
+⚠ **The `VA − 0x2c000000` shortcut is NOT a general rule** (corrected 2026-10-17, reader1029). It
+equals `fileOffset + (VA − map.address)` ONLY because the VA here is in **map0**, whose
+`fileOffset == 0` and `address == 0x2c000000`. It breaks silently for any VA in map1/map2 (map1
+`[0x38268000..0x39f48000)` has `fileOffset 0xc266000`) and it is invalid on a **slid** VA. Always
+resolve through the cache's own mapping table:
+`file_offset(v) = map[i].fileOffset + (v − map[i].address)` for the `i` with `map[i].address ≤ v <
+map[i].address + map[i].size`. VERIFIED against the header (map0 `[0x2c000000..0x38266000)` off 0,
+map1 `[0x38268000..0x39f48000)` off 0xc266000, map2 `[0x39f48000..0x3c235000)` off 0xdf46000):
+`0x3823aa54 → 0xc23aa54` ✓ (this doc's pair, in map0) and `0x37c26756 → 0xbc26756` ✓ (1029's fault
+pc, also map0).
+
 ### 2.2 Which image — by value, from the image table
 Decoding the 696-entry table at `imagesOffset 0xc8` (VA-sorted) and binary-searching `0x3823aa54`:
 
