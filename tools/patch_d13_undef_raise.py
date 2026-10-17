@@ -132,6 +132,11 @@ ALLOWED_IF_IDENTIFIERS = {
     # drives this identifier `undefined` too, so the 1028 block is compiled OUT and the OFF text remains
     # HEAD's.
     "STAGE90_XNU_H2_STACK_HEADROOM",
+    # 1029: the READER PROBE (tools/patch_d13_reader_probe.py) edits the SAME file (osfmk/arm/trap.c),
+    # adding a Site A block in the usermode DATA-abort arm, well below `sleh_undef`.  Same shared
+    # namespace rule, same OFF reasoning: the OFF arm drives this identifier `undefined` too, so the
+    # 1029 block is compiled OUT and the OFF text remains HEAD's ([[mi4-one-file-many-rungs]]).
+    "STAGE90_XNU_READER_PROBE",
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

@@ -2132,6 +2132,7 @@ ENTRY_ARM_KEYS=(STAGE90_ENTRY_TRACE STAGE90_ENTRY_REAL_ARM_INIT STAGE90_XNU_SLOT
                 STAGE90_XNU_USTACK_PROBE
                 STAGE90_XNU_ABT_ENTRY_PROBE
                 STAGE90_XNU_H2_STACK_HEADROOM
+                STAGE90_XNU_READER_PROBE
                 STAGE90_XNU_TREE_D13)
 #
 # **The seven switches are not the whole arm, and finding that out is what made this eleven.** Checking
@@ -2308,6 +2309,15 @@ do
         # fix is a value change, not a print), so the entry bin's hash is IDENTICAL with it on and off and
         # the record is the ONLY place the arm appears.  Read from the ENVIRONMENT with a default 0.
         STAGE90_XNU_H2_STACK_HEADROOM)  _v=${STAGE90_XNU_H2_STACK_HEADROOM:-0} ;;
+        # 1029: whether the READER probe is compiled into this image's pool objects
+        # (`osfmk_arm_trap.o`'s `xnu_live_rdr_far=*` + `bsd_kern_kern_exec.o`'s
+        # `xnu_live_rdr_proc_argslen`/`_argc`, staged by tools/patch_d13_reader_probe.py, gated
+        # `#if defined(STAGE90_XNU_READER_PROBE) && STAGE90_XNU_READER_PROBE` and NESTED inside 1025's
+        # publisher block - so it prints nothing unless BOTH switches are on).  Read from the
+        # ENVIRONMENT with a default 0, like its USTACK_PROBE/ABT_ENTRY_PROBE siblings.  Same POOL-only
+        # shape: the entry bin's hash is IDENTICAL with it on and off, so the record is the ONLY place
+        # the arm appears, which is why the 1029 clause at the link site reads the pool objects by value.
+        STAGE90_XNU_READER_PROBE)  _v=${STAGE90_XNU_READER_PROBE:-0} ;;
         # 912: read from the ENVIRONMENT directly and not from `$ENTRY_SIZE`, because this loop runs
         # ~27000 lines ABOVE the assignment (`:28651`) - the same reason `STAGE90_ENTRY_REAL_ARM_INIT`
         # is read with its own `${...:-0}`. The default is the same literal, so an unset switch and an
@@ -29265,6 +29275,37 @@ if [[ $REAL_ARM_INIT -eq 1 ]]; then
             || layout_fail "REFUSING: STAGE90_XNU_ABT_ENTRY_PROBE=0 but a pool object STILL carries the discriminator (osfmk_arm_trap.o x$_abt_have_trap, bsd_kern_kern_exec.o x$_abt_have_exec; both want 0). A stale object built under the switch with a record that says it is off - the reverse of the 1025 clause's OFF arm. Rebuild the pool: STAGE90_XNU_ABT_ENTRY_PROBE=0 ./tools/build_xnu_arm_kernel.sh"
         say "  xnu_entry_1026: neither pool object carries the discriminator and this build sets STAGE90_XNU_ABT_ENTRY_PROBE=0 - the plain 1025 image (no abort-entry discriminator)"
     fi
+    # ================================================================================================
+    # 1029: THE READER-PROBE CLAUSE.  The SAME shape and the SAME reason as 1026's above
+    # (docs/1029-design.md sections 3.1/3.3; team-lead instruction; records/1020-build-defect.txt).  The
+    # switch is a POOL-only switch: `osfmk_arm_trap.o` gains the `xnu_live_rdr_far=*` (and
+    # `far_minus_ustack`/`...`) publisher, and `bsd_kern_kern_exec.o` gains `xnu_live_rdr_proc_argslen`
+    # and `xnu_live_rdr_proc_argc` (the accessors trap.c calls, because `struct proc` is incomplete in
+    # trap.c).  build_entry.sh only LINKS the pool objects, so a record that says 1 over a pool that
+    # carries neither is a refusal (a capture that would be silent on the 1029 question while the
+    # record promises the reader identity is live).
+    _rdr_req=${STAGE90_XNU_READER_PROBE:-0}
+    _rdr_trap_obj=${XNU_KERNEL_OBJ_OUT}/osfmk_arm_trap.o
+    _rdr_exec_obj=${XNU_KERNEL_OBJ_OUT}/bsd_kern_kern_exec.o
+    command -v strings >/dev/null 2>&1 \
+        || layout_fail "the \`strings\` tool is absent from PATH: STAGE90_XNU_READER_PROBE=$_rdr_req says whether the reader probe is in this image's pool objects, and the ONLY reading of that is the format string the compiler materialized for \`xnu_live_rdr_far=\` in osfmk_arm_trap.o plus the \`xnu_live_rdr_proc_argslen\` symbol in bsd_kern_kern_exec.o; without the tool this clause cannot read it, and a clause that skips itself is the defect class [[mi4-a-claim-in-a-comment-is-not-a-check]] -- so it is a refusal"
+    [[ -f $_rdr_trap_obj ]] \
+        || layout_fail "the D13 kernel pool object $_rdr_trap_obj is MISSING - trap.c's usermode data-abort arm is where the reader probe publishes xnu_live_rdr_far=*, and this build cannot read STAGE90_XNU_READER_PROBE=$_rdr_req without it (build the pool with tools/build_xnu_arm_kernel.sh under the current arm's switch set)"
+    [[ -f $_rdr_exec_obj ]] \
+        || layout_fail "the D13 kernel pool object $_rdr_exec_obj is MISSING - kern_exec.c is where the xnu_live_rdr_proc_argslen/_argc accessors live, and this build cannot read STAGE90_XNU_READER_PROBE=$_rdr_req without it (build the pool with tools/build_xnu_arm_kernel.sh under the current arm's switch set)"
+    if [[ $_rdr_req == 1 ]]; then
+        _rdr_have_trap=$(strings "$_rdr_trap_obj" | grep -c '^xnu_live_rdr_far=' || true)
+        _rdr_have_exec=$(strings "$_rdr_exec_obj" | grep -c '^xnu_live_rdr_proc_argslen$' || true)
+        [[ $_rdr_have_trap -ge 1 && $_rdr_have_exec -ge 1 ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_READER_PROBE=1 but the pool objects do NOT carry the probe (osfmk_arm_trap.o has xnu_live_rdr_far= x$_rdr_have_trap, bsd_kern_kern_exec.o has xnu_live_rdr_proc_argslen x$_rdr_have_exec; both want >= 1). A record over a STALE pool (build_entry.sh only LINKS the pool objects; records/1020-build-defect.txt). The record would promise the reader probe while the linked image keeps the old trap.o/kern_exec.o and every capture would be silent on WHICH reader re-faults the launchctl stack. Rebuild the pool: STAGE90_XNU_READER_PROBE=1 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1029: osfmk_arm_trap.o carries the xnu_live_rdr_far= publisher and bsd_kern_kern_exec.o carries the xnu_live_rdr_proc_argslen accessor, and this build sets STAGE90_XNU_READER_PROBE=1 - the reader probe is IN the linked image"
+    else
+        _rdr_have_trap=$(strings "$_rdr_trap_obj" | grep -c '^xnu_live_rdr_far=' || true)
+        _rdr_have_exec=$(strings "$_rdr_exec_obj" | grep -c '^xnu_live_rdr_proc_argslen$' || true)
+        [[ $_rdr_have_trap -eq 0 && $_rdr_have_exec -eq 0 ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_READER_PROBE=0 but a pool object STILL carries the probe (osfmk_arm_trap.o x$_rdr_have_trap, bsd_kern_kern_exec.o x$_rdr_have_exec; both want 0). A stale object built under the switch with a record that says it is off - the reverse of the 1026 clause's OFF arm. Rebuild the pool: STAGE90_XNU_READER_PROBE=0 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1029: neither pool object carries the probe and this build sets STAGE90_XNU_READER_PROBE=0 - the plain 1028 image (no reader probe)"
+    fi
     # **The DOOR half of 888's check is the NEXT block's business, not this one's** - see the
     # `entry_storage_driver_read` clause the link block carries after `xnu_arm_entry.elf` exists. A
     # check placed HERE would read the PREVIOUS arm's elf (the link below has not run yet), which is
@@ -40594,6 +40635,12 @@ IDLE_STACK_FOR_RECORD=${STAGE90_XNU_IDLE_STACK:-1}
     # appears - the 1026 clause at the link site above reads the two pool objects by value, which is
     # what makes a record over a stale pool a refusal rather than a promise.
     echo "STAGE90_XNU_ABT_ENTRY_PROBE=${STAGE90_XNU_ABT_ENTRY_PROBE:-0}"
+    # **1029's reader switch, written here for the SAME reason as 1025's and 1026's.**  Like
+    # USTACK_PROBE/ABT_ENTRY_PROBE it is a POOL-only switch: the entry image's own linked bytes are
+    # IDENTICAL with it on and off (both edited files are POOL objects), so this record line is the
+    # ONLY place the arm appears - the 1029 clause at the link site above reads the two pool objects by
+    # value, which is what makes a record over a stale pool a refusal rather than a promise.
+    echo "STAGE90_XNU_READER_PROBE=${STAGE90_XNU_READER_PROBE:-0}"
     # **1028's H2 headroom fix switch, written here for the SAME reason as 1025's and 1026's.**  The fix is
     # a value change in `create_unix_stack`'s FIXED `mach_vm_allocate` extent (both edited files are POOL
     # objects), so the entry image's own linked bytes are IDENTICAL with it on and off and this record line

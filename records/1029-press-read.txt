@@ -1,0 +1,57 @@
+1029 PRESS - OUTCOME: NON-RETURN, NO CAPTURE (the device did not come back; a reading is OWED)
+===========================================================================================
+date:     2026-10-17
+arm:      armed-d13-8355c712   (1029 = 1028's switch set + ONE NEW: STAGE90_XNU_READER_PROBE=1)
+role:     1029-reader-probe     (carrier: out/stage90/xnu_arm_entry-arm-extra.txt)
+verdict:  **G-CTL / NO READING** - the press ran, the device did not return, and the only capture
+          present is OLDER than this boot, so the staleness guard refused to adjudicate. This is a
+          reading OF THE INSTRUMENT ("no capture NEWER than this boot"), NOT a negative about the
+          reader. The 1029 question (who derives the store at user_stack + 0x1000) is UNANSWERED.
+
+WHAT HAPPENED, BY VALUE (out/stage90/press-1029.log)
+----------------------------------------------------
+  step 0   all by-value gates PASS (arm = armed-d13-8355c712; xnu_live_rdr_far= in trap.o, in
+           kern_exec.o's accessor, AND in the linked image; check_1029_capture.py --selftest PASS;
+           the H2 fix + all inherited switches intact).
+  step 3   USB reader armed -> captures/usb-console-1029-20261017-045342.txt.
+           `fastboot boot -s 4a2fe00b out/stage90/stage90-qcdt.img` issued (Booting OKAY).
+           runner exit 2  = a RESIDENT rung not returning (the predicted 1024/1025/1026/1027 shape).
+           USB capture: ZERO bytes; reader exit 143 (SIGTERM).
+           => the payload never delivered on EP1-IN (18d1:0910). This is the SAME blind spot as
+              1024/1025/1026/1027: the reading lives in DRAM, and the one USB stream that could
+              carry it is the one that never enumerated. Do NOT re-aim the reader's pid.
+  step 4   180 s bounded wait: no adb entry, no NEW enumeration on the host port. The device did
+           NOT come back.
+  step 5   STALENESS GUARD FIRED. The newest recovered capture is
+             captures/recovered-unknown-arm-20261017-041142-last_kmsg.txt  (2026-10-17 04:11:42)
+           which is OLDER than this press's boot epoch (2026-10-17 04:55:11). A resident rung that
+           does not return keeps NO /proc/last_kmsg of its own, so that file is the 1028 run's slot.
+           The press printed "NO READING - STALE SLOT" and did NOT run the checker
+           ([[mi4-stale-slot-impersonates-a-reading]], [[mi4-last-kmsg-reader-carrier]]).
+
+WHY THIS IS THE CORRECT FAIL-CLOSED OUTCOME
+-------------------------------------------
+  The guard exists precisely so a non-returning press does not report a cell about a DIFFERENT arm.
+  Reading the 04:11:42 slot would print a cell describing 1028's boot under a 1029 label. The press
+  refused. ([[mi4-silence-is-a-reading-only-if-success-is-silent]]: an absent rdr row means the
+  probe did not RUN, not "no fault".)
+
+WHAT IS OWED (the operator step)
+--------------------------------
+  1. OPERATOR power press: hold Power ~10-15 s, release, press Power normally.
+  2. Then, while Android is up:  scripts/recover_last_kmsg.sh --read-only
+     (do NOT fastboot boot anything first - that clears the single-slot RAM console.)
+  3. Adjudicate ONLY a capture NEWER than the 04:55:11 boot:
+        python3 -I tools/check_1029_capture.py <capture>
+     READER-NAMED / READER-UNKNOWN / REGRESSION / G-CTL per docs/1029-design.md section 4.
+  4. NOT pressed again. The slot must not be cleared.
+
+THE QUESTION 1029 ASKS (unchanged, now pending the recovery)
+-----------------------------------------------------------
+  READER-NAMED requires: far - ustack == 0x1000 AND entry_at_hit == 0 AND blk_hi == ustack AND
+  blk_bytes == (ustack - blk_lo) AND far == ustack + 0x1000. BY VALUE this proves the writer's
+  store address is a function of p->user_stack.
+  READER-UNKNOWN names the first failing conjunct (entry_at_hit == 1 => the block top grew, not the
+  reader; far - ustack != 0x1000 => a fixed-VA writer).
+  1029 is a PROBE: report, do NOT re-fix (a second allocation would move the fault again; 1028
+  proved the fault FOLLOWS the region by exactly one page).

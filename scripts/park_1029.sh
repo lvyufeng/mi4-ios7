@@ -238,9 +238,9 @@ echo "   BY VALUE(2): the LINKED $LIVE/xnu_arm_entry.elf carries 1029's xnu_live
 #     pmap_flush_tlbs fingerprint below is what certifies the fix is in the object
 #     ([[mi4-self-written-record-is-not-a-constraint]]).
 _b_extra="$LIVE/xnu_arm_entry-arm-extra.txt"
-[[ -f $_b_extra ]] || { echo "REFUSING: $_b_extra is absent - 1028's build writes the declaration carrier at its tail; an absent one means this arm's build did not finish"; exit 1; }
+[[ -f $_b_extra ]] || { echo "REFUSING: $_b_extra is absent - 1029's build writes the declaration carrier at its tail; an absent one means this arm's build did not finish"; exit 1; }
 [[ $(wc -l < "$_b_extra") == 1 && $(cat "$_b_extra") == 'STAGE90_XNU_GLOBAL_FIX=1 role=1029-reader-probe' ]] || {
-  echo "REFUSING: $_b_extra is not EXACTLY the one 1028 line (it holds '$(cat "$_b_extra")' across $(wc -l < "$_b_extra") line(s)). 1015b's GLOBAL_FIX is a POOL switch no writer in src/entry/ echoes, so this drop-in is its ONE declaration, and 1028's build writes it as exactly this line. A surviving 1027 line (role=1027-abt-entry-probe) would be a declaration OF A DIFFERENT BUILD ([[mi4-self-written-record-is-not-a-constraint]]). Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: $_b_extra is not EXACTLY the one 1029 line (it holds '$(cat "$_b_extra")' across $(wc -l < "$_b_extra") line(s)). 1015b's GLOBAL_FIX is a POOL switch no writer in src/entry/ echoes, so this drop-in is its ONE declaration, and 1029's build writes it as exactly this line. A surviving 1027 line (role=1027-abt-entry-probe) would be a declaration OF A DIFFERENT BUILD ([[mi4-self-written-record-is-not-a-constraint]]). Re-run scripts/build_1029.sh"; exit 1; }
 echo "   DECLARATION: $_b_extra carries exactly '$(cat "$_b_extra")' (written by THIS build; the proof is the fingerprint below)"
 
 # ---- THE INHERITED GLOBAL-FIX CLAUSE: IT IS IN THE FROZEN POOL OBJECT, BY VALUE ----
@@ -253,7 +253,7 @@ _gf_kp=$(arm-none-eabi-objdump -r "$_gf_obj" 2>/dev/null | awk '$1>="00000418" &
 _gf_full=$(arm-none-eabi-objdump -r "$_gf_obj" 2>/dev/null | awk '$1>="00000418" && $1<="00000640"' | grep -c 'R_ARM_CALL.*arm_tlb_flushID$' || true)
 _gf_asid=$(arm-none-eabi-objdump -r "$_gf_obj" 2>/dev/null | awk '$1>="00000418" && $1<="00000640"' | grep -c 'R_ARM_CALL.*arm_tlb_flushID_ASID$' || true)
 [[ "$_gf_kp" == "3" && "$_gf_full" == "1" && "$_gf_asid" == "1" ]] || {
-  echo "REFUSING: pmap_flush_tlbs materializes kernel_pmap x$_gf_kp (want 3), arm_tlb_flushID x$_gf_full / arm_tlb_flushID_ASID x$_gf_asid (want 1/1) - GLOBAL-FIX is NOT in the pool object, so the retry storm 1015b killed is BACK and the run would never reach the launchctl abort this rung acts on. -DSTAGE90_XNU_GLOBAL_FIX=1 has NO record carrier (records/1020-build-defect.txt). Re-run scripts/build_1028.sh."; exit 1; }
+  echo "REFUSING: pmap_flush_tlbs materializes kernel_pmap x$_gf_kp (want 3), arm_tlb_flushID x$_gf_full / arm_tlb_flushID_ASID x$_gf_asid (want 1/1) - GLOBAL-FIX is NOT in the pool object, so the retry storm 1015b killed is BACK and the run would never reach the launchctl abort this rung acts on. -DSTAGE90_XNU_GLOBAL_FIX=1 has NO record carrier (records/1020-build-defect.txt). Re-run scripts/build_1029.sh."; exit 1; }
 echo "   POOL(GLOBAL-FIX): by value - pmap_flush_tlbs carries the 3rd kernel_pmap materialization ($_gf_kp sites) and the declared 1/1 flush arms, so 1015b's GLOBAL-FIX IS in the pool object"
 
 # ---- THE INHERITED 1024 CEILING CLAUSE: IT IS IN THE LINKED IMAGE, BY VALUE ----
@@ -262,7 +262,7 @@ echo "   POOL(GLOBAL-FIX): by value - pmap_flush_tlbs carries the 3rd kernel_pma
 [[ -f tools/check_vm_max_split.py ]] || { echo "REFUSING: tools/check_vm_max_split.py is ABSENT - it is the inherited 1024 claim's by-value check on the linked image's task-map ceiling"; exit 1; }
 python3 -I tools/check_vm_max_split.py --selftest >/dev/null 2>&1 || { echo "REFUSING: tools/check_vm_max_split.py --selftest did NOT PASS - the inherited ceiling checker cannot certify anything"; exit 1; }
 python3 -I tools/check_vm_max_split.py "$LIVE/xnu_arm_entry.elf" --expect on >/dev/null 2>&1 || {
-  echo "REFUSING: the LINKED image's task_create_internal does NOT pass 0x40000000 to vm_map_create - either 1024's widened vm_param.h:63 line did not reach the pool, or a STALE pool object was linked (build_entry.sh only LINKS it). The 1023 storm would return and the run would never reach launchctl. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: the LINKED image's task_create_internal does NOT pass 0x40000000 to vm_map_create - either 1024's widened vm_param.h:63 line did not reach the pool, or a STALE pool object was linked (build_entry.sh only LINKS it). The 1023 storm would return and the run would never reach launchctl. Re-run scripts/build_1029.sh"; exit 1; }
 echo "   POOL(CEILING): by value - the LINKED image's task_create_internal passes 0x40000000 to vm_map_create (1024's ceiling is intact)"
 
 # ---- THE INHERITED NEON-FREE CLAUSE: -msoft-float must still hold (this rung re-OBJECTs the WHOLE
@@ -276,11 +276,11 @@ _src_rec=out/xnu_kernel_src_d13.sha256
 _want_objs=$(grep -c '^[0-9a-f]\{64\} ' "$_src_rec" || true)
 _got_objs=$(ls "$_pool"/*.o 2>/dev/null | wc -l)
 [[ $_want_objs -gt 0 && $_got_objs -eq $_want_objs ]] || {
-  echo "REFUSING: $_pool holds $_got_objs object(s) but $_src_rec names $_want_objs source(s) - the census would count the WRONG set (a partial or stale directory passes any NEON-free test vacuously). Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: $_pool holds $_got_objs object(s) but $_src_rec names $_want_objs source(s) - the census would count the WRONG set (a partial or stale directory passes any NEON-free test vacuously). Re-run scripts/build_1029.sh"; exit 1; }
 python3 -I tools/check_d13_no_neon.py --pool "$_pool" --expect none --min-objects "$_want_objs" >/dev/null 2>&1 || {
-  echo "REFUSING: tools/check_d13_no_neon.py --pool $_pool --expect none did NOT pass - the pool the linked image was built from still contains FP/NEON instructions. 1028 recompiles the WHOLE pool, so the -msoft-float flag must still reach every object or the kernel-mode NEON undef at 0x8047b0ac returns. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: tools/check_d13_no_neon.py --pool $_pool --expect none did NOT pass - the pool the linked image was built from still contains FP/NEON instructions. 1028 recompiles the WHOLE pool, so the -msoft-float flag must still reach every object or the kernel-mode NEON undef at 0x8047b0ac returns. Re-run scripts/build_1029.sh"; exit 1; }
 python3 -I tools/check_d13_no_neon.py "$LIVE/xnu_arm_entry.elf" --symbol mach_msg_send --expect none >/dev/null 2>&1 || {
-  echo "REFUSING: the LINKED image's mach_msg_send still contains FP/NEON instructions - 1021d's -msoft-float flag did not reach the object the linker saw, or a STALE pool object was linked. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: the LINKED image's mach_msg_send still contains FP/NEON instructions - 1021d's -msoft-float flag did not reach the object the linker saw, or a STALE pool object was linked. Re-run scripts/build_1029.sh"; exit 1; }
 echo "   POOL(NEON-FREE): by value - $_got_objs objects NEON-free (== $_want_objs source(s)), and the LINKED mach_msg_send is NEON-free (1021d's -msoft-float holds)"
 
 # ====================================================================================================
@@ -303,12 +303,12 @@ grep -q '^STAGE90_XNU_VM_MAX_SPLIT=1$' "$LIVE/xnu_arm_entry-config.txt" || {
 [[ -f tools/check_1023_trap24.py ]] || { echo "REFUSING: tools/check_1023_trap24.py is ABSENT - it is the inherited 1023 claim's by-value check on the linked image"; exit 1; }
 python3 -I tools/check_1023_trap24.py --selftest >/dev/null 2>&1 || { echo "REFUSING: tools/check_1023_trap24.py --selftest did NOT PASS - the inherited row-24 checker cannot certify anything"; exit 1; }
 python3 -I tools/check_1023_trap24.py "$LIVE/xnu_arm_entry.elf" --expect on >/dev/null 2>&1 || {
-  echo "REFUSING: the LINKED image's mach_trap_table[24] is NOT the ios7lab_mach_port_construct_trap row any more (or rows 25/41/42 moved) - 1028 adds only the H2 fix and must ADD nothing else. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: the LINKED image's mach_trap_table[24] is NOT the ios7lab_mach_port_construct_trap row any more (or rows 25/41/42 moved) - 1029 adds only the reader probe and must MOVE nothing else. Re-run scripts/build_1029.sh"; exit 1; }
 echo "   BY VALUE(3): tools/check_1023_trap24.py --expect on PASSes (1023's row 24 is intact, rows 25/41/42 still kern_invalid)"
 # 1020's by-value clause, re-run on the LINKED image.
 [[ -f tools/check_d13_undef_raise.py ]] || { echo "REFUSING: tools/check_d13_undef_raise.py is ABSENT - it is the inherited 1020 claim's by-value check on the linked image"; exit 1; }
 python3 -I tools/check_d13_undef_raise.py "$LIVE/xnu_arm_entry.elf" --expect on >/dev/null 2>&1 || {
-  echo "REFUSING: tools/check_d13_undef_raise.py --expect on did NOT pass on the linked image - 1020's moved \`return\` is NOT in this image's sleh_undef, so the udf loop is back. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: tools/check_d13_undef_raise.py --expect on did NOT pass on the linked image - 1020's moved \`return\` is NOT in this image's sleh_undef, so the udf loop is back. Re-run scripts/build_1029.sh"; exit 1; }
 echo "   BY VALUE(4): tools/check_d13_undef_raise.py --expect on PASSes (1020's raise is intact in the linked image)"
 # 1018's by-value census: `__wrap_sleh_undef` in the LINKED image must branch to the DIRECT writer.
 _ua=$(arm-none-eabi-nm "$LIVE/xnu_arm_entry.elf" | awk '$3=="__wrap_sleh_undef"{print "0x" $1; n++} END{exit(n==1?0:1)}') || {
@@ -329,9 +329,11 @@ for m in "${MEMBERS[@]}"; do cp -p "$LIVE/$m" "$PARK/$m"; done
 
 # THE FROZEN RE-READ.  The checks above ran on the LIVE artifacts (so a bad arm never creates a park
 # directory); this re-runs the rung's own claims on the PARKED bytes, so what is frozen is what was
-# certified - a later build cannot silently change what was pressed.  1028's own change is in a POOL
-# object (not in the entry ELF), so its frozen re-read is the entry ELF's INHERITED rows + the source
-# record the arm's record carries.
+# certified - a later build cannot silently change what was pressed.  1029's Site A rows ARE prints, so
+# (unlike 1028's value-only H2 fix) this rung's own edit has a string the frozen entry ELF can be
+# re-read for.
+grep -qa '^xnu_live_rdr_far=' <(strings "$PARK/xnu_arm_entry.elf") || {
+  echo "REFUSING: the FROZEN $PARK/xnu_arm_entry.elf lost 1029's xnu_live_rdr_far= row - the copy is not the certified bytes, and a press of this arm would capture nothing on the launchctl fault. This park's directory is incomplete; remove $PARK and re-run"; exit 1; }
 grep -qa '^xnu_live_abt_lookup_far=' <(strings "$PARK/xnu_arm_entry.elf") || {
   echo "REFUSING: the FROZEN $PARK/xnu_arm_entry.elf lost the xnu_live_abt_lookup_far= publisher - the copy is not the certified bytes. This park's directory is incomplete; remove $PARK and re-run"; exit 1; }
 grep -qa '^xnu_live_abt_e2_hi=' <(strings "$PARK/xnu_arm_entry.elf") || {
@@ -342,55 +344,67 @@ python3 -I tools/check_vm_max_split.py "$PARK/xnu_arm_entry.elf" --expect on >/d
   echo "REFUSING: the FROZEN $PARK/xnu_arm_entry.elf does not carry 1024's ceiling claim the live one did - the copy is not the certified bytes. This park's directory is incomplete; remove $PARK and re-run"; exit 1; }
 python3 -I tools/check_1023_trap24.py "$PARK/xnu_arm_entry.elf" --expect on >/dev/null 2>&1 || {
   echo "REFUSING: the FROZEN $PARK/xnu_arm_entry.elf lost 1023's row-24 claim - the copy is not the certified bytes. This park's directory is incomplete; remove $PARK and re-run"; exit 1; }
-# 1028's own change has no frozen byte in the entry ELF (it is a POOL value change); the arm's CERTIFIED
-# source is the staged kern_exec.c the record's sha256 binds to the entry bin.  Re-read it by content so
-# the park's own claim is re-stated on the parked arm's identity.
+# 1029's own edit is in SOURCE the arm's record binds by content (the pool compiled it), so re-read the
+# STAGED source: both sites must still be present, on the parked arm's identity.
+grep -q 'STAGE90_XNU_READER_PROBE' "$_tr_src" || {
+  echo "REFUSING: the staged $_tr_src no longer carries STAGE90_XNU_READER_PROBE - the source the certified pool was built from has changed under the parked arm; the park's own claim is not re-readable. remove $PARK, re-stage the probe, and re-run"; exit 1; }
+grep -q 'STAGE90_XNU_READER_PROBE' "$_ke_src" || {
+  echo "REFUSING: the staged $_ke_src no longer carries STAGE90_XNU_READER_PROBE - Site B's accessors are gone from the source the certified pool was built from. remove $PARK, re-stage the probe, and re-run"; exit 1; }
 grep -q 'STAGE90_XNU_H2_STACK_HEADROOM' "$_ke_src" || {
-  echo "REFUSING: the staged $_ke_src no longer carries STAGE90_XNU_H2_STACK_HEADROOM - the source the certified pool was built from has changed under the parked arm; the park's own claim is not re-readable. remove $PARK, stage the fix, and re-run"; exit 1; }
-echo "   BY VALUE(6): the FROZEN $PARK/xnu_arm_entry.elf carries the 1027 discriminator (lookup_far + e2_hi), 1025's publisher, 1024's ceiling (0x40000000) AND 1023's row 24; the staged kern_exec.c still carries STAGE90_XNU_H2_STACK_HEADROOM + the size + 16 extent (the parked bytes are the certified bytes)"
+  echo "REFUSING: the staged $_ke_src no longer carries STAGE90_XNU_H2_STACK_HEADROOM - the PARENT 1028 fix the parked arm carries has been reverted under it. remove $PARK, re-stage, and re-run"; exit 1; }
+echo "   BY VALUE(6): the FROZEN $PARK/xnu_arm_entry.elf carries 1029's xnu_live_rdr_far= row, the 1027 discriminator (lookup_far + e2_hi), 1025's publisher, 1024's ceiling (0x40000000) AND 1023's row 24; the staged trap.c AND kern_exec.c still carry STAGE90_XNU_READER_PROBE and kern_exec.c still carries STAGE90_XNU_H2_STACK_HEADROOM (the parked bytes are the certified bytes)"
 
 {
-  printf '# %s  -  1028: THE H2 FIX - GIVE THE INITIAL USER-STACK BLOCK ONE WORD OF HEADROOM.\n' "$ARM"
-  printf '# 1027-s press RAN and its own console was recovered (records/1027-press-read.txt). The reading is\n'
-  printf '# H2 (off-the-end), BY VALUE, at the launchctl[2] stack fault:\n'
-  printf '#   lookup_far=0  far_in_map=1  entry=[0,0)  e2=[0x2bce1000,0x2bde0000)\n'
-  printf '#   e2_hi == far == ustack == 0x2bde0000     map == taskmap == 0xc0005688\n'
-  printf '# The user-stack region is [0x2bce1000,0x2bde0000) and its EXCLUSIVE TOP IS far; the word just\n'
-  printf '# below (far-4) IS in the map. H1 (wrong map) is refuted by value (map == taskmap). By source,\n'
-  printf '# create_unix_stack sets p->user_stack to the requested top and allocates [user_stack-size,\n'
-  printf '# user_stack), and exec_copyout_strings places the initial argv/env block with its TOP at\n'
-  printf '# p->user_stack - so the word AT user_stack is UNOWNED and userspace-s touch of it faults.\n'
-  printf '# docs/1028-design.md.\n'
-  printf '# Switch set is 1027-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_H2_STACK_HEADROOM=1**.\n'
-  printf '# THE ARM (ONE POOL EDIT, one switch), staged by tools/patch_d13_h2_stack_headroom.py:\n'
-  printf '#   kern_exec.c -> in create_unix_stack, the FIXED `mach_vm_allocate(map,&addr,size,...)` extent\n'
-  printf '#                  becomes `size + 16`. The base, the block, sp, p->user_stack, and the guard\n'
-  printf '#                  math are UNCHANGED; only the region-s EXCLUSIVE TOP moves up by 16.\n'
+  printf '# %s  -  1029: THE READER PROBE - NAME WHAT COVERS THE FAULTING WORD (AND WHAT READS THE ARGS).\n' "$ARM"
+  printf '# 1028-s press RAN and its own console was recovered (records/1028-press-read.txt). The reading is\n'
+  printf '# FIX-NOOP, BY VALUE, PAGE-EXACT - the H2 fix moved the region and the fault MOVED WITH IT:\n'
+  printf '#   xnu_live_ustack_rc=0   p->user_stack=0x2bd0d000   far=0x2bd0e000\n'
+  printf '#   far - ustack = 0x1000 (NOT 16: mach_vm_allocate rounds the extent up)   sp=0x2bd0c074\n'
+  printf '#   ustack - sp = 0x0F8C        far - sp = 0x1F8C\n'
+  printf '# H2 IS REFUTED AS A FIX TARGET by that page-exact displacement: the word at the region-s top was\n'
+  printf '# NOT the cause, because the fault followed the top. docs/1029-design.md sec.0. REPORT IT; DO NOT\n'
+  printf '# RE-FIX IT.\n'
+  printf '# WHAT THE FAULT IS, THEREFORE, IS A QUESTION THE EXISTING ROWS CANNOT ANSWER: something is\n'
+  printf '# writing one page ABOVE the advertised stack top, and NOTHING in the 1025/1026/1027/1028 set says\n'
+  printf '# WHO OWNS THAT PAGE. 1029 answers it with a READER probe.\n'
+  printf '# Switch set is 1028-s VERBATIM with **ONE NEW SWITCH: STAGE90_XNU_READER_PROBE=1**.\n'
+  printf '# THE ARM (TWO SITES, one switch), staged by tools/patch_d13_reader_probe.py:\n'
+  printf '#   Site A  osfmk/arm/trap.c  - rows INSIDE 1025-s publisher, AFTER 1026/1027-s block but WITHIN\n'
+  printf '#                              1025-s block, so the reader rows ride the SAME fault the\n'
+  printf '#                              discriminator fires on. Rows: far, ustack, far_minus_ustack, blk_hi,\n'
+  printf '#                              blk_lo, blk_bytes, argc, entry_at_hit, entry_at_lo, entry_at_hi ->\n'
+  printf '#                              xnu_live_rdr_* (RAM console, one key per line).\n'
+  printf '#   Site B  bsd/kern/kern_exec.c - accessors that expose the `struct proc` the trap-side cannot see\n'
+  printf '#                              (1026-s idiom): xnu_live_rdr_proc_argslen + the block bounds.\n'
+  printf '# *** THE ARGS LENGTH IS THE POINT OF Site B. ***  blk_bytes vs (blk_hi - blk_lo) and argc separate\n'
+  printf '# "the block did not grow" from "the block grew and its top is NOT p->user_stack" - the two\n'
+  printf '# READER-UNKNOWN shapes sec.4 distinguishes.\n'
   printf '# THE CHANNEL IS THE GLOBAL DEFINES ARRAY of tools/build_xnu_arm_kernel.sh (env), NOT EXTRA\n'
-  printf '# (build_1028.sh arrests a -DSTAGE90_XNU_H2_STACK_HEADROOM in EXTRA), so an EXTRA-only build\n'
-  printf '# cannot ship a stale pool behind a green build.\n'
-  printf '# THE POOL MOVES: kern_exec.c is a POOL file, so the pool (and the entry .bin whose sha8 IS the\n'
-  printf '# arm) MOVES (d06ee14f -> %s). build_entry.sh only LINKS the pool objects, so a green entry\n' "${ARM#armed-d13-}"
-  printf '# build says nothing about this half.\n'
-  printf '# [[mi4-one-file-many-rungs]]: THREE rungs edit bsd/kern/kern_exec.c (1025 / 1026 / 1028) and\n'
-  printf '# FOUR edit osfmk/arm/trap.c (994 / 1020 / 1025 / 1026); a cleanup `git checkout --` reverts the\n'
-  printf '# others SILENTLY and the failure surfaces LATE.\n#\n'
-  printf '# THE BY-VALUE PROOF OF 1028-S CHANGE (the fix has NO string - a value change, not a print):\n'
-  printf '#   (0)  tools/check_1028_capture.py --selftest PASSes (the checker can fail);\n'
-  printf '#   (1)  the staged kern_exec.c carries STAGE90_XNU_H2_STACK_HEADROOM with the FIXED extent\n'
-  printf '#        = size + 16 AND the pool-s own source-content record names the SAME content (the pool\n'
-  printf '#        compiled the fixed source); the INHERITED 1027 rows (lookup_far + e2_hi) AND 1025-s\n'
-  printf '#        publishers SURVIVE the same rebuild (they are read the fix-s cells BESIDE);\n'
-  printf '#   (2)  the LINKED out/stage90/xnu_arm_entry.elf carries the inherited rows (the linker did not\n'
-  printf '#        drop them);\n'
-  printf '#   (6)  the FROZEN bytes still carry them AND the staged source still carries the switch (the\n'
+  printf '# (build_1029.sh arrests a -DSTAGE90_XNU_READER_PROBE in EXTRA), so an EXTRA-only build cannot\n'
+  printf '# ship a stale pool behind a green build.\n'
+  printf '# THE POOL MOVES TWICE OVER: trap.c AND kern_exec.c are BOTH pool files, so the pool (and the\n'
+  printf '# entry .bin whose sha8 IS the arm) MOVES (35a7e83e -> %s). build_entry.sh only LINKS the pool\n' "${ARM#armed-d13-}"
+  printf '# objects, so a green entry build says nothing about this half.\n'
+  printf '# [[mi4-one-file-many-rungs]]: FOUR rungs edit bsd/kern/kern_exec.c (1025 / 1026 / 1028 / 1029)\n'
+  printf '# and FIVE edit osfmk/arm/trap.c (994 / 1020 / 1025 / 1026 / 1029); a cleanup `git checkout --`\n'
+  printf '# reverts the others SILENTLY and the failure surfaces LATE.\n#\n'
+  printf '# THE BY-VALUE PROOF OF 1029-S CHANGE (Site A rows ARE prints, so this rung has real strings\n'
+  printf '# evidence - unlike 1028-s value-only fix):\n'
+  printf '#   (0)  tools/check_1029_capture.py --selftest PASSes (the checker can fail);\n'
+  printf '#   (1)  the POOL OBJECTS carry it: osfmk_arm_trap.o has `xnu_live_rdr_far=` AND the WHOLE row\n'
+  printf '#        set, bsd_kern_kern_exec.o has `xnu_live_rdr_proc_argslen` (Site A + Site B both reached\n'
+  printf '#        the objects); the INHERITED 1025/1026/1027 rows SURVIVE the same rebuild;\n'
+  printf '#   (2)  the LINKED out/stage90/xnu_arm_entry.elf carries 1029-s row AND the inherited rows (the\n'
+  printf '#        linker did not drop any of them);\n'
+  printf '#   (6)  the FROZEN bytes still carry them AND the staged sources still carry the switch (the\n'
   printf '#        parked bytes are the certified bytes).\n#\n'
   printf '# THE CARRIERS ([[mi4-one-value-two-definitions]]). The record carries\n'
-  printf '# STAGE90_XNU_H2_STACK_HEADROOM=1 (the switch the fix is gated by AND the readability carrier)\n'
-  printf '# AND 1027-s STAGE90_XNU_ABT_ENTRY_PROBE=1 AND 1025-s STAGE90_XNU_USTACK_PROBE=1 (the PARENT\n'
-  printf '# gate). The declaration carrier out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS\n'
-  printf '# build-s tail as STAGE90_XNU_GLOBAL_FIX=1 role=1029-reader-probe; the grep of it is the\n'
-  printf '# process check and the pmap_flush_tlbs fingerprint is the proof.\n'
+  printf '# STAGE90_XNU_READER_PROBE=1 (the switch the probe is gated by AND the readability carrier) AND\n'
+  printf '# 1028-s STAGE90_XNU_H2_STACK_HEADROOM=1 AND 1027-s STAGE90_XNU_ABT_ENTRY_PROBE=1 AND 1025-s\n'
+  printf '# STAGE90_XNU_USTACK_PROBE=1 (the PARENT gate). The declaration carrier\n'
+  printf '# out/stage90/xnu_arm_entry-arm-extra.txt is written by THIS build-s tail as\n'
+  printf '# STAGE90_XNU_GLOBAL_FIX=1 role=1029-reader-probe; the grep of it is the process check and the\n'
+  printf '# pmap_flush_tlbs fingerprint is the proof.\n'
   printf '# THE INHERITED REGRESSIONS held (asserted by the park): STAGE90_XNU_GENERAL_REGS=1 (1021d-s\n'
   printf '# -msoft-float), STAGE90_XNU_UNDEF_RAISE=1, STAGE90_XNU_UNDEF_DIRECT=1, STAGE90_XNU_IOS7_TRAPS=1\n'
   printf '# and STAGE90_XNU_VM_MAX_SPLIT=1 in the record, 1024-s ceiling on the linked image, the\n'
@@ -398,17 +412,20 @@ echo "   BY VALUE(6): the FROZEN $PARK/xnu_arm_entry.elf carries the 1027 discri
   printf '# mach_msg_send NEON-free read, check_1023_trap24.py --expect on, check_d13_undef_raise.py\n'
   printf '# --expect on, and by value __wrap_sleh_undef branching to entry_write_kv (>=6) and NOT\n'
   printf '# entry_live_write (0).\n#\n'
-  printf '# THE 1028 VERDICT CELLS (docs/1028-design.md sec.5; read via tools/check_1028_capture.py):\n'
-  printf '#   FIX-HOLDS   - the launchctl[2] data abort at far == p->user_stack is GONE (0 rows with\n'
-  printf '#                 xnu_live_abt_vmfkrv=1 on a far in the stack window) AND launchd still starts\n'
-  printf '#                 AND the next frontier is NAMED by the existing rows;\n'
-  printf '#   FIX-NOOP    - the same abort at the same far - sp == 0xF8C recurs => the top word was not\n'
-  printf '#                 the cause; report, do not re-fix;\n'
-  printf '#   REGRESSION  - trap24 / port_construct(result=0) vanish, or a panic appears => the +16 moved\n'
-  printf '#                 something the guard math depended on; report and revert;\n'
-  printf '#   G-CTL / WITHHOLD - launchd never reached and no prior control live => no reading (fail closed);\n'
-  printf '#   e2_hi       - must now read far + 16 (the region-s new exclusive top) if the fix landed; if it\n'
-  printf '#                 still reads far, the allocation edit did not take effect (a build defect).\n'
+  printf '# THE 1029 VERDICT CELLS (docs/1029-design.md sec.4; read via tools/check_1029_capture.py):\n'
+  printf '#   READER-NAMED - far is EXACTLY one page above p->user_stack (far - ustack == 0x1000), NO entry\n'
+  printf '#                 covers far (entry_at_hit == 0), and the block-s TOP bound IS p->user_stack\n'
+  printf '#                 (blk_hi == ustack, blk_bytes == ustack - blk_lo) => the store is off the END of\n'
+  printf '#                 a region whose top IS the advertised stack top. The NEXT rung names the writer\n'
+  printf '#                 of that page. VALVE: the DECISIVE conjuncts are `entry_at_hit == 0` AND\n'
+  printf '#                 `blk_hi == ustack` - NOT the literal 0x1000.\n'
+  printf '#   READER-UNKNOWN - entry_at_hit == 1 (some entry DOES cover far: the fault is a permission /\n'
+  printf '#                 attribute problem on a MAPPED page, a different bug), or far - ustack != 0x1000\n'
+  printf '#                 (the geometry moved again: sec.8 says REFUSE TO PICK A FIX and instrument the\n'
+  printf '#                 WALKER next). Both fail closed - a reading, not a blessing.\n'
+  printf '#   REGRESSION  - trap24 / port_construct(result=0) vanish, or a panic appears => the probe\n'
+  printf '#                 changed the pool-s behaviour, not just its console; report and revert.\n'
+  printf '#   G-CTL / WITHHOLD - launchd never reached and no prior control live => no reading (fail closed).\n'
   printf '# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never\n'
   printf '# written - fully reversible. fastboot boot only, NEVER flash.\n'
   printf '# =================================================================================================\n'

@@ -1049,6 +1049,32 @@ DEFINES=(
 # the format string / symbol in the .o (build_1026.sh refuses on its absence).
 [[ ${STAGE90_XNU_ABT_ENTRY_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_ABT_ENTRY_PROBE=1)
 
+# ---------------------------------------------------------------------------------------------------
+# 1029: STAGE90_XNU_READER_PROBE -- name WHO re-faults the user stack AFTER 1028's fix, by value, on the
+# kernel's ram console (docs/1029-design.md 3.1/3.3).
+#
+# 1028's press read FIX-NOOP: the fault MOVED with the region by 0x1000, so the region was not the last
+# word and H2 is refuted.  1029 publishes, for the failing fault only, the reader's identity and the
+# derivation distance:
+#   * trap.c       -> `xnu_live_rdr_far/far_minus_ustack/...` (NESTED inside 1025's
+#                     `#if STAGE90_XNU_USTACK_PROBE` publisher block - ONE gate on the shared fault path,
+#                     so 1029 prints nothing unless BOTH switches are on);
+#   * kern_exec.c  -> `xnu_live_rdr_proc_argslen` / `xnu_live_rdr_proc_argc`, the accessors trap.c calls
+#                     (`struct proc` is only FOWARD-declared in trap.c, so the FIELDS are unreadable
+#                     there).
+#
+# WHY THE GLOBAL ARRAY AND NOT `EXTRA_DEFINES`.  Same reason as the 1024 ceiling and the 1025/1026
+# probes: the switch must be on the SAME argv every pool object gets, and `EXTRA_DEFINES`
+# (`XNU_KERNEL_EXTRA_DEFINES`, ~:1399) is appended LAST and is NOT seen by the EABI-runtime block
+# (~:1796) or the firehose block (~:1838).  `tools/build_xnu_arm_kernel.sh` is run separately from
+# `build_entry.sh` (which only LINKS the pool objects), so without the re-run of THIS script the linked
+# image keeps the old trap.o/kern_exec.o and the keys never appear (records/1020-build-defect.txt).
+# OFF the two `#if`s compile the tree's original bytes (`defined()` comes first,
+# [[mi4-off-option-two-spellings]]); the by-value reading of whether the switch reached the objects is
+# the format string / symbol in the .o (build_1029.sh refuses on its absence; the link-site clause in
+# build_entry.sh refuses too).
+[[ ${STAGE90_XNU_READER_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_READER_PROBE=1)
+
 # 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
 # the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO
 # p->user_stack, so the word at the top is unowned and userspace's touch faults.  This switch makes the
