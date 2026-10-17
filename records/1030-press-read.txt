@@ -1,0 +1,45 @@
+1030 PRESS - THE WRITER PROBE.  2026-10-17.
+================================================================================
+ARM:  armed-d13-8034562e   (xnu_arm_entry.bin sha256 8034562e70c9a0b1..., 6331476 bytes)
+      Set recorded by hand in records/revert-set.txt BEFORE the press (13 files,
+      verify_revert_set.sh VERIFIED, commit edaff91) - the press's own revert-set
+      clause refused the arm until the record existed, which is the designed behaviour.
+PRESS: 2026-10-17 06:08:45 UTC (boot epoch 1792217325), `fastboot boot` of
+      out/stage90/stage90-qcdt.img (sha d7bd16a6...).  fastboot boot ONLY, never flash.
+
+OUTCOME: NON-RETURN, NO CAPTURE.
+  runner exit 2                 (a resident rung not returning shows as 2)
+  USB console: zero bytes       (out/stage90/captures/usb-console-1030-20261017-060702.txt)
+  reader exit 143               (killed at the EXIT trap - the payload never enumerated;
+                                 the 1024-1027 EP1-IN blind spot, unchanged)
+  bounded wait: adb absent, host log 27 -> 27 enumerations of 4a2fe00b (no return)
+  device: DARK (adb not listed, fastboot not listed)
+
+READING: NO READING - STALE SLOT (step 5's guard fired, correctly).
+  The newest recovered capture is recovered-unknown-arm-20261017-055940-last_kmsg.txt,
+  mtime 05:59:41 (epoch 1792216781), which is OLDER than this press's boot epoch
+  1792217325 - so it is the *1029* slot, byte-identical (md5 7a4f1025...) to the
+  capture 1029 was read from.  A resident rung that does not return keeps NO
+  /proc/last_kmsg of its own ([[mi4-last-kmsg-reader-carrier]]); adjudicating the
+  stale slot would print a cell about a DIFFERENT arm ([[mi4-stale-slot-impersonates-a-reading]]).
+  The guard printed NO READING and did NOT run the checker.  THIS IS THE CORRECT
+  READING OF THE INSTRUMENT: the run produced no log to read.
+
+WHAT IS OWED: the OPERATOR'S POWER PRESS.  Hold Power ~10-15 s, release, press
+  normally.  Then, in order (do NOT `fastboot boot` anything first - a later kernel
+  clears the RAM-console buffer on entry):
+    1. scripts/recover_last_kmsg.sh --read-only      # while Android is up
+    2. find the NEWEST out/stage90/captures/recovered-*-last_kmsg.txt and check its
+       mtime is NEWER than 1792217325
+    3. if NEWER:  python3 -I tools/check_1030_capture.py <capture>
+       cells: W-A-NAMED / W-B-NAMED / W-OTHER / REGRESSION / G-CTL   (name the
+       missing conjunct; NEVER a negative)
+    4. if NOT newer: the slot is still stale - no reading yet.
+
+NOTE.  A non-returning resident rung's log lives in the top of DRAM and is destroyed
+by a cold power transition AND by any new `fastboot boot`.  The 1024-1027 blind spot
+(no USB stream, no returned log) is the same here: the only channel that would have
+carried this run's `xnu_live_wrp_*` rows is the USB EP1-IN stream, which delivered
+zero bytes.  So whether 1030's rows are recoverable at all depends on the power
+press preserving the RAM console; if the device returns via the watchdog rather than
+a cold boot, the log MAY still be in the slot the stock-Android boot reads.
