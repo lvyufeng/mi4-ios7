@@ -62,9 +62,19 @@ SOURCE OF THE FACTS
   The model REQUIRES, to be a complete account:
     (a) `count >= 2014` (an ~8 KiB VLA, == the value of the second alloca) — NEVER VERIFIED. The agent
         tested only that `k` is a non-negative integer.
-    (b) `k <= count` (the cursor cannot advance past the loop bound) — the lead's re-run shows this is
-        FALSE for count in {0,1,2,3,0x100,0x200,0x3EF}: 4k is always >= 0x1F78 (k >= 2014) while k must be
-        <= count. Numerically self-inconsistent for every count tried.
+    (b) `k <= count` — **THIS CONSTRAINT WAS MINE, AND IT IS WRONG (corrected 2026-10-17).** §1 of THIS
+        record already states the loop is COUNTER-bounded by `r0 = (r2>>1)-1` (`asrs r0,r2,#1` at
+        `0x37C26736`), where `r2` is the objc TABLE-entry word (`ldr.w r2,[r3,r0,lsl #3]` @`0x37C26716`,
+        guarded by `tst.w r2,#1`). So the iteration count `k = (tbl>>1)` is INDEPENDENT of the alloca
+        `count` (r5): the alloca sizes the DESTINATION blocks; the LOOP is bounded by the table entry.
+        `k <= count` is therefore NOT the loop's constraint and there is NO contradiction. The observed
+        `r4_fault - block2_lo = 0x1F78 + 8*count` instead FIXES A RELATION: `4k = 0x1F78 + 8*count` =>
+        **`tbl = 2*count + 0x7BC`** (e.g. count=0x800 => tbl=0x47BC, k=0x23DE=9182; count=0 => tbl=0x7BC,
+        k=0x7DE=2014). **The real question is not `k <= count` but whether `tbl` SHOULD equal
+        `2*count + 0x7BC` — i.e. whether the objc table entry's count word is consistent with the
+        caller's VLA sizing.** This is `[[mi4-measurement-defects]]`: my §4(b) constraint contradicted my
+        own §1. (Raised by design-1032 as a "standing contradiction"; the correct resolution is that the
+        contradiction is an artifact of the wrong constraint.)
     (c) whether the faulting cursor writes block #2 (r4 <- r3 = block2) or block #1 — the writer stores
         to BOTH cursors each pass; site A passes block#1 as r2 and block#2 as r3, and r4 <- r3 = block#2.
         So r4 walks block #2, whose span is [r3_init, r3_init + 4*count).
@@ -170,3 +180,31 @@ The open quantity is still `count` (r5, the return of 0x37c26698): it sets how f
 count is large enough that block2_lo + 4*count (== block1_lo) reaches the region top, the OVERFLOW is in
 this caller's own VLA sizing; if not, the writer's cursor runs PAST its own buffer. Either way the fix
 belongs in THIS caller (its block sizing / count), NOT in any region geometry - consistent with s0.2.
+
+====================================================================================================
+ADDENDUM 2026-10-17 (lead, independent objdump + arithmetic) — TWO CORRECTIONS TO THE CONTRADICTION
+====================================================================================================
+(A) THE "STANDING CONTRADICTION" IS AN ARTIFACT OF A WRONG CONSTRAINT. See (4)(b) corrected above:
+    the loop is bounded by the objc table word (`asrs r0,r2,#1` @0x37C26736), NOT by the alloca `count`.
+    k = (tbl>>1), independent of count; the observed geometry only FIXES tbl = 2*count + 0x7BC.
+    Verified arithmetic (S_bl = 0x2bdac088, r4_fault = 0x2bdae000):
+      count=0x0   -> block2_lo=0x2bdac088  k=2014 (0x7DE)
+      count=0x800 -> block2_lo=0x2bda8088  k=6110 (0x17DE)   [r12-derived count]
+      count=0x100 -> k=2526 ; count=0x200 -> k=3038 ; count=0x3EF -> k=4028   (all integral)
+    k > count for every count tested, but that is IRRELEVANT — k is not bounded by count.
+
+(B) design-1032's r12 CLAIM IS UNFOUNDED. It asserted `cal_r12 = 0x4000` is "the second alloca's size,
+    i.e. 8*count, so it BOUNDS count ≈ 2048". Disassembly of the WHOLE caller (0x37C263CC..0x37C26560)
+    contains ZERO references to r12 (`objdump | grep -wc r12` = 0). r12 is therefore NOT written by this
+    function and CANNOT be "the second alloca's size". The second alloca is `sub.w r6, sp, r5, lsl #2`
+    (4*count below block1_lo), not 8*count, and it is in r6, not r12. So r12 = 0x4000 is a value the
+    caller inherited or that belongs to the writer's frame — it does NOT bound count. The proposed
+    "r12 cross-checks the >=2014 leg" is VOID; count is NOT pinned by any published 1031 row.
+
+(C) CONSEQUENCE FOR 1032. The decisive quantity is `tbl` (the objc table entry's count word) and its
+    relation to the caller's VLA `count`. NEITHER is on the wire. 1031's cell is therefore EXPECTED to be
+    CAL-CONTRADICTION-OR-NEUTRAL: the capture cannot decide the model from registers alone. The honest
+    next instrument is a rung that publishes `count` (the r5 at the bl) and `tbl` (the `[r3,r0,lsl #3]`
+    table word) by value — or the 1030 `block_bytes`/`rdr_proc_argslen` row (188) must be checked against
+    `8*count` to see if it IS this VLA (design-1032 says it is the argv/env block, not this VLA — that
+    claim is UNVERIFIED here; 188/4 = 47, 188/8 = 23.5, so 188 is NOT 8*count for integer count).
