@@ -107,3 +107,58 @@ SOURCE OF THE FACTS
 (7) THE FIX IS NOT PICKED HERE. 1031 is a PROBE. The reading is WITHELD (device dark after the press;
 records/1031-press-read.txt). This file is static forensics that must be reconciled WITH the 1031 capture
 when it is recovered, not used in its place.
+====================================================================================================
+LEAD'S INDEPENDENT VERIFICATION (2026-10-17, read-only objdump on /tmp/dyld-extract/dyld_shared_cache_armv7)
+== map0 file_off = v_unslid - 0x2C000000. Verified byte-for-byte, not taken on the agent's word. ==
+
+WRITER (unslid 0x37C266EC), exact bytes:
+  37c266ec: b5f0        push {r4,r5,r6,r7,lr}
+  37c266ee: af03        add  r7, sp, #12
+  37c266f0: 461c        mov  r4, r3              ; r4 = caller 4th arg
+  37c266f2: 4616        mov  r6, r2              ; r6 = caller 3rd arg
+  37c266f4: 4605        mov  r5, r0              ; r5 = caller 1st arg
+  ...
+  37c26756: f844 2b04   str.w r2, [r4], #4       ; *** FAULT *** post-increment cursor
+  37c2675a: d1f2        bne.n 0x37c26742
+  CONFIRMED.
+
+CALLER (unslid 0x37C263CC), exact bytes:
+  37c263cc: b5f0        push {r4,r5,r6,r7,lr}
+  37c263ce: af03        add  r7, sp, #12
+  37c263d0: e92d 0d00   stmdb sp!, {r8,sl,fp}
+  37c263d4: b085        sub  sp, #20
+  ...
+  37c2641e: f000 f93b   bl   0x37c26698            ; returns r5 = the ELEMENT COUNT (mov r5,r0 @ 0x37c26422)
+  37c2644e: ebad 0485   sub.w r4, sp, r5, lsl #2     ; block1_lo = sp0 - 4*count
+  37c26452: 46eb        mov  fp, sp                  ; fp := sp0 (real sp saved)
+  37c26454: 46a5        mov  sp, r4
+  37c26456: ebad 0685   sub.w r6, sp, r5, lsl #2     ; block2_lo = block1_lo - 4*count = sp0 - 8*count
+  37c2645a: 46b5        mov  sp, r6
+  37c2645c: 4650        mov  r0, sl
+  37c2645e: 4641        mov  r1, r8
+  37c26460: 4622        mov  r2, r4                  ; arg2 = block1_lo
+  37c26462: 4633        mov  r3, r6                  ; arg3 = block2_lo  <-- THE 4th ARG (r4 in the writer)
+  37c26464: f000 f942   bl   0x37c266ec            ; -> the writer
+  37c26468..: the caller's own walk of block2 (ldr.w r1,[r6,r0,lsl #2]), then `mov sp, fp` restores.
+  CONFIRMED. Site B (0x37C26550) is the same shape.
+
+lr = 0x38b4a9af -> unslid 0x37C1E9AF:
+  37c1e9aa: f008 eaf2   blx  0x37c26f90           ; a DIRECT call (target 0x37C26F90, NOT the writer)
+  37c1e9ae: 2800        cmp  r0, #0
+  So lr IS a real call-return (of a call to 0x37C26F90). docs/1032-design.md s6's "lr does not resolve
+  to a call site" is REFUTED. (The target being 0x37C26F90, not the writer, is why an earlier search that
+  looked for a call OF THE WRITER at lr failed.)
+
+*** DECISIVE CONSEQUENCE ***
+The caller does NOT compute the region's exclusive top. It builds r3 (the writer's r4) as the LOW end of a
+`count`-word VLA buffer carved BELOW sp (block2_lo = sp0 - 8*count), and it is the WRITER's post-increment
+cursor that walks UP. So the 1032 design's central premise - that 1031's cell will name a caller-side
+computation of the TOP (CAL-CALLER-TOP) or of a base+size (CAL-CALLER-SIZE) - is NOT what the instructions
+show: the caller's r3 is a plain below-sp VLA base, neither a top nor a base+size-of-the-region. The cell
+1031 prints will compare r3 (=a VLA base near sp) against region_end; it should read r3 << region_end, i.e.
+NEITHER CAL-CALLER-TOP NOR CAL-CALLER-SIZE, i.e. **CAL-CALLER-OTHER** unless the block2 buffer genuinely
+reaches 0x2bdae000.
+The open quantity is still `count` (r5, the return of 0x37c26698): it sets how far block2 reaches. If
+count is large enough that block2_lo + 4*count (== block1_lo) reaches the region top, the OVERFLOW is in
+this caller's own VLA sizing; if not, the writer's cursor runs PAST its own buffer. Either way the fix
+belongs in THIS caller (its block sizing / count), NOT in any region geometry - consistent with s0.2.
