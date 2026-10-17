@@ -1,0 +1,64 @@
+1028 PRESS READ - give the initial user-stack block ONE WORD of headroom (the H2 FIX)
+========================================================================================
+Arm: armed-d13-35a7e83e.  Press log: /tmp/press_1028.log.  NOT PRESSED AGAIN (single slot).
+
+VERDICT: **NO READING - the RAM-console slot was NOT re-written by this run, so the checker
+read the 1027 press's OWN log (a STALE slot).**  The FIX-NOOP cell the press printed is an
+artifact of the stale-slot defect, NOT a device fact about the +16 fix.
+
+WHAT HAPPENED
+-------------
+1. All by-value gates PASSED before the boot (press log step 0):
+     (0a)  the staged kern_exec.c carries STAGE90_XNU_H2_STACK_HEADROOM with the `size + 16`
+           extent (x1) and the patcher's #endif (x1), AND the pool's own source-content record
+           (out/xnu_kernel_src_d13.sha256) names the SAME sha256 - the fix IS in the object the
+           linked image was built from;
+     (0a-1) trap.o carries 1027's xnu_live_abt_lookup_far= AND 1025's xnu_live_abt_vmfkrv=;
+            kern_exec.o carries 1026's xnu_live_abt_proc_ustack AND 1025's xnu_live_ustack_req=;
+     (0f)  the LINKED xnu_arm_entry.elf carries xnu_live_abt_lookup_far= and xnu_live_abt_vmfkrv=.
+2. `fastboot boot out/stage90/stage90-qcdt.img` (sha256 fa57362e..., verified unchanged across the
+   send).  Booting OKAY at ~03:34.
+3. The device did NOT return (runner exit 2 = resident rung non-return; the expected shape).
+   - adb: serial 4a2fe00b not listed.
+   - host log: 27 -> 27 enumerations (no new one).
+   - USB console capture: zero bytes (reader exit 143 - the reader was SIGTERM'd, as designed).
+4. Step 4 (recovery) waited 90x5s = 450 s and found the device STILL dark, so it did NOT recover a
+   fresh log: "device not visible yet; if still dark, the operator power-press is the next step".
+5. Step 5 then read the NEWEST recovered file on disk, which is
+   out/stage90/captures/recovered-unknown-arm-20261017-030551-last_kmsg.txt - **mtime 03:05:51**,
+   i.e. 29 minutes BEFORE this press's boot (the press itself started 03:48:16, the boot ~03:34).
+
+WHY THE FIX-NOOP CELL IS AN ARTIFACT (three independent tells)
+--------------------------------------------------------------
+a. The capture's mtime (03:05:51) PREDATES the 1028 boot (~03:34).  A slot written by 1028's own
+   boot cannot be older than the boot.
+b. The capture's rows are the 1027 H2 reading EXACTLY: far=0x2bde0000 == ustack, sp == 0xF8C,
+   lookup_far=0 - i.e. records/1027-press-read.txt's reading, verbatim.  (The press's own step-5
+   note predicts this: "if $_last still matches the 1025 press's own log, the run did NOT re-write
+   the ram-console slot".)
+c. The device never returned, so it never reached the point of writing its own RAM console.
+
+So the FIX-NOOP cell is adjudicating the PREVIOUS boot, and its own caveat ("a build defect OR the
+top word was not the cause") is the wrong branch: the reading is neither - there is NO 1028 reading.
+By [[mi4-last-kmsg-reader-carrier]] a resident rung that does not return keeps NO /proc/last_kmsg of
+its own; the reader then reads whatever slot the LAST returning boot left.
+
+**THE FIX IS STILL CERTIFIED PRESENT, BY VALUE, IN THE ARM THAT WAS BOOTED** (independent of the
+slot): out/stage90/xnu_arm_entry.elf, create_unix_stack @ 0x8020a768:
+    8020a7c4: orr  r2, r6, #16    <- FIXED mach_vm_allocate size (= size + 16; size page-aligned)
+    8020a7d8: bl   mach_vm_allocate
+    8020a7fc: mov  r2, r6         <- ANYWHERE fallback size (UNCHANGED)
+    8020a814: add  r7, r0, r6     <- user_stack = addr + size (UNCHANGED)
+(records/1028-build.txt has the same disassembly off the pool object and the linked entry elf.)
+
+DEFECT FOUND (press): the press WARNS about a stale slot in step 5 but still RUNS the checker on the
+stale file, so a non-returning run prints a FIX-NOOP/G-CTL cell that reads a DIFFERENT boot's log.
+The press must REFUSE to adjudicate a capture older than its own boot (a freshness check: the
+capture's mtime must be AFTER the boot, or the press must print NO READING and stop).  This is the
+[[mi4-silence-is-a-reading-only-if-success-is-silent]] / [[mi4-last-kmsg-reader-carrier]] shape
+from the reading side.
+
+NEXT STEP: the device needs the OPERATOR's power press (VolDown+Power+USB -> fastboot, then
+`fastboot boot <stock boot.img>` -> `cat /proc/last_kmsg`), then re-run
+`scripts/recover_last_kmsg.sh --read-only` and adjudicate ONLY the capture that is newer than the
+1028 boot.  Do NOT `fastboot boot` anything else first (it would clear the slot).  NOT boot TWRP.

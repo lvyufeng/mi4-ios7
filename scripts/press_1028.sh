@@ -258,6 +258,11 @@ scripts/preflight_boot_check.sh --allow-xnu-entry
 # **THE COMMAND LINE, PRINTED BEFORE IT IS ISSUED.** The SINGLE device write this press makes is
 # `fastboot boot` of the payload - never `fastboot flash`.
     echo "   fastboot boot -s 4a2fe00b out/stage90/stage90-qcdt.img   (fastboot boot, NEVER flash)"
+# **THE BOOT STAMP.**  Step 5 must refuse to adjudicate a capture OLDER than this boot: a resident rung
+# that does not return keeps NO /proc/last_kmsg of its own, so the recovery reads whatever slot the LAST
+# returning boot left ([[mi4-last-kmsg-reader-carrier]]).  Without this stamp the reader reports a cell
+# that describes a DIFFERENT arm's boot (records/1028-press-read.txt: the 1028 press read the 1027 slot).
+_BOOT_EPOCH=$(date +%s)
 set +e
 scripts/run_and_capture.sh --allow-xnu-entry --expect-arm="$EXPECT_ARM"
 RUN_RC=$?
@@ -325,6 +330,23 @@ echo "== 5. read the recovered capture: run the 1028 reader and print its cell =
 # so the invocation is wrapped and its status reported, never propagated ([[mi4-silence-is-a-reading]]).
 _last=$(ls -1t out/stage90/captures/recovered-*-last_kmsg.txt 2>/dev/null | head -1 || true)
 if [[ -n $_last ]]; then
+  # **STALENESS GUARD: the capture MUST be newer than this press's boot.**  A resident rung that does
+  # not return leaves no /proc/last_kmsg of its own, so the newest file can be a PREVIOUS boot's slot.
+  # Adjudicating it would print a cell about a DIFFERENT arm (the 1028 press read the 1027 slot:
+  # records/1028-press-read.txt).  Fail closed: print NO READING and stop, never run the checker.
+  _last_epoch=$(stat -c %Y "$_last" 2>/dev/null || echo 0)
+  if [[ -n ${_BOOT_EPOCH:-} && $_last_epoch -lt $_BOOT_EPOCH ]]; then
+    echo "   NO READING - STALE SLOT: the newest capture is OLDER than this press's boot."
+    echo "     capture: $_last"
+    echo "     capture mtime: $(stat -c %y "$_last")   (epoch $_last_epoch)"
+    echo "     this boot:     $(date -d "@$_BOOT_EPOCH" '+%Y-%m-%d %H:%M:%S%z' 2>/dev/null)   (epoch $_BOOT_EPOCH)"
+    echo "   This run did NOT re-write the RAM-console slot (a resident rung that does not return keeps"
+    echo "   none of its own), so this capture is a PREVIOUS boot's log.  Running the checker on it would"
+    echo "   report a cell about a different arm ([[mi4-last-kmsg-reader-carrier]]).  NOT adjudicating."
+    echo "   The device needs the OPERATOR's power press; then: scripts/recover_last_kmsg.sh --read-only"
+    echo "   while Android is up, and re-run this reading ONLY on a capture newer than this boot."
+    echo "   (NOT pressed again - the slot must not be cleared; do NOT fastboot boot anything first.)"
+  else
   echo "   reading the NEWEST recovered capture: $_last"
   echo "   (its byte-identity to the 1025 crash family is the check that the slot was re-written this run:"
   echo "    if $_last still matches the 1025 press's own log, the run did NOT re-write the ram-console slot"
@@ -334,6 +356,7 @@ if [[ -n $_last ]]; then
   _rd_rc=$?
   set -e
   echo "   (reader exit $_rd_rc; 0 = a cell fired, 1 = G-CTL/WITHHOLD - both are readings)"
+  fi
 else
   echo "   NO recovered capture found under out/stage90/captures/recovered-*-last_kmsg.txt - there is"
   echo "   nothing to read; the run's log did not reach a recovery. Read records/1025-press-read.txt and"
