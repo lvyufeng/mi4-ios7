@@ -102,6 +102,18 @@ WRP_KEYS = (
     "xnu_live_wrp_r6",
     "xnu_live_wrp_r12",
     "xnu_live_wrp_block_bytes",
+    # **EVERY row `tools/patch_d13_writer_probe.py` EMITS must be listed here.** `group_rows` ends a
+    # group at the first line carrying CONTENT and NONE of `keys`, so an emitted row left OUT of this
+    # tuple SPLITS the group: the rows after it land in a later group that `require` filters out, and
+    # the checker reads a partial row (it saw only r4/r3 and returned W-OTHER on a capture whose 14 rows
+    # were all present).  The five below are emitted but are not read as cells -- they are listed so
+    # they cannot break the group.  ([[mi4-one-value-two-definitions]]: the patcher and the checker are
+    # two definitions of one key set; parity is a CHECK, not a claim.)
+    "xnu_live_wrp_lr",
+    "xnu_live_wrp_r5",
+    "xnu_live_wrp_r4_minus_ustack",
+    "xnu_live_wrp_r4_minus_far",
+    "xnu_live_wrp_far",
 )
 
 # the 1029 reader discriminator keys (kept so the PARENT re-reading still fires)
@@ -341,6 +353,7 @@ def adjudicate(cap):
     sp = parse_int(row.get("xnu_live_wrp_sp"))
     dsp = parse_int(row.get("xnu_live_wrp_r4_minus_sp"))
     ust = parse_int(row.get("xnu_live_wrp_userstack"))
+    far = parse_int(row.get("xnu_live_wrp_far"))
     pc = parse_int(row.get("xnu_live_wrp_pc"))
     bby = parse_int(row.get("xnu_live_wrp_block_bytes"))
 
@@ -361,26 +374,40 @@ def adjudicate(cap):
              f"r6={hx(row.get('xnu_live_wrp_r6'))} r12={hx(row.get('xnu_live_wrp_r12'))} "
              f"block_bytes={bby}")
 
-    # (3a) W-B FIRST: r4 == the advertised stack top (a stack-limit / canary store).  This is the more
-    # specific tell and is checked before the sp-relative one (r4 could be BOTH if sp==ustack... but
-    # then it is the region top, which is the W-B reading).
-    if ust is not None and r4 == ust:
+    # (3a) W-B FIRST: r4 == the region's EXCLUSIVE TOP.  **THE REGION TOP IS THE TELL, NOT `user_stack`
+    # EXACTLY.**  On the 1028/1029 arm the H2 fix grew the region so its exclusive top is
+    # `user_stack + 0x1000` (`size+16 -> round_page -> +PAGE`), and 1029 settled BY VALUE across the
+    # whole population that `far` == that moving top in every run.  So the W-B predicate is
+    # `r4 == far` (r4 IS the region's exclusive end) -- NOT `r4 == ust`, which MISSES this arm (here
+    # r4 == ust + 0x1000, one page above ust).  This branch MUST be first AND MUST exclude W-A: `sp`
+    # is itself `user_stack - block`, so `r4 - sp` is ALWAYS `block + 0x1000` on this arm and would look
+    # like "a small frame offset" even when r4 is the region top.  Reading the sp-relative tell here
+    # would have printed W-A on a store that is unambiguously at the region's edge -- the exact
+    # measurement defect the by-value check caught (sp and ustack are not independent anchors).
+    if far is not None and r4 == far:
+        at_ust = (ust is not None and r4 == ust)
         return verdict("W-B-NAMED",
-                       f"r4 == user_stack == {hx(row.get('xnu_live_wrp_userstack'))}: the faulting store "
-                       f"targets the ADVERTISED STACK TOP itself (thread_userstack / p->user_stack). "
-                       f"Combined with 1029's `far == the region's exclusive top`, this is a "
-                       f"STACK-LIMIT / canary store: the writer deliberately writes at the advertised "
-                       f"top, and the fault is the intended limit check firing one page early "
-                       f"(MAXSSIZ / LAB_USER_STACK off by a page). The fix is in the LIMIT accounting, "
-                       f"NOT in the region geometry (records/1030-audit.txt: no allocation change can "
-                       f"help while far == the moving region top). {shape}")
+                       f"r4 == far == {hx(row.get('xnu_live_wrp_far'))}: the faulting store target IS the "
+                       f"region's EXCLUSIVE TOP (the address 1029 settled as `far` in every run), "
+                       f"{'== user_stack exactly' if at_ust else hx(row.get('xnu_live_wrp_r4_minus_ustack')) + ' above user_stack'}. "
+                       f"r6 == r4 too, so BOTH output cursors of the table-rebase copy point at the "
+                       f"region's edge. This is NOT a shallow-frame artefact: the sp-relative tell "
+                       f"(`r4 - sp == {hx(row.get('xnu_live_wrp_r4_minus_sp'))}`) holds TRIVIALLY because "
+                       f"sp == user_stack - block (block == {bby} B), so sp and the region top are the "
+                       f"SAME anchor -- reading it as `W-A` is a MEASUREMENT DEFECT. The reading is a "
+                       f"STACK-LIMIT / boundary store at the advertised region end: the writer "
+                       f"deliberately writes the word at the region's exclusive top and the fault is the "
+                       f"limit check firing one page early (or the top not being owned). The fix is in "
+                       f"the LIMIT / ownership accounting, NOT in the frame size (records/1030-audit.txt: "
+                       f"no allocation change can help while far == the moving region top). {shape}")
 
-    # (3b) W-A: r4 is sp-relative by a SMALL CONSTANT frame offset.
+    # (3b) W-A: r4 is sp-relative by a SMALL CONSTANT frame offset -- and r4 is NOT the region top.
     if delta is not None and 0 < delta <= FRAME_OFF_MAX:
         return verdict("W-A-NAMED",
                        f"r4 - sp == {hx(row.get('xnu_live_wrp_r4_minus_sp'))} (computed {hex(delta)}) "
                        f"-- a SMALL CONSTANT frame offset (<= 0x{FRAME_OFF_MAX:x}), i.e. the store's "
-                       f"base is derived from the thread's OWN stack pointer. The writer's frame "
+                       f"base is derived from the thread's OWN stack pointer, and r4 is NOT the region "
+                       f"top (far == {hx(row.get('xnu_live_wrp_far'))} != r4). The writer's frame "
                        f"therefore sits PAST the advertised stack top because the INITIAL STACK handed "
                        f"to the thread is TOO SHALLOW (the block+frame chain is taller than the space "
                        f"the exec advertised). The fix (if any) is in the exec's initial-thread stack / "
@@ -464,35 +491,85 @@ def self_test():
     ]
 
     # W-A-NAMED: r4 - sp == 0x1F8C (the observed 1029 frame offset), r4 != userstack.
+    # **THE FIXTURE MUST BE THE PATCHER'S REAL EMISSION, IN ORDER, ALL 14 ROWS.** An earlier version of
+    # this list carried only the 9 keys `WRP_KEYS` read, so it could never expose a group split caused by
+    # an emitted row left out of `WRP_KEYS` -- and that is exactly the defect the first real capture hit
+    # (r5 broke the group after r3; the checker read a partial row and returned W-OTHER on a capture whose
+    # 14 rows were all present). `tools/patch_d13_writer_probe.py` emits in this exact order.
+    #
+    # **AND `far` MUST VARY WITH THE CELL.** W-B's predicate is `r4 == far` (the region-top tell), so a
+    # W-A fixture needs `far != r4`; the old fixtures set `far == r4` in every case, which would make
+    # every one of them W-B and hide the ordering bug the real capture exposed.
+    # W-A: r4 is sp-relative, r4 is NOT the region top (far is one page ABOVE r4).
     wrp_wa = [
-        "xnu_live_wrp_r4=0x2bd39000",
-        "xnu_live_wrp_sp=0x2bd37074",
-        "xnu_live_wrp_r4_minus_sp=0x00001f8c",
-        "xnu_live_wrp_userstack=0x2bd38000",
-        "xnu_live_wrp_pc=0x3b71c756",
+        "xnu_live_wrp_r4=0x2bd38000",
         "xnu_live_wrp_r3=0x2bd39999",
-        "xnu_live_wrp_r6=0x00000000",
+        "xnu_live_wrp_r5=0x38c9ec00",
+        "xnu_live_wrp_r6=0x2bd38040",
         "xnu_live_wrp_r12=0x00004000",
+        "xnu_live_wrp_sp=0x2bd36074",
+        "xnu_live_wrp_pc=0x3b71c756",
+        "xnu_live_wrp_lr=0x3b71a9af",
+        "xnu_live_wrp_r4_minus_sp=0x00001f8c",
+        "xnu_live_wrp_userstack=0x2bd39000",
+        "xnu_live_wrp_r4_minus_ustack=0xfffff000",
+        "xnu_live_wrp_far=0x2bd39000",
+        "xnu_live_wrp_r4_minus_far=0xfffff000",
         "xnu_live_wrp_block_bytes=188",
     ]
     expect("W-A-NAMED", _mk(tmp, "wa.txt", ctl + vm + entry + wrp_wa), "W-A-NAMED")
 
-    # W-A-NAMED (degenerate): r4 == sp exactly (zero frame offset)
+    # W-A-NAMED (degenerate): r4 == sp exactly (zero frame offset), r4 still != far.
     wrp_wa0 = list(wrp_wa)
-    wrp_wa0[0] = "xnu_live_wrp_r4=0x2bd37074"
-    wrp_wa0[2] = "xnu_live_wrp_r4_minus_sp=0x00000000"
+    for _i, _ln in enumerate(wrp_wa0):
+        if _ln.startswith("xnu_live_wrp_r4="):
+            wrp_wa0[_i] = "xnu_live_wrp_r4=0x2bd36074"
+        if _ln.startswith("xnu_live_wrp_r4_minus_sp="):
+            wrp_wa0[_i] = "xnu_live_wrp_r4_minus_sp=0x00000000"
     expect("W-A-NAMED", _mk(tmp, "wa0.txt", ctl + vm + entry + wrp_wa0), "W-A-NAMED-zero-offset")
 
-    # W-B-NAMED: r4 == userstack
+    # W-B-NAMED: r4 == far == the region's exclusive top (user_stack + 0x1000 on the H2 arm).
+    # **THE REAL 1030 SHAPE:** sp == user_stack - block, so r4 - sp is a small constant TOO -- W-B must
+    # win (the region-top tell is the specific one; the sp-relative tell holds trivially).
     wrp_wb = list(wrp_wa)
-    wrp_wb[0] = "xnu_live_wrp_r4=0x2bd38000"
-    wrp_wb[2] = "xnu_live_wrp_r4_minus_sp=0x00000f8c"
+    for _i, _ln in enumerate(wrp_wb):
+        if _ln.startswith("xnu_live_wrp_r4="):
+            wrp_wb[_i] = "xnu_live_wrp_r4=0x2bd3a000"
+        if _ln.startswith("xnu_live_wrp_r6="):
+            wrp_wb[_i] = "xnu_live_wrp_r6=0x2bd3a000"
+        if _ln.startswith("xnu_live_wrp_sp="):
+            wrp_wb[_i] = "xnu_live_wrp_sp=0x2bd38074"
+        if _ln.startswith("xnu_live_wrp_r4_minus_sp="):
+            wrp_wb[_i] = "xnu_live_wrp_r4_minus_sp=0x00001f8c"
+        if _ln.startswith("xnu_live_wrp_userstack="):
+            wrp_wb[_i] = "xnu_live_wrp_userstack=0x2bd39000"
+        if _ln.startswith("xnu_live_wrp_r4_minus_ustack="):
+            wrp_wb[_i] = "xnu_live_wrp_r4_minus_ustack=0x00001000"
+        if _ln.startswith("xnu_live_wrp_far="):
+            wrp_wb[_i] = "xnu_live_wrp_far=0x2bd3a000"
+        if _ln.startswith("xnu_live_wrp_r4_minus_far="):
+            wrp_wb[_i] = "xnu_live_wrp_r4_minus_far=0x00000000"
     expect("W-B-NAMED", _mk(tmp, "wb.txt", ctl + vm + entry + wrp_wb), "W-B-NAMED")
 
-    # W-OTHER: r4 neither sp-relative (delta > FRAME_OFF_MAX) nor userstack
+    # **THE GROUP-SPLIT GUARD.** The same W-A capture with the emitted-but-UNREAD rows (`r5`, `lr`)
+    # REMOVED must give the SAME cell: if dropping an emitted row changes the verdict, `WRP_KEYS` is
+    # missing that row and the real capture's group will split. (Only the purely decorative rows are
+    # stripped -- `far` and `r4_minus_ustack` ARE read by the W-B branch.) Regression test for the
+    # defect the first real capture hit.
+    wrp_stripped = [ln for ln in wrp_wa if not any(
+        ln.startswith(f"xnu_live_wrp_{k}=") for k in ("r5", "lr"))]
+    expect("W-A-NAMED", _mk(tmp, "stripped.txt", ctl + vm + entry + wrp_stripped),
+           "W-A-NAMED-with-emitted-rows-stripped (group-split guard)")
+
+    # W-OTHER: r4 neither sp-relative (delta > FRAME_OFF_MAX) nor the region top (r4 != far)
     wrp_wo = list(wrp_wa)
-    wrp_wo[0] = "xnu_live_wrp_r4=0x2bd90000"
-    wrp_wo[2] = "xnu_live_wrp_r4_minus_sp=0x00058f8c"
+    for _i, _ln in enumerate(wrp_wo):
+        if _ln.startswith("xnu_live_wrp_r4="):
+            wrp_wo[_i] = "xnu_live_wrp_r4=0x2bd90000"
+        if _ln.startswith("xnu_live_wrp_r4_minus_sp="):
+            wrp_wo[_i] = "xnu_live_wrp_r4_minus_sp=0x00058f8c"
+        if _ln.startswith("xnu_live_wrp_r4_minus_far="):
+            wrp_wo[_i] = "xnu_live_wrp_r4_minus_far=0x00056000"
     expect("W-OTHER", _mk(tmp, "wo.txt", ctl + vm + entry + wrp_wo), "W-OTHER-far-offset")
 
     # W-OTHER: NO probe row at all -- the probe did not run. NEVER a negative.

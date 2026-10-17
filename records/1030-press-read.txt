@@ -43,3 +43,70 @@ carried this run's `xnu_live_wrp_*` rows is the USB EP1-IN stream, which deliver
 zero bytes.  So whether 1030's rows are recoverable at all depends on the power
 press preserving the RAM console; if the device returns via the watchdog rather than
 a cold boot, the log MAY still be in the slot the stock-Android boot reads.
+
+
+================================================================================
+READ 2026-10-17 (capture recovered-unknown-arm-20261017-064216-last_kmsg.txt,
+mtime 06:42:16 UTC = epoch 1792218196, NEWER than the press's boot epoch 1792217325
+= 06:08:45 - the staleness guard is discharged; the device returned via the
+operator's power press and the stock-Android boot read the RAM console).
+================================================================================
+
+VERDICT: **W-B-NAMED** (the checker's /first/ run said W-OTHER; that was TWO
+checker defects, both fixed and both committed - see "CHECKER DEFECTS" below).
+
+THE ROWS (all 14 present, `xnu_live_wrp_*`):
+    r4          = 0x2bdae000    r3          = 0xffffffff    r5 = 0x38c9ec00
+    r6          = 0x2bdae000    r12         = 0x00004000    sp = 0x2bdac074
+    pc          = 0x38b52756    lr          = 0x38b4a9af
+    r4 - sp     = 0x00001f8c    userstack   = 0x2bdad000
+    r4 - ustack = 0x00001000    far         = 0x2bdae000    r4 - far = 0x00000000
+    block_bytes = 188
+
+THE CELL, BY VALUE:
+  r4 == far == 0x2bdae000 == user_stack + 0x1000 == the region's EXCLUSIVE TOP.
+  r6 == r4: BOTH output cursors of the table-rebase copy point at the region's edge.
+  The reader rows agree: xnu_live_rdr_far = 0x2bdae000, xnu_live_rdr_ustack =
+  0x2bdad000, xnu_live_rdr_entry_at_hit = 0 (far is still UNOWNED) - the SAME fault
+  as 1029, on a FRESH base (0x2bdae000 vs 1029's 0x2bd39000), so the boot re-ran.
+
+  => This is a STACK-LIMIT / BOUNDARY store: the writer deliberately writes the word
+  AT the region's advertised end, and the fault is the region top not being owned
+  (or the limit check firing one page early). The fix is in the LIMIT / OWNERSHIP
+  accounting, NOT in the frame size and NOT in any allocation geometry (1028 raised
+  the top and the fault followed, page-exact; the top is what the writer targets).
+
+WHY NOT W-A (the tempting mis-read): r4 - sp == 0x1F8C looks like "a small constant
+frame offset", but sp == user_stack - block (block = 188 B, invariant across all 61
+captures), so **sp and the region top are the SAME anchor** - the sp-relative tell
+holds TRIVIALLY on this arm and cannot discriminate. Reading it as W-A (as the
+checker's first pass did) is a MEASUREMENT DEFECT ([[mi4-measurement-defects]]).
+The specific tell is `r4 == far`, and it fires.
+
+CONTROLS: launchd_reached=True trap24=8 port_construct(result=0)=8 abt_pc_live=12
+undef_seq=None panics=0 - all prior-rung controls live, no regression, no panic.
+The 1023 pthread storm did NOT return.
+
+CHECKER DEFECTS FOUND AND FIXED (both were needed to reach the right cell; both are
+the `[[mi4-one-value-two-definitions]]` class - the patcher and the checker are two
+definitions of one key set):
+  1. WRP_KEYS listed only 9 of the 14 rows the patcher EMITS. `group_rows` ends a
+     group at the first line with content and none of `keys`, so the group SPLIT at
+     `r5` (emitted right after r3), the checker read a partial row (r4/r3 only) and
+     returned **W-OTHER on a capture whose 14 rows were all present**. Fix: list all
+     emitted rows. Regression guard added: the selftest now (a) builds fixtures from
+     the patcher's REAL 14-row emission order and (b) asserts the cell is UNCHANGED
+     when the emitted-but-unread rows are stripped (the group-split guard).
+  2. The W-B predicate was `r4 == user_stack` EXACTLY, which MISSES the H2-grown arm
+     (region top = user_stack + 0x1000, not user_stack). With W-A tested second and
+     the trivially-true sp-relative tell, W-A won. Fix: W-B's predicate is
+     `r4 == far` (the region's exclusive top, the address 1029 settled), checked
+     FIRST; W-A now requires r4 NOT to be the region top.
+
+NEXT (this is a PROBE - it selects NO fix by itself): the reading is a boundary
+store at the region's exclusive top. The candidate fix is in the LIMIT / ownership
+accounting around create_unix_stack / the exec's advertised stack top - and 1028
+already showed that MOVING the top just moves the fault, so the fix must OWN the
+page at the top or stop the writer from targeting it, NOT re-size the region. Do NOT
+pick the fix from this run: read records/1030-audit.txt section 6 (single-step the
+writer / disassemble the caller frame at xnu_live_wrp_pc = 0x38b52756) first.
