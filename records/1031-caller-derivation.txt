@@ -635,3 +635,53 @@ STILL OWED: the EXACT word and its location. `count = -1` => word = 0xFFFFFFFF (
    ROOTFS.HFS @0x455d000 shared cache carries), then the fix is a DATA repair of that word (or the
    matching clamp at 0x37C266D4, file off 0x455d000 + (0x37C266D4-0x2C000000)).
 ====================================================================================================
+
+====================================================================================================
+(M) (L) VERIFIED BY VALUE, AND (L)'s FINAL SENTENCE CORRECTED (lead, 2026-10-17).
+====================================================================================================
+(M1) (L)'s CORE CLAIM IS CONFIRMED — twice, independently, from the BYTES (not from an argument):
+  getClassAndHeader @0x37C26698 and the writer @0x37C266EC build the classOffsets base with the
+  IDENTICAL formula and the IDENTICAL constant:
+        getClassAndHeader:  ldr r1,[r6,#0] ; ldr r2,[r6,#12] ; add r2,r1 ; add r2,r6 ;
+                            add.w r1,r2,r1,lsl #2 ; addw r2,r1,#1057 ; ldr.w r1,[r2,r0,lsl #3]
+        writer:            ldr.w ip,[r5] ; ldr.w r9,[r5,#12] ; add.w r2,ip,r9 ; add r2,r5 ;
+                            add.w r2,r2,ip,lsl #2 ; addw r3,r2,#1057 ; ldr.w r2,[r3,r0,lsl #3]
+  same base register (r6/r5, both = r0 = sl), same two header fields ([+0], [+12]), same `f0*5`
+  scale, same `#1057 (0x421)` constant, same row index `r0` (from a fresh PURE getIndex(sl) in BOTH),
+  same `asrs #1` on the SAME word. => ONE lookup, TWO consumers. THE WORD IS SHARED. (L) HOLDS.
+  Corollary cross-check: writer src_base = row_base + 8 (`addw r1,r1,#1065`), consistent with the
+  row's `[r0,#4]` data word and the loop's `[r1,#-4]`/`[r1,#0]` reads.
+
+(M2) ⚠ (L)'s FINAL SENTENCE WAS STATED TOO BROADLY — CORRECTION. (L) said: "a count-clamp DOES bound
+  the loop ... the overrun does NOT merely move; it STOPS." That is TRUE of a clamp applied TO THE
+  SHARED WORD (the DATA fix) or applied in BOTH readers. It is **FALSE of a clamp applied only to
+  getClassAndHeader's RETURN VALUE**: the writer NEVER calls getClassAndHeader and never sees its
+  return — it re-reads the SAME word itself at `0x37C26716` and seeds its own counter with its own
+  `asrs r0,r2,#1` @`0x37C26736`. Clamping only the return fixes the ALLOCA (caller's `sp` stops moving
+  up) while the writer STILL walks 0xFFFFFFFF words and STILL runs off the stack end.
+  => A "count-clamp at the caller" as (L) framed it is INSUFFICIENT. The two consumers need the bound
+  applied at each, or the word itself repaired.
+  THE VALUE IDENTITY in (L) IS UNAFFECTED — that is the part that mattered, and it is now proven twice.
+
+(M3) THE FIX, MINIMAL AND SELF-CONTAINED — the writer's own site. The writer ALREADY has the
+  lower-bound guard and is missing the upper one:
+        0x37C2671A  tst.w r2,#1
+        0x37C2671E  beq.n 0x37C2675e        ; non-dup path
+        0x37C26720  movs  r1,#0
+        0x37C26722  cmp.w r1, r2, asr #1   ; cmp 0, count
+        0x37C26726  it    eq
+        0x37C26728  popeq {r4,r5,r6,r7,pc} ; RETURN iff count == 0
+  That guard covers count==0 but NOT count<0; the wild word 0xFFFFFFFF yields count = 0xFFFFFFFF,
+  which passes it. The ONE-INSTRUCTION-WORTH fix keeps the same shape and makes it symmetric:
+        return iff (word >> 1) <= 0   — i.e. catch count == 0 AND count < 0 in the same compare.
+  Same length (10 B), same site, same effect on the empty case (POPEQ already popped there), and it
+  bounds the walk on BOTH call sites (A and B) and both dup/non-dup paths — no coordination with
+  getClassAndHeader needed, so it cannot be defeated the way (M2) defeats a caller-only clamp.
+  FILE OFFSET of 0x37C26720 (map0, so file_off = v - 0x2C000000) = 0xBC26720 in the cache, and
+  0x455d000 + 0xBC26720 in rootfs.hfs.
+  PATCH BYTES (10 B, hand-encoded Thumb-2, to be verified by objdump BEFORE any use):
+        old: 2100 ebb10f62 bf08 bdf0          (movs r1,#0 / cmp.w r1,r2,asr#1 / it eq / popeq)
+        new: 5910 c11d 1adb c046 c046        (asrs r1,r2,#1 / subs r1,#1 / bmi 0x37c2675c / nop / nop)
+  The `nop`s preserve the 10-byte span so the following `add.w r0,r3,r0,lsl #3` @0x37C2672a is
+  untouched. ⚠ The `bmi` must be verified to land on the same `pop {r4,r5,r6,r7,pc}` @0x37C2675c.
+====================================================================================================
