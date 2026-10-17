@@ -97,8 +97,21 @@ KERNEL behaviour change, not a probe, so the reading is the FRONTIER MOVING:
                   something the guard math depended on; report and revert.
     G-CTL       : launchd never reached and no prior control live => WITHHOLD (fail closed).
 
+    NO-READING  : (added AFTER the first press, records/1028-press-read.txt) the device did not return
+                  and the only capture on disk is OLDER than this press's boot (a PREVIOUS arm's slot).
+                  A resident rung that does not return keeps NO /proc/last_kmsg of its own
+                  ([[mi4-last-kmsg-reader-carrier]]), so the recovery reads whatever slot the last
+                  RETURNING boot left.  Adjudicating it reports a cell about a different arm.  The
+                  press now stamps its boot epoch and REFUSES to read any capture older than it.
+
 `e2_hi` must now read `far + 16` (the region's new exclusive top) if the fix landed; if it still reads
 `far`, the allocation edit did not take effect (a build defect, [[mi4-one-obj-dir-two-builds-corrupts]]).
+
+**VALVE ON THE `e2_hi` CLAUSE (2026-10-17, after the stale-slot press).**  `e2_hi` is the far-4
+lookup's covering entry; the +16 moves the REGION's exclusive top, not that entry's bound, so `e2_hi`
+need not literally become `far + 16` — what must change is that the region's top is no longer flush
+with the block top.  The DECISIVE cell is FIX-HOLDS (the `vmfkrv=1` stack-window row is GONE), not a
+single `e2_hi` literal; read them together, and only from a capture NEWER than the boot.
 
 ## 6. FILE-LEVEL PLAN
 
