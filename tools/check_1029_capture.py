@@ -10,9 +10,16 @@ WHAT 1028 DECIDED (the premise this checker acts on)
 with its geometry MOVED by exactly one page:
     far - ustack = 0x1000          (the fault is one PAGE above the advertised stack top)
     far - sp     = 0x1F8C = 0xF8C + 0x1000   (every prior rung: 0xF8C, with far == ustack)
-The block top and `sp` are unchanged (`ustack - sp = 0xF8C`).  So the failing write is NOT the
-block's top word: the WRITER derives its store address FROM `p->user_stack` and writes one page
-above it.  H2 (the block-top-flush mechanism) is REFUTED.
+The block top and `sp` are unchanged (`ustack - sp = 0xF8C`).  H2 (the block-top-flush
+mechanism) is REFUTED.
+
+  CORRECTION 2026-10-17 (value-verified across the prior captures).  The first reading of this row
+  -- "the WRITER derives its store address FROM `p->user_stack` and writes one page above it" -- is
+  FALSIFIED.  far - ustack == 0 for 1025/1026/1027 and == 0x1000 only for 1028; if a writer added a
+  constant page, 1025-1027 would have faulted a page ABOVE their region top.  They faulted exactly
+  AT it.  So `far` is ALWAYS the region's EXCLUSIVE TOP; the 1028 fix moved the top by a page
+  (size+16 -> round_page -> +0x1000) and the fault FOLLOWED it.  The fault is a BOUNDARY WRITE at
+  the region end: the region is short by one page.
 
 WHAT 1029 DOES -- AND WHAT THIS CHECKER READS
 =============================================
@@ -20,26 +27,26 @@ WHAT 1029 DOES -- AND WHAT THIS CHECKER READS
 fields beside the fault VA (tools/patch_d13_reader_probe.py, behind STAGE90_XNU_READER_PROBE):
     xnu_live_rdr_far              dfar (page-aligned)          <- the faulting store's VA
     xnu_live_rdr_ustack           p->user_stack                <- the ADVERTISED top
-    xnu_live_rdr_far_minus_ustack far - ustack                 <- the DERIVATION distance (want 0x1000)
+    xnu_live_rdr_far_minus_ustack far - ustack                 <- the distance to the top (want 0x1000)
     xnu_live_rdr_blk_hi           p->user_stack                <- the block's TOP bound
     xnu_live_rdr_blk_lo           user_stack - p_argslen       <- the block's LOW bound
     xnu_live_rdr_blk_bytes        p->p_argslen                 <- the block's recorded byte length
     xnu_live_rdr_argc             p->p_argc                    <- the recorded argc
-    xnu_live_rdr_entry_at_hit     1 if far is INSIDE an entry   <- the READER-TOP tell
+    xnu_live_rdr_entry_at_hit     1 if far is INSIDE an entry   <- boundary-vs-collision tell
     xnu_live_rdr_entry_at_lo      covering entry of far, lo     (0/0 when far is unmapped)
     xnu_live_rdr_entry_at_hi      covering entry of far, hi
 
-CELLS (pre-registered; docs/1029-design.md section 4)
-=====================================================
+CELLS (pre-registered; docs/1029-design.md section 4, labels corrected 2026-10-17)
+=================================================================================
   READER-NAMED     far_minus_ustack == 0x1000 AND entry_at_hit == 0 AND blk_hi == ustack
                    AND blk_bytes == (ustack - blk_lo) AND far == ustack + 0x1000.
-                   BY VALUE: the store is one PAGE above the advertised top; the block's top bound
+                   BY VALUE: the store sits one PAGE above the advertised top; the block's top bound
                    IS `p->user_stack` (so the block did NOT grow); `far` is covered by NO entry.
-                   The writer's store address is a function of `p->user_stack` -> the derivation is
-                   PROVEN.
+                   => far IS the region's EXCLUSIVE END, unowned at the fault: a BOUNDARY WRITE at
+                   the region end (the region is short by one page).
   READER-UNKNOWN   any OTHER combination -> fail closed, and the missing conjunct is NAMED
-                   (e.g. entry_at_hit == 1 names READER-BLOCK; far_minus_ustack != 0x1000 names the
-                   fixed-VA hypothesis).  Do NOT pick a fix on READER-UNKNOWN.
+                   (entry_at_hit == 1 names ADJACENT-OBJECT COLLISION, not a boundary write;
+                   far_minus_ustack != 0x1000 names the fixed-VA hypothesis).  Do NOT pick a fix.
   REGRESSION       launchd not reached, or trap24 rows vanish, or port_construct result=0 rows
                    vanish, or a panic appears -> WITHHOLD; the arm's switch set is wrong.
   G-CTL            no capture NEWER than the boot epoch, or no controls live at all -> WITHHOLD.
@@ -335,13 +342,14 @@ def adjudicate(cap):
                        f"NOT pick a fix. {shape}")
     if hoch == 1:
         return verdict("READER-UNKNOWN",
-                       f"entry_at_hit=1: the writer's store DID land INSIDE a mapped entry "
+                       f"entry_at_hit=1: far DID land INSIDE a mapped entry "
                        f"[{hx(rdr.get('xnu_live_rdr_entry_at_lo'))},"
-                       f"{hx(rdr.get('xnu_live_rdr_entry_at_hi'))}). The off-the-end / "
-                       f"derived-from-the-top framing is WRONG for this fault: this is the "
-                       f"1013c/1015 'a mapped VA still failed the lookup' walker family. Fail "
+                       f"{hx(rdr.get('xnu_live_rdr_entry_at_hi'))}) -- so far is NOT the region's "
+                       f"unowned end; a DIFFERENT entry (an adjacent object) covers it, and this is "
+                       f"an ADJACENT-OBJECT COLLISION, not a boundary write. (This also reopens the "
+                       f"1013c/1015 'a mapped VA still failed the lookup' walker family.) Fail "
                        f"closed; the NEXT rung instruments the walker (vm_map_lookup_locked, "
-                       f"vm_map.c:8756), NOT the reader. {shape}")
+                       f"vm_map.c:8756) and reads WHICH entry follows far. {shape}")
     if bhi is None or bhi != ust:
         return verdict("READER-UNKNOWN",
                        f"blk_hi = {hx(rdr.get('xnu_live_rdr_blk_hi'))} != ustack = "
@@ -362,15 +370,19 @@ def adjudicate(cap):
         f"the 1029 reader row describes the known launchctl[2] fault: far=0x{far:08x} "
         f"(pid was the faulting exec; see the 1025 rows below)")
     return verdict("READER-NAMED",
-                   f"READER NAMED BY VALUE: the store is exactly one PAGE above the advertised top "
-                   f"(far - ustack = 0x{FAR_MINUS_USTACK_WANT:04x}), the block's TOP bound IS "
+                   f"TOP-CONFIRMED BY VALUE: the store sits exactly one PAGE above the advertised "
+                   f"top (far - ustack = 0x{FAR_MINUS_USTACK_WANT:04x}), the block's TOP bound IS "
                    f"p->user_stack (blk_hi == ustack, so the block did NOT grow), and far is covered "
-                   f"by NO entry (entry_at_hit=0). The writer's store address is a function of "
-                   f"p->user_stack -> the derivation is PROVEN. {shape}"
-                   f"\n            -> 1029 is a PROBE (report, do not re-fix). The NEXT rung must "
-                   f"change the VALUE the writer derives from, or the reader itself -- NOT allocate "
-                   f"another page (the fault would follow it again; 1028 proved this). See "
-                   f"docs/1029-design.md s.8.")
+                   f"by NO entry (entry_at_hit=0) -- so far IS the region's EXCLUSIVE END, unowned at "
+                   f"the fault. The fault is a BOUNDARY WRITE at the region end; the region is short "
+                   f"by one page. {shape}"
+                   f"\n            NOTE (docs/1029-design.md s.8, corrected 2026-10-17): the ORIGINAL "
+                   f"1029 premise -- 'the writer derives its store by adding 0x1000 to p->user_stack' "
+                   f"-- is FALSIFIED by 1025/1026/1027 (all had far-ustack=0, far==the region top). "
+                   f"far is ALWAYS the region's exclusive top; the 1028 fix moved the top by a page "
+                   f"and the fault followed. 1029 is a PROBE (report, do not re-fix). The NEXT rung "
+                   f"must OWN the page at the region end (base one page LOWER, or size so the top is "
+                   f">= ustack + 0x1000) -- NOT add to `size`, which rounds back to +0x1000.")
 
 
 def _parent_cells(lines, ctl, entry, named, rdr_absent):

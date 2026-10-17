@@ -274,9 +274,34 @@ move), not the literal `0x1000`.
 
 ## 8. THE ONE THING THAT WOULD FALSIFY THIS DESIGN (state it, so 1029 does not over-read)
 
-If Site A publishes `xnu_live_rdr_entry_at_hit = 1` for the faulting `far` — i.e. the writer's store
-DID land inside a mapped entry — then the "off-the-end / derived-from-the-top" framing is WRONG for
-that fault and the class is the 1013c/1015 "a mapped VA still failed the lookup" walker family, not a
-reader-derivation at all.  That is a READER-UNKNOWN reading; the design REFUSES to pick a fix on it,
-and the NEXT rung instruments the walker (`vm_map_lookup_locked`, vm_map.c:8756) rather than the
-reader.  Fail closed.
+**UPDATE 2026-10-17 — the design is ALREADY FALSIFIED, before the 1029 reading came back.**  The
+premise stated in §0-§2 ("the writer derives its store address FROM `p->user_stack`") is refuted by
+the prior captures themselves, read by value:
+
+| rung | far | ustack | far−ustack |
+|---|---|---|---|
+| 1025 | 0x2bd35000 | 0x2bd35000 | 0 |
+| 1026 | 0x2bdeb000 | 0x2bdeb000 | 0 |
+| 1027 | 0x2bde0000 | 0x2bde0000 | 0 |
+| 1028 | 0x2bd0e000 | 0x2bd0d000 | 0x1000 |
+
+If a writer added a constant page to `p->user_stack`, 1025-1027 would each have faulted a page ABOVE
+their region top.  They faulted EXACTLY AT it.  So **`far` is ALWAYS the region's EXCLUSIVE TOP**;
+the 1028 fix moved the top by one page (`size+16` → `round_page` → `+0x1000`) and the fault FOLLOWED
+it.  The fault is a **BOUNDARY WRITE at the region end**: the region is short by one page.  The
+`far - ustack` column is a *consequence of the top having moved*, not a "derivation distance".
+
+The CORRECT next-rung direction (§5's "do NOT add to `size`" is now the whole story): make the
+region's exclusive top land STRICTLY ABOVE the block top by a whole page — anchor the base one page
+LOWER (`addr = trunc_page(user_stack - size) - PAGE_SIZE`) or set the allocation so
+`top >= round_page(user_stack) + PAGE_SIZE`.  Adding to `size` alone can never do it: `size + Δ`
+always rounds up to a page-aligned top.
+
+The ORIGINAL falsifier below still stands as the *other* branch (an adjacent-object collision):
+
+If Site A publishes `xnu_live_rdr_entry_at_hit = 1` for the faulting `far` — i.e. the store DID land
+inside a mapped entry — then `far` is NOT the region's unowned end; a different entry covers it and
+this is an ADJACENT-OBJECT COLLISION (which also reopens the 1013c/1015 "a mapped VA still failed the
+lookup" walker family).  That is a READER-UNKNOWN reading; the design REFUSES to pick a fix on it,
+and the NEXT rung instruments the walker (`vm_map_lookup_locked`, vm_map.c:8756) and reads WHICH
+entry follows `far`.  Fail closed.
