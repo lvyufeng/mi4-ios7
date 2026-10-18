@@ -685,3 +685,65 @@ STILL OWED: the EXACT word and its location. `count = -1` => word = 0xFFFFFFFF (
   The `nop`s preserve the 10-byte span so the following `add.w r0,r3,r0,lsl #3` @0x37C2672a is
   untouched. ⚠ The `bmi` must be verified to land on the same `pop {r4,r5,r6,r7,pc}` @0x37C2675c.
 ====================================================================================================
+
+====================================================================================================
+(N) ADJUDICATION OF THE TEAMMATE LINES (lead, 2026-10-18). Every claim below checked BY VALUE.
+====================================================================================================
+(N1) ⚠ TWO LANES READ THE CACHE'S SIGNATURE FIELDS AT THE WRONG OFFSETS — both said the same wrong
+  thing, so agreement between them was NOT corroboration. MEASURED header layout (dyld-239):
+        @0x30 codeSignatureOffset = 0x00000000
+        @0x34 codeSignatureSize   = 0x00000000
+  The lanes cited @0x24/@0x28 = 0 / 0x12bda000. @0x28 is NOT a signature size (it is the slide-info
+  extent; @0x40/@0x48 carry 0x89000/0x10233000, the slide tables). @0x20 is the UUID region; the
+  string BOTH lanes quoted as "uuid @0x58" (52d48b54f455394f8c84732df0ae4ac9) IS at 0x58, but 0x20..0x30
+  is a different 16 bytes (0000e02b0000000000a0bd1200000000) — the header has both a uuid and a
+  cacheUuid field and the lanes did not distinguish them, so "no in-tree consumer of THE uuid" is not
+  yet a measured statement about the field they think they read.
+  ⇒ THE CONCLUSION SURVIVES ANYWAY, on a stronger basis: codeSigOff == codeSigSize == 0, AND libobjc
+  (cache off 0xbc12000, MH_MAGIC 0xfeedface, ncmds=15, sizeofcmds=2516) carries NO LC_CODE_SIGNATURE.
+  ⇒ there is no signature to break. VERIFIED.
+(N2) `block_bytes = 188` is NOT count (fix-1032 correct; design-1032 correct): it is proc_argslen.
+  CONFIRMED from the writer: the count is READ, never stored in that field.
+(N3) ⚠ design-1032's OWED ROW IS UNNECESSARY — no new probe is needed to name the count.
+  Its formula is CORRECT: with S_bl = far - 0x1F78 (VERIFIED: S_bl = 0x2bdce088 = fault_sp + 0x14,
+  exactly the writer's 20-byte push), count = -(block2_lo - S_bl)/8. It reproduces the 1030 frame
+  (S_bl=0x2bdac080, block2_lo=0x2bdac088 => count = -1) EXACTLY.
+  BUT THE COUNT IS ALREADY DETERMINED from rows the capture ALREADY PRINTS, with no memory read:
+  the writer issues the r6-store BEFORE the r4-store, and an aborting store does not write back, so
+  r6 = r6_i + 4P and r4 = r4_i + 4(P-1); with r4_i - r6_i = 4*count this gives r6 - r4 = 4*count + 4.
+  The frame reads r6 == r4 == 0x2bdd0000 => 4*count + 4 == 0 => **count = -1**, exactly.
+  A probe row would re-derive a value already fixed by the frame. DO NOT SPEND A PRESS ON IT.
+(N4) ⚠ caller-derivation's "count = 2^30 multiple" and its re-acceptance of (G) are WITHDRAWN by that
+  lane itself in a later message; the lane's FINAL position (count = 0xFFFFFFFF) is the correct one and
+  matches (I)/(J)/(N3). Its "DATA defect, regenerate the cache" recommendation is NOT adopted — see (N5).
+(N5) WHY NOT THE DATA FIX (fix-1032's unreachability argument CONFIRMED): the table base is resolved at
+  RUNTIME through an objc_opt cell, so the poison word is not reliably in the shipped bytes; a file
+  patch would be a blind guess. The CODE route is the only reachable one. This is the same reason 1028
+  taught us not to fix a moving anchor.
+(N6) THE PROPOSED 2-BYTE EDIT IS WRONG AS A FIX AND MIS-DESCRIBED AS A TEST.
+  `0x37C266D4: 48 10` (asrs r0,r1,#1) -> `00 20` (movs r0,#0). BYTES VERIFIED against the cache.
+  (a) It is NOT "clamp the count". It sets EVERY duplicate count to 0 AND also zeroes the r0 written
+      on the NON-DUP path (getClassAndHeader returns 1 there @0x37C266E6; the movs at 0xD4 is only on
+      the dup path, so the non-dup return is unaffected — but every class WITH duplicates loses them).
+      Effect: every preoptimized class collapses to the single-class path. In a 301 MiB dyld cache with
+      shared-cache class optimisation that is a LARGE behavioural change, not a surgical test.
+  (b) The lanes assert "the caller's cmp r5,#2; bcc then bails, VLA never forms". VERIFIED TRUE: r5<2
+      cannot reach `bl 0x37C266EC`. So it WOULD remove the fault — at that cost.
+  (c) It does NOT test the hypothesis it is claimed to test. The hypothesis "count=-1 causes it" is
+      already proven (N3). What is UNPROVEN is whether a BOUNDED count is correct for real classes.
+      A blunt zero cannot discriminate that.
+  ⇒ REJECT the 2-byte patch as a first experiment.
+(N7) THE WRITER-SITE GUARD (my (M)) REMAINS THE BEST FIRST EDIT, and is strictly safer than (N6):
+  bound the count where it is CONSUMED (0x37C26720), leave getClassAndHeader and the real counts alone,
+  so no class loses its duplicates; only the degenerate count (<=0) is refused. Both call sites, both
+  provably-bailing paths, no relocation, no data dependency.
+  The 1032 arm should carry BOTH the guard and by-value detection rows (does r4_minus_ustack stop being
+  0x1000; does the run progress past this fault).
+(N8) OPEN, and NOT worth a press on its own: Site A vs Site B. caller-derivation says site A fires and
+  that only a read of *(fault_sp+0x10) can name it. That row is cosmetic — BOTH sites share the fault
+  and BOTH are fixed by (N7). Do not build a rung for it.
+(N9) fix-1032 states "no existing tool patches cache bytes; a new byte-range patcher at
+  0x455d000 + (VA - 0x2C000000) is needed". The OFFSET RULE is CORRECT for map0 (libobjc lives in
+  map0) and the cache is contiguous in the card image. The claim that no tool exists is PLAUSIBLE but
+  NOT yet verified by me — verify before writing a new one.
+====================================================================================================
