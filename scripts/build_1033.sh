@@ -68,9 +68,10 @@ echo "   the record carries all 10 inherited switches"
 # park_1033.sh refused at clause (a) -- the run that took 705 objects died at the last gate, not at the
 # compile (the [[mi4-build-variant-comes-from-an-env-default]] shape again, this time the writer side:
 # a switch with no record key is a switch the pool can see and the record cannot).  Refuse before the compile.
-for f in src/entry/build_entry.sh scripts/preflight_boot_check.sh; do
-  grep -q "                $NEW)" "$f" || { echo "REFUSING: $f does not list $NEW in its arm-key list - the record would omit it and park_1033.sh would refuse the arm after the compile"; exit 1; }
-done
+# (the two lists close differently -- build_entry.sh ends its array with a bare `$NEW` line, the gate with
+# `$NEW)` -- so match the key at any indentation, not one spelling.)
+grep -qE "^[[:space:]]*$NEW\)?$" src/entry/build_entry.sh || { echo "REFUSING: src/entry/build_entry.sh does not list $NEW in ENTRY_ARM_KEYS - the record would omit it and park_1033.sh would refuse the arm after the compile"; exit 1; }
+grep -qE "^[[:space:]]*$NEW\)$" scripts/preflight_boot_check.sh || { echo "REFUSING: scripts/preflight_boot_check.sh does not list $NEW in its gate key list - the next press would refuse the record the build just wrote"; exit 1; }
 grep -q "        $NEW)  _v=\${$NEW:-0} ;;" src/entry/build_entry.sh || { echo "REFUSING: src/entry/build_entry.sh has no case arm for $NEW - the key would be read back empty"; exit 1; }
 grep -q "echo \"$NEW=\${$NEW:-0}\"" src/entry/build_entry.sh || { echo "REFUSING: src/entry/build_entry.sh does not ECHO $NEW into the record - build_entry.sh rewrites out/stage90/xnu_arm_entry-config.txt from ENTRY_ARM_KEYS, so the previous 1031 line survives a build and the arm would be recorded for a switch this image never compiled"; exit 1; }
 echo "   the entry layer lists, reads and ECHOES $NEW (the record can carry it)"

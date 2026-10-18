@@ -56,8 +56,13 @@ echo "   (0) by value: pmap_flush_tlbs carries the GLOBAL-FIX ($_gf_kp kernel_pm
 _src_rec=out/xnu_kernel_src_d13.sha256
 [[ -f $TRAP_SRC && -f $_src_rec ]] || { echo "REFUSING: trap.c or the pool's source record is absent"; exit 1; }
 grep -q "defined($NEW) && $NEW" "$TRAP_SRC" || { echo "REFUSING: $TRAP_SRC does not carry the $NEW gate - the probe is not staged"; exit 1; }
-_want=$(sha256sum "$TRAP_SRC" | awk '{print $1}'); _have=$(awk -v p="$TRAP_SRC" '$2==p{print $1}' "$_src_rec" | head -1)
-[[ -n "$_have" && "$_want" == "$_have" ]] || { echo "REFUSING: the pool's source record (${_have:-none}) != the staged trap.c ($_want) - the pool was NOT rebuilt from the probed source"; exit 1; }
+# (the manifest names sources by their path RELATIVE to the tree root, and builds abort with errexit
+# mid-pipeline would hide a lookup that never matched; compare the user's two spellings explicitly)
+_want=$(sha256sum "$TRAP_SRC" | awk '{print $1}')
+_have=$(awk -v a="$TRAP_SRC" -v b="external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c" '$2==a||$2==b{print $1}' "$_src_rec" | head -1)
+[[ -n "$_have" ]] || { echo "REFUSING: $_src_rec names NO entry for $TRAP_SRC - the pool's manifest does not cover trap.c, so the probe's content is unrecorded (the record of record is written by tools/gen_kernel_source_manifest.py at compile time and pinned by the park; a lookup that never matches is a defective CLAUSE, not evidence - [[mi4-self-written-record-is-not-a-constraint]])"; exit 1; }
+[[ "$_want" == "$_have" ]] || { echo "REFUSING: the pool's source record says $_have but the staged trap.c hashes $_want - the pool was NOT rebuilt from the probed source"; exit 1; }
+echo "   (0a-0) by value: the pool's source record names the SAME trap.c sha ($_want) - the probe IS in the object the image was linked from"
 for s in xnu_live_evf_pc= xnu_live_evf_far_raw= xnu_live_evf_far_is_0x10= xnu_live_evf_pc_minus_far=; do
   grep -qa "^$s" <(strings "$TRAP_OBJ") || { echo "REFUSING: $TRAP_OBJ carries no $s - the pool was not recompiled with $NEW=1"; exit 1; }
   grep -qa "^$s" <(strings "$ELF") || { echo "REFUSING: the LINKED image carries no $s - the linker dropped the probed object"; exit 1; }
@@ -71,9 +76,9 @@ done
 grep -qa '^xnu_live_abt_proc_ustack$' <(strings "$EXEC_OBJ") || { echo "REFUSING: $EXEC_OBJ carries no xnu_live_abt_proc_ustack"; exit 1; }
 echo "   (0a-1) by value: trap.o keeps cal/wrp/rdr/abt publishers; kern_exec.o keeps the ustack accessor"
 
-# BY VALUE (0a-0): the checker can FAIL.
+# BY VALUE (0a-checker): the checker can FAIL.
 python3 -I "$CHECKER" --selftest >/dev/null 2>&1 || { echo "REFUSING: $CHECKER --selftest did NOT PASS - an inert checker would bless any capture"; exit 1; }
-echo "   (0a-0) by value: $CHECKER --selftest PASSes"
+echo "   (0a-checker) by value: $CHECKER --selftest PASSes"
 
 python3 -I tools/check_vm_max_split.py "$ELF" --expect on >/dev/null 2>&1 || { echo "REFUSING: the LINKED image's task map ceiling moved (1024)"; exit 1; }
 python3 -I tools/check_d13_no_neon.py "$ELF" --symbol mach_msg_send --expect none >/dev/null 2>&1 || { echo "REFUSING: mach_msg_send is not NEON-free (1021d)"; exit 1; }
