@@ -1,0 +1,47 @@
+1032 PRESS READ - 2026-10-18 - pressed, NON-RETURN; reading PENDING the operator's power press
+================================================================================================
+
+ARM: armed-d13-49031dcb (1031's kernel arm + 1032's 10-byte card patch, role 1032-count-clamp).
+IMAGE SENT: out/stage90/stage90-qcdt.img, 9,351,168 B, sha256 fed2c1a15af6d54b73a36b4fdbb4bc9053bda40c0f90620414418eea78bc7028.
+BOOT: `fastboot boot -s 4a2fe00b` only (never flash).  Sending OKAY 0.287s, Booting OKAY 0.012s.
+
+WHAT HAPPENED
+1. FIRST INVOCATION of scripts/press_1032.sh (15:20:40Z) REFUSED in its device-stage
+   preflight (step 2b) BEFORE the send and after the adb push of the card.  Cause: the
+   preflight (scripts/preflight_boot_check.sh, "the arm the record owes") requires the 28
+   `file=` members of set armed-d13-49031dcb to be readable AND matching in out/stage90,
+   and 1032's record names two people and nothing builds them - park_cache_libobjc_count.py
+   and check_1032_capture.py.  The first run had them ONLY in the park (to keep the live
+   tools from being shadowed), so the live tree matched 26/28 and run_and_capture.sh's
+   resolve_arm_set.sh refused.  NOTHING WAS SENT in that run; the device was up.
+2. BEFORE the second run, the two people copies were placed in out/stage90/ (identical
+   bytes to the park copies, sha256 7fc81e6c…11138 B and c135318c…12713 B).  The live gate
+   then reads: "the bytes in out/stage90 are the recorded set 'armed-d13-49031dcb', file
+   for file" (line 854).  tools/verify_revert_set.sh VERIFIES 28 files in BOTH the park and
+   out/stage90.  Hypothesis (recorded also in scripts/press_1032.sh): the copies are a
+   space in the record no derivation writes and no code path reads, except the identity
+   count.
+3. SECOND RUN (15:28:11Z): card gate, device read-back of the 10 bytes
+   (device 0x10183720 = 5010012801daf0bdc046 == card), preflight, send, boot all passed.
+   Runner exit 2 = the payload ran and the device did NOT come back (a resident rung).
+   USB console: the reader was armed BEFORE the send (pid -> usb-console-1032-20261018-
+   152811.txt) but the capture is ZERO BYTES and the reader exited 143 (killed at the
+   runner's end), i.e. 18d1:0910 never enumerated in the window.  This is the same blind
+   spot as every resident rung (the only bus that could carry the reading is the one that
+   never mounted); the primary channel is the recovered /proc/last_kmsg (step 4/5).
+4. Step 4 waited 90x5s for 4a2fe00b in adb or fastboot and saw NEITHER; step 5 printed
+   NO READING - STALE SLOT is NOT what ran (no new capture exists at all; the newest is
+   20261017-235949, OLDER than the boot).  The device is DARK.
+
+DEVICE STATE: dark; not in fastboot (no fastboot devices), not in adb.  **The operator's
+power press is the next step** (vol-down+power for fastboot, or power for Android).
+The press is SPENT - this boot is the 1032 reading.  Do NOT `fastboot boot` anything first:
+it clears the single-slot RAM console.  On return: scripts/recover_last_kmsg.sh --read-only,
+then `python3 -I tools/check_1032_capture.py <capture>` on a capture NEWER than this boot
+(the boot epoch is stamped in the press log's step 3).  Expect FIX-HOLDS if the cal group is
+ABSENT with launchd up and trap24/port_construct(result=0) live; FIX-NOOP if the same 1031
+cal frame by value (a patch defect, not a delivery one); FIX-PARTIAL if a cal frame CHANGED.
+
+THE CARD IS UNKNOWN ON DEVICE: it was re-pushed this run (939,524,096 B to userdata head,
+read back 10/10 at 0x10183720).  `fastboot boot` of a later press does not restore it; every
+older press script refuses a patched card, so nothing stale can be booted over it.
