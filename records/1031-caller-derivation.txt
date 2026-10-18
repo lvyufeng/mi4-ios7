@@ -829,3 +829,32 @@ WHY THE HAND-ENCODING KEPT FAILING (recorded so it is not repeated): the span is
 STATUS: (O) is superseded on this one byte only. The design (consumer-site guard, one-sided
   signed count<1, both call sites, no legitimate count rejected) is unchanged and stands.
 ====================================================================================================
+
+====================================================================================================
+(Q) FIX SEMANTICS, STATED EXPLICITLY (lead, 2026-10-18). Asked for by design-1032; its framing of the
+    old behaviour was INVERTED, so the correction is recorded here rather than merely accepted.
+====================================================================================================
+THE OLD GUARD DOES NOT POP FOR NEGATIVE COUNTS. `movs r1,#0; cmp.w r1,r2,asr#1; it eq; popeq` pops iff
+  count == 0. For count < 0 it FALLS THROUGH and runs the loop with r0 = -1 => 2^32 iterations walking
+  off the stack. That is precisely the fault we measured. So the claim "the old path popped for count==0
+  and the new branch abandons work the old code did" is exactly backwards: for negative count the old
+  code did no useful work, it overran the stack.
+
+BEHAVIOUR, CASE BY CASE (the whole of it):
+        count == 0 : OLD pops        NEW pops          UNCHANGED
+        count >= 1 : OLD proceeds    NEW proceeds      UNCHANGED
+        count <  0 : OLD RUNS AWAY   NEW pops (fix)    THE ONLY CHANGE
+  So "fail-closed" applies to EXACTLY the degenerate case, which previously faulted. A class count
+  cannot legitimately be negative; nothing legitimate is discarded. This is not a clamp and is not
+  described as one: the value 0xFFFFFFFF is not "a large count to be capped", it is a sentinel/wild
+  word, and the writer has no meaningful copy to perform for it.
+  If a future rung wants to CLAMP (copy min(count, MAX) instead of skipping), that is a different fix
+  with a different justification, and it would need the table entry to be believed. NOT this patch.
+
+ON design-1032's BYTE REPORT: it decoded `5910 c11d 1adb c046 c046` and found garbage. ITS DECODE IS
+  CORRECT AND THAT WAS THE POINT — those are (M3)'s hand-encoded bytes, retracted in (O) (which is
+  headed "SUPERSEDES (M3)'s hand-encoded bytes, which were WRONG") and replaced in (P) by the
+  assembler-verified `50 10 01 28 01 da f0 bd c0 46`. The lane was reading a superseded section.
+  Its other remark — that a 16-bit `bmi` to 0x37C2675c may be out of range — is moot for the adopted
+  patch: the branch is a SHORT FORWARD `bge.n` to a label 6 bytes ahead, well inside 16-bit range.
+====================================================================================================
