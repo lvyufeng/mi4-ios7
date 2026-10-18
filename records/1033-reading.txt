@@ -1,0 +1,80 @@
+== 1033 READING (2026-10-18) — EVAL-FRAME PROBE: launchctl[2]'s fault is a READ=
+
+   The 1032 fault is a data abort on a LOAD from a NULL-derived pointer. BOTH the
+   address (0x10) and the page protection path now have hardware witnesses.
+
+PRESS
+  arm      armed-d13-e92c0c52 (parked, 15 members, records/revert-set.txt)
+  payload  out/stage90/stage90-qcdt.img sha256 dd91a25fb9edbb76ce2276770b30114f4be4bda5acad8c5d4128e2fef6d98ed4
+  boot     `Booting OKAY`, no return in 180 s, USB capture 0 bytes, runner exit 2
+  device   dark until the operator's power press; Android back at ~19:25
+  capture  out/stage90/captures/recovered-unknown-arm-20261018-192718-last_kmsg.txt
+           mtime epoch 1792351638 > boot epoch 1792349451 — NOT stale — adjudicated
+
+CELL: EVF-U1-TRUE
+  tools/check_1033_capture.py prints:
+    EVF-U1-TRUE: [0x10] is the faulting access
+    pc=0x3819d474 lr=0x381959af sp=0x2bdaa088 far=0x00000010 pc-far=0x3819d464
+    dfsr=0x00000007 slot10=0x38962ae0/1 lr_slot_ok=1 seq=1
+  U1 is the pre-registered cell; U2 (wrong slide) is refuted by value: a slide cannot
+  produce a far of 0x10, and lr_slot decodes as a real call-return.
+
+BY VALUE, the captured rows
+  xnu_live_evf_far_raw      0x00000010   (raw DFAR, untruncated)
+  xnu_live_evf_far_trunc    0x00000000   (vm_map_trunc_page — one value, two widths)
+  xnu_live_evf_dfsr_raw     0x00000007   translation fault, page, level 1 — a READ
+  xnu_live_evf_pid          2            launchctl[2]
+  xnu_live_evf_cpsr         0x30         User, Thumb
+  xnu_live_evf_sp           0x2bdaa088
+  xnu_live_evf_ustack       0x2bdab000   (stack is [sp..0x2bdab000), 0xF78 in)
+  xnu_live_evf_slot10       0x38962ae0   ok=1   *(sp+0x10): a search-cache pointer, NOT NULL
+  xnu_live_evf_ptr_word_ok  0            the address 0x10 is unmapped; a guarded read refused
+  xnu_live_evf_caller_r2    0xffffffff
+  xnu_live_evf_caller_r3    0x38300020   (libobjc table base; the 1030 value was 0x3b6aa020 = +0x398000 slide)
+  xnu_live_evf_call_r4_minus_sp 0xfffffffc   (r4 = sp0 − 4)
+
+WHAT IT NAMES
+  The launchctl[2] abort is a LOAD (dfsr 7) at address 0x10 (null page + 0x10). It is not a
+  write, not a stack-top overrun, and not the truncated-dfar artifact: the raw DFAR is 0x10 and
+  the DFSR says translation-fault-on-read. slot10 is NOT the carrier (it holds a real pointer);
+  the carrier register is one not published raw — see NEXT.
+
+OPEN (owes the next probe)
+  * Which register/word held 0x10. 1033 published r0-r3, r7 and r4−sp; the 1032 panic frame's
+    full register state (r4=0x2bdaa084 r5=0xffffffff r6=0x2bdaa088 r8=0x2da2e575, r12=0x4000)
+    is in the same capture beside these rows — a 1034 can name the carrier by re-reading that
+    frame and walking it, without a new probe, IF the pc's instruction can be decoded.
+  * PC/SLIDE UNRESOLVED. Every card copy available on this host (the live card, /tmp/card.before,
+    /tmp/gcache/card.bin, /mnt/data/ios7-payload/v2/ios7/rootfs.hfs — all the same HFSX volume)
+    decodes pc−0x577000 = 0x37C26474 to f248 48f2 a… (sub.w r8, r8, #0x2ae), not to a load of
+    far. pc−0x2C000000 (slide 0) is mid-stream garbage. So either the slide is not 0x577000, or
+    the shared cache the device served differs from the payload's rootfs. The 1033 rows do not
+    decide this; do not pick a fix that assumes it.
+
+CARD-IDENTITY CAVEAT (measured; a question for the next rung, NOT a claim about this reading)
+  The capture is this run's own boot (line 1 `MI4IOS6_STAGE90 v1 entered`, line 4290
+  `xnu_entry: jumping to _start`, then launchd[1] up and launchctl[2]'s abort) — the 1033 rows
+  are in the boot they were pressed into.
+  The card LABEL is wrong: out/stage90/xnu_card_hfs.img sha256
+  0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529, which 1032's reading records
+  for a TOOLING WORK COPY, while the pristine rootfs (/tmp/card.before, the payload rootfs.hfs)
+  hashes c9b9080de2a1de00707c6c282650b61608405a7dbc8fe2c0bced475705fb9fea. `cmp -l` shows the two
+  differ in EXACTLY 10 bytes at 0x10183720..0x10183729 = 1032's clamp, so the file's CONTENT is
+  "pristine + clamp" and only the label (and revert-set's card_sha256= line) is off.
+  UNSETTLED: in the card file the HFSX header words 0x48580005 sit at offset 0x1DE81D22 (not at
+  0x400), and the sector the kernel staged (0x400002) reads 0x05005848/0x00010080 there but has no
+  such word in the file. So the file's layout and the kernel's view of the same bytes differ by a
+  mapping the next rung must read by value before any further clamp-style fix is trusted. This
+  does NOT change EVF-U1-TRUE: the far/dfsr/pc rows are the CPU's own registers.
+INHERITED CLAUSES still true: 1015b GLOBAL-FIX in pmap_flush_tlbs (3 kernel_pmap sites),
+1023 row 24 fired, 1020 raise, 1024 ceiling, 1021d pool NEON-free, 1018 direct witness.
+
+NOT A FIX. 1033 is the instrument. The next rung decides between
+  (a) a caller-side signed bound on count (bail when count < 0 before the VLA), and
+  (b) a writer-side store of a non-negative count before the pop,
+which are the two fixes that follow from the fault shape: a LOAD (dfsr 7) through a pointer that
+holds NULL+0x10, in a process whose libobjc table word is 0xffffffff (count −1). 1033 does not
+prove WHICH instruction holds the 0x10; a 1034 must name the carrier (the 1032 panic frame's full
+registers are in the same capture, beside the rows) before either fix is built.
+
+Reproduce: python3 -I tools/check_1033_capture.py <capture>
