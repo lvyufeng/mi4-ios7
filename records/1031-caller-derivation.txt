@@ -793,3 +793,39 @@ CONSEQUENCE FOR THE 2-BYTE EDIT THE LANES PROPOSED ((N6)): still REJECTED — it
   a hypothesis already proven. THIS patch is at the consumer, refuses only the degenerate value, and
   leaves every legitimate count intact.
 ====================================================================================================
+
+====================================================================================================
+(P) CORRECTION TO (O): THE BRANCH DISPLACEMENT IS `01`, NOT `00` (mine) NOR `02` (fix-1032's).
+    (lead, 2026-10-18; assembled and verified END-TO-END from real instructions.)
+====================================================================================================
+Both (O) and fix-1032-libobjc's reply got the branch byte wrong, for the SAME reason: it was reasoned
+about by hand instead of letting the assembler place it. fix-1032 said the value is `02` "because bge.n's
+pc is instruction+4"; (O) said `00`. THE ASSEMBLER SAYS `01`.
+
+THE CORRECT PATCH — 10 bytes at 0x37C26720, `add.w r0,r3,r0,lsl #3` still at +10:
+    asrs r0,r2,#1 ; cmp r0,#1 ; bge.n .Lc ; pop {r4-r5-r6-r7,pc} ; nop ; .Lc: add.w
+    BYTES: 50 10 01 28 01 da f0 bd c0 46
+  Assembled listing (arm-none-eabi-as -mthumb, disassembled back):
+        0: 1050  asrs r0, r2, #1
+        2: 2801  cmp  r0, #1
+        4: da01  bge.n 0xa            <-- lands on add.w at +10
+        6: bdf0  pop  {r4,r5,r6,r7,pc}
+        8: 46c0  nop
+        a: eb03 00c0 add.w r0,r3,r0,lsl #3
+  The OLD bytes at cache 0xBC26720 were read back and match `00 21 b1 eb 62 0f 08 bf f0 bd` exactly.
+
+WHY THE HAND-ENCODING KEPT FAILING (recorded so it is not repeated): the span is EXACTLY 10 bytes —
+  asrs 2 + cmp 2 + bge 2 + pop 2 + nop 2 — and `add.w` is the NEXT instruction at +10. Every hand
+  attempt either inserted an extra nop (assembler then placed add.w at +12 and emitted a different
+  displacement) or computed the branch base against a `.org`'d VMA that was NOT the real address (the
+  `.text` section VMA is 0, so `.org 0x37C26720` inflated the section and silently changed nothing
+  about the branch). THE ONLY RELIABLE PROCEDURE: assemble the real instruction sequence with a
+  symbolic local label, confirm `add.w` lands at +10, and read the bytes off the binary. Do not
+  compute a branch displacement by hand; do not disassemble a raw blob to check it (that path
+  mis-decodes Thumb and disagreed with the linked listing twice in this session).
+  [[mi4-measurement-defects]] — this is a new instance: the MEASUREMENT TOOL (objdump on a raw blob)
+  was the thing that was wrong, and agreement between two agents did not make it right.
+
+STATUS: (O) is superseded on this one byte only. The design (consumer-site guard, one-sided
+  signed count<1, both call sites, no legitimate count rejected) is unchanged and stands.
+====================================================================================================
