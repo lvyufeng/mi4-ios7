@@ -56,10 +56,12 @@ echo "   (0) by value: pmap_flush_tlbs carries the GLOBAL-FIX ($_gf_kp kernel_pm
 _src_rec=out/xnu_kernel_src_d13.sha256
 [[ -f $TRAP_SRC && -f $_src_rec ]] || { echo "REFUSING: trap.c or the pool's source record is absent"; exit 1; }
 grep -q "defined($NEW) && $NEW" "$TRAP_SRC" || { echo "REFUSING: $TRAP_SRC does not carry the $NEW gate - the probe is not staged"; exit 1; }
-# (the manifest names sources by their path RELATIVE to the tree root, and builds abort with errexit
-# mid-pipeline would hide a lookup that never matched; compare the user's two spellings explicitly)
+# (the manifest names sources by ABSOLUTE path, exactly as the compile loop spelled them -- MEASURED: the
+# trap.c line reads `/mnt/data/mi4-ios6/external/...`, so a tree-relative literal matches nothing and the
+# clause would refuse on its own spelling.  Compare the full path, with a suffix fallback so the check does
+# not depend on the tree's location.)
 _want=$(sha256sum "$TRAP_SRC" | awk '{print $1}')
-_have=$(awk -v a="$TRAP_SRC" -v b="external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c" '$2==a||$2==b{print $1}' "$_src_rec" | head -1)
+_have=$(awk -v a="$TRAP_SRC" -v b="external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c" '$2==a||index($2,b)==length($2)-length(b)+1{print $1}' "$_src_rec" | head -1)
 [[ -n "$_have" ]] || { echo "REFUSING: $_src_rec names NO entry for $TRAP_SRC - the pool's manifest does not cover trap.c, so the probe's content is unrecorded (the record of record is written by tools/gen_kernel_source_manifest.py at compile time and pinned by the park; a lookup that never matches is a defective CLAUSE, not evidence - [[mi4-self-written-record-is-not-a-constraint]])"; exit 1; }
 [[ "$_want" == "$_have" ]] || { echo "REFUSING: the pool's source record says $_have but the staged trap.c hashes $_want - the pool was NOT rebuilt from the probed source"; exit 1; }
 echo "   (0a-0) by value: the pool's source record names the SAME trap.c sha ($_want) - the probe IS in the object the image was linked from"

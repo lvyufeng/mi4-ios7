@@ -17247,3 +17247,48 @@ set=armed-d13-49031dcb sha256=c135318c558e10c822577cbaaa23d2c64c222ebd2badef8e9b
 # CACHE the card serves (the delivered value). Not a file named in out/stage90/frozen/ - the card
 # is ~900 MiB and is rebuilt by build_root_volumes.sh --real + tools/patch_cache_libobjc_count.py --apply:
 # card_set=armed-d13-49031dcb card_sha256=0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529 card_bytes=939524096 card_off=0x10183720 card_old=0021b1eb620f08bff0bd card_new=5010012801daf0bdc046 card_rootfs_sha256=c9b9080de2a1de00707c6c282650b61608405a7dbc8fe2c0bced475705fb9fea
+
+# =================================================================================================
+# armed-d13-e92c0c52  -  1033: THE EVAL-FRAME PROBE - NAME THE 1032 FRAME BY VALUE.  INSTRUMENT ONLY.
+# 1032 (records/1032-reading.txt) read FIX-PARTIAL: the 10-byte libobjc clamp removed the 1030
+# stack-end WRITE (writer pc 0x37C26756), and the boot now ends with launchctl[2] usermode data
+# abort EXC_BAD_ACCESS at 0x10 (dfsr type 7) after `launchd[1] has started up`, then
+# "The System bootstrapper has crashed: Bus error: 10".  NOT a return: a resident rung.
+# NEW SWITCH: STAGE90_XNU_EVAL_FRAME=1 (tools/patch_d13_eval_frame.py), a trap.c block inside
+# 1025-s publisher AFTER 1031-s caller block.  Rows xnu_live_evf_*: pid, pc, lr, sp, cpsr, the RAW
+# untruncated DFAR (arm_ctx->far; 1025-s row prints vm_map_trunc_page(dfar), which is 0 for dfar
+# 0x10 and cannot tell them apart), dfsr, code, pc_minus_far, far_is_0x10, ustack, and the words at
+# far and sp+0x10 read with copyin only (+ their copyin results).  READS ONLY, failing path only.
+# CHANNEL: the global DEFINES array (env export); a -DSTAGE90_XNU_EVAL_FRAME in EXTRA is refused.
+# THE POOL MOVES: trap.c is a pool object, so the entry bin (and the arm name) MOVES.
+# [[mi4-one-file-many-rungs]]: EIGHT rungs edit osfmk/arm/trap.c (994/1020/1025/1026/1029/1030/
+# 1031/1033); the new switch is in EVERY trap.c patcher-s ALLOWED_IF_IDENTIFIERS, and a bare
+# `git checkout --` reverts the others SILENTLY.
+# THE CARD: 1033 serves 1032-s 10 bytes (card 0x10183720 = 5010012801daf0bdc046).  Not a park member
+# (the card is ~900 MiB); the bytes and the card-s sha256 are pinned here and its content anchor is
+# checked by patch_cache_libobjc_count.py --check [1a].
+# THE BY-VALUE PROOF (park_1033.sh): the staged trap.c carries the block x1 with ONE bracketed
+# #endif AFTER 1031-s and INSIDE 1025-s; trap.o AND the linked image carry ALL 8 evf rows; the
+# parent chain (cal/wrp/rdr/lookup_far/vmfkrv) survives both; the card carries the guard and --check
+# PASSes; and the inherited clauses (1023 row 24, 1020 raise, 1024 ceiling, 1021d NEON-free census
+# + linked mach_msg_send, 1018 direct witness, 1015b GLOBAL-FIX x3) hold.
+# THE READING: tools/check_1033_capture.py (pre-registered cells in docs/1033-design.md).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible.  fastboot boot only, NEVER flash.
+# card_sha256=0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529 card_off=0x10183720 card_new=5010012801daf0bdc046
+# =================================================================================================
+set=armed-d13-e92c0c52 sha256=e92c0c52a15b99923605c949891be5b80182fc1797e1700e6c2cf11d791d51c5 bytes=6331476 file=xnu_arm_entry.bin role=1033-eval-frame;xnu_arm_entry.bin
+set=armed-d13-e92c0c52 sha256=eb0ce62bae464e039a34bcb472e064c6a5e8f437cf4773161fece178b5096d40 bytes=7369076 file=xnu_arm_entry.elf role=1033-eval-frame;xnu_arm_entry.elf
+set=armed-d13-e92c0c52 sha256=88cec71f7dc621e4710c99889a25aa8bbc0528e5bec5c9478501ca731115d631 bytes=1912 file=xnu_arm_entry.h role=1033-eval-frame;xnu_arm_entry.h
+set=armed-d13-e92c0c52 sha256=ba2c243820e576c65b44ace301a3cadf541fb58729c336e60bd3c229ba46e237 bytes=2329 file=xnu_arm_entry-config.txt role=1033-eval-frame;xnu_arm_entry-config.txt
+set=armed-d13-e92c0c52 sha256=b49cd776831a357c5797a13b8fc202a8860fa3e13d42bb8cfc64f731d298eb47 bytes=46 file=xnu_arm_entry-arm-extra.txt role=1033-eval-frame;xnu_arm_entry-arm-extra.txt
+set=armed-d13-e92c0c52 sha256=2163b326d93f5aaf9a8688a4a02b2779b59437b81232dbe3308b5e48b0607e9b bytes=3149 file=xnu_arm_entry-sources.txt role=1033-eval-frame;xnu_arm_entry-sources.txt
+set=armed-d13-e92c0c52 sha256=6c05e5eae253058af309b99ff8c64d7db5a25f2aad7358b2bf9b8925f7cf1fac bytes=6826884 file=stage90.bin role=1033-eval-frame;stage90.bin
+set=armed-d13-e92c0c52 sha256=ecc24027f988de4f46b1cc849582064bec42475e9434be31252d41b32d03cf83 bytes=6888956 file=stage90.elf role=1033-eval-frame;stage90.elf
+set=armed-d13-e92c0c52 sha256=608883bab51222664668e4f6fe810a3ab115108a97ec48c8b05f3c16bfac765a bytes=6830080 file=stage90.img role=1033-eval-frame;stage90.img
+set=armed-d13-e92c0c52 sha256=dd91a25fb9edbb76ce2276770b30114f4be4bda5acad8c5d4128e2fef6d98ed4 bytes=9351168 file=stage90-qcdt.img role=1033-eval-frame;stage90-qcdt.img
+set=armed-d13-e92c0c52 sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1033-eval-frame;stage90_fixture.macho
+set=armed-d13-e92c0c52 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1033-eval-frame;stage90-build-config.txt
+set=armed-d13-e92c0c52 sha256=5835c5b297fd8d56f2b1ea8fd99bb07a69ecb2bbfe96cab5f68777145433125f bytes=560 file=SHA256SUMS.txt role=1033-eval-frame;SHA256SUMS.txt
+set=armed-d13-e92c0c52 sha256=52d600ee417049cf8141d3c054f99bbc2d5d04db938a3706037ec607bb72b822 bytes=20601 file=patch_d13_eval_frame.py role=1033-eval-frame-editors-definition
+set=armed-d13-e92c0c52 sha256=84e65e929031e91eba2e33320f68e4d600ba173fe6602cb928b15898921c4d4a bytes=18437 file=check_1033_capture.py role=1033-eval-frame-capture-reader
