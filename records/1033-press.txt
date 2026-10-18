@@ -1,0 +1,8 @@
+== 1033 press record (2026-10-18) ==
+arm: armed-d13-e92c0c52 (parked, 15 members)
+payload sha256 sent: dd91a25fb9edbb76ce2276770b30114f4be4bda5acad8c5d4128e2fef6d98ed4
+Booting OKAY; no return in 180 s; USB console capture zero bytes; runner exit 2
+boot epoch (staleness anchor): 1792349451
+capture at gate time: recovered-unknown-arm-20261018-160331-last_kmsg.txt (1792339412) -> STALE, refused
+USB present before press: 18d1:4ee7 (Android up); after: none
+NEXT: operator power press; then scripts/recover_last_kmsg.sh --read-only; then tools/check_1033_capture.py on a capture newer than 1792349451

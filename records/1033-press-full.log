@@ -1,0 +1,1659 @@
+== 0. the record and the image must be 1033's arm ==
+   arm = armed-d13-e92c0c52
+   (0) by value: pmap_flush_tlbs carries the GLOBAL-FIX (3 kernel_pmap sites, 1/1 flush arms)
+   (0a-0) by value: the pool's source record names the SAME trap.c sha (9be2ab5c162ecfe1916575ada0fce3ab01baaa815f12fb91b4a817026f4e5f2d) - the probe IS in the object the image was linked from
+   (0a) by value: trap.c (source-record matched), trap.o and the LINKED image all carry the evf rows
+   (0a-1) by value: trap.o keeps cal/wrp/rdr/abt publishers; kern_exec.o keeps the ustack accessor
+   (0a-checker) by value: tools/check_1033_capture.py --selftest PASSes
+   inherited by value: 1024 ceiling / 1021d NEON-free / 1020 raise / 1023 row 24 all PASS on the linked image
+   (0g) by value: the card carries 1032's 10-byte guard, differs from the rootfs in exactly those 10 bytes, and --check PASSes
+== 1. the card image (built+patched by scripts/build_1033.sh -- NOT rebuilt here) ==
+   out/stage90/xnu_card_hfs.img  0ea912c2328e4599...
+== 2. hardware gate ==
+== 2b. write the card image to userdata's head (partition offset 0) ==
+adbd is already running as root
+2+1753 records in
+896+0 records out
+939524096 bytes (896 M) copied, 45.000758 s, 20 M/s
+   device 0x10183720 = 5010012801daf0bdc046
+   card   0x10183720 = 5010012801daf0bdc046
+   (2b') by value: the DEVICE's userdata carries 1032's guard at the offset the cache maps it from
+== 3. the press (gate + runner, fastboot boot only) ==
+   (USB console reader armed: pid 2626729 -> out/stage90/captures/usb-console-1033-20261018-184923.txt)
+== build configuration ==
+#define STAGE90_HW_WATCHDOG STAGE90_HW_WATCHDOG_ARMED
+#define STAGE90_HANDOFF_MODE STAGE90_HANDOFF_MODE_HARD_SKIP
+#define STAGE90_CACHE_MODE STAGE90_CACHE_MODE_NONE
+#define STAGE90_ENTRY_LADDER_LEVEL STAGE90_ENTRY_LADDER_FULL
+#define STAGE90_XNU_ENTRY 1
+#define STAGE90_HANDOFF_FAULT_INJECT_VA 0u
+#define STAGE90_DEADMAN_SELFTEST 0u
+#define STAGE90_XNU_BOOT_ARGS 0u
+#define STAGE90_XNU_MSM8974_FIQ_PROBE 0u
+#define STAGE90_XNU_REAL_DT 0u
+#define STAGE90_PMAP_ATTR_MODE STAGE90_PMAP_ATTR_MODE_SO_ONLY
+#define STAGE90_BYPASS_ENTRY_STUB 0u
+#define STAGE90_EXCLUSIVE_PROBE 0u
+#define STAGE90_XNU_MSM8974_SHIM 0u
+#define STAGE90_DEADMAN_ENABLE 1u
+#define STAGE90_HW_WATCHDOG_SELFTEST 0u
+  STAGE90_HW_WATCHDOG=STAGE90_HW_WATCHDOG_ARMED
+  STAGE90_HANDOFF_MODE=STAGE90_HANDOFF_MODE_HARD_SKIP
+  STAGE90_CACHE_MODE=STAGE90_CACHE_MODE_NONE
+  STAGE90_ENTRY_LADDER_LEVEL=STAGE90_ENTRY_LADDER_FULL
+  STAGE90_XNU_ENTRY=1
+  STAGE90_HANDOFF_FAULT_INJECT_VA=0u
+  STAGE90_DEADMAN_SELFTEST=0u
+  STAGE90_XNU_BOOT_ARGS=0u
+  STAGE90_XNU_MSM8974_FIQ_PROBE=0u
+  STAGE90_XNU_REAL_DT=0u
+  STAGE90_PMAP_ATTR_MODE=STAGE90_PMAP_ATTR_MODE_SO_ONLY
+  STAGE90_BYPASS_ENTRY_STUB=0u
+  STAGE90_EXCLUSIVE_PROBE=0u
+  STAGE90_XNU_MSM8974_SHIM=0u
+  STAGE90_DEADMAN_ENABLE=1u
+  STAGE90_HW_WATCHDOG_SELFTEST=0u
+
+== image integrity ==
+/mnt/data/mi4-ios6/out/stage90/stage90_fixture.macho: OK
+/mnt/data/mi4-ios6/out/stage90/stage90.elf: OK
+/mnt/data/mi4-ios6/out/stage90/stage90.bin: OK
+/mnt/data/mi4-ios6/out/stage90/stage90.img: OK
+/mnt/data/mi4-ios6/out/stage90/stage90-qcdt.img: OK
+sha256 verified against /mnt/data/mi4-ios6/out/stage90/SHA256SUMS.txt
+
+== image freshness ==
+no source file is newer than the image
+
+== the entry image the payload embeds ==
+  header: page_size=2048 kernel_size=6826884 kernel_addr=0x00008000
+  the image's kernel section is /mnt/data/mi4-ios6/out/stage90/stage90.bin, byte for byte (6826884 bytes)
+  the payload compiled in a 6331476-byte entry blob, and /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry.bin is 6331476 bytes
+  the blob is 6331476 bytes at payload offset 494148 = image offset 496196 (page_size 2048 + 494148)
+  the linker's symbol says the blob is 6331476 bytes at 494148, which agrees
+
+== the entry image's own switches ==
+usb_console_read: waiting up to 600s for 18d1:0910 to appear (press now)...
+the kernel sources match the pool they were compiled into (/mnt/data/mi4-ios6/out/xnu_kernel_src_d13.sha256)
+  STAGE90_XNU_ENTRY_SHA256=e92c0c52a15b99923605c949891be5b80182fc1797e1700e6c2cf11d791d51c5
+  STAGE90_XNU_ENTRY_BYTES=6331476
+  STAGE90_ENTRY_TRACE=1
+  STAGE90_ENTRY_REAL_ARM_INIT=1
+  STAGE90_XNU_SLOT_NULL=1
+  STAGE90_XNU_EXIT_POC_FLUSH=0
+  STAGE90_XNU_IDLE_CACHE_ENABLE=0
+  STAGE90_XNU_ISTACK_SEPARATE=1
+  STAGE90_XNU_IDLE_STACK=1
+  STAGE90_XNU_SEAM_POC=0
+  STAGE90_XNU_SEAM_MEASURE=0
+  STAGE90_XNU_SEAM_END_RUN=0
+  STAGE90_XNU_POST_END_RUN=0
+  STAGE90_XNU_POST_END_TICKS=0
+  STAGE90_XNU_STORAGE_PROBE=60
+  STAGE90_XNU_PWR_WAIT_TICKS=1920000
+  STAGE90_XNU_MOUNT=1
+  STAGE90_XNU_HFS_ROOT_MEDIA=1
+  STAGE90_XNU_EMMC_STRATEGY=1
+  STAGE90_XNU_ROOT_FROM_CARD=1
+  STAGE90_XNU_HDD_WRITE=0
+  STAGE90_XNU_HFS_ROOT_RW=1
+  STAGE90_XNU_CARD_TOTAL=1
+  STAGE90_XNU_FULL_EXTENT=1
+  STAGE90_XNU_CARD_COW=1
+  STAGE90_XNU_RESIDENT=1
+  STAGE90_ENTRY_CHECKPOINT=(unset)
+  STAGE90_ENTRY_CHECKPOINT_SKIP=(unset)
+  STAGE90_ENTRY_CHECKPOINT_AFTER=(unset)
+  STAGE90_XNU_IDLE_NO_SLEEP=0
+  STAGE90_XNU_USB_PROBE=1
+  STAGE90_XNU_USB_DEV=1
+  STAGE90_XNU_USB_DEV_FORCE=0
+  STAGE90_XNU_USB_ENUM=1
+  STAGE90_XNU_USB_STREAM=1
+  STAGE90_XNU_SMEM_PROBE=1
+  STAGE90_XNU_MEM_SIZE_MAX=(unset)
+  STAGE90_XNU_MEM_TOTAL=1
+  STAGE90_XNU_ENTRY_WINDOW=0x1e400000
+  STAGE90_XNU_TREE_D13=1
+  STAGE90_XNU_KEXTB_LOGIN=1
+  STAGE90_XNU_SP_ALIGN=1
+  STAGE90_XNU_VMHINT_GUARD=1
+  STAGE90_XNU_COMMPAGE_ALIAS=1
+  STAGE90_XNU_IOS7_TRAPS=1
+  STAGE90_XNU_DYLD_WITNESS=1
+  STAGE90_XNU_SHREG_PROBE=1
+  STAGE90_XNU_SHREG_WIRE=1
+  STAGE90_XNU_SHREG_GEOM=1
+  STAGE90_XNU_USVC=1
+  STAGE90_XNU_SUBMAP_PMAP_SKIP=1
+  STAGE90_XNU_STALL=1
+  STAGE90_XNU_ABORT_TRACE=1
+  STAGE90_XNU_CADENCE=1
+  STAGE90_XNU_FREEZE_WITNESS=1
+  STAGE90_XNU_ABT_SPAN=1
+  STAGE90_XNU_ABT_FAR=1
+  STAGE90_XNU_ABT_PC=1
+  STAGE90_XNU_ABT_PTE=1
+  STAGE90_XNU_VME_PROT=1
+  STAGE90_XNU_PMP_ENTER=1
+  STAGE90_XNU_WRSTRIP=0
+  STAGE90_XNU_PTE_WITNESS=1
+  STAGE90_XNU_FLUSH_WITNESS=1
+  STAGE90_XNU_PERM_WITNESS=1
+  STAGE90_XNU_UNDEF_DIRECT=1
+  STAGE90_XNU_UNDEF_RAISE=1
+  STAGE90_XNU_GENERAL_REGS=1
+  STAGE90_XNU_VM_MAX_SPLIT=1
+  STAGE90_XNU_USTACK_PROBE=1
+  STAGE90_XNU_ABT_ENTRY_PROBE=1
+  STAGE90_XNU_H2_STACK_HEADROOM=1
+  STAGE90_XNU_READER_PROBE=1
+  STAGE90_XNU_WRITER_PROBE=1
+  STAGE90_XNU_CALLER_PROBE=1
+  STAGE90_XNU_EVAL_FRAME=1
+  (recorded in /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry-config.txt, bound to e92c0c52a15b99923605c949891be5b80182fc1797e1700e6c2cf11d791d51c5)
+  root medium: the CARD image /mnt/data/mi4-ios6/out/stage90/xnu_card_hfs.img is HFSX 0x4858 v5 (939524096 bytes) - the family the pressed root uses
+  root medium: FULL_EXTENT=on - the card unit bounds the WHOLE selected partition (13.6 GiB), so
+               the 939524096-byte card image is addressable in full (888's 32-bit bound was 692 MiB)
+== how far up the storage line this arm goes, read against the ladder's own guard ==
+  STAGE90_XNU_STORAGE_PROBE=60  (within [0, 60], the bound its own `#if` guard declares in src/entry/entry_storage.c;
+      what that number DOES is spelled out at that guard, in the `#error` the build refuses on -
+      this gate prints the value and the bound and deliberately does not restate the rungs)
+  STAGE90_XNU_PWR_WAIT_TICKS=1920000  (within [1, 19200000], the bound its own `#if` guard declares in src/entry/entry_storage.c;
+      what that number DOES is spelled out at that guard, in the `#error` the build refuses on -
+      this gate prints the value and the bound and deliberately does not restate the rungs)
+== which arm the entry image in out/ is, in words ==
+  idle sleep (IDLE_NO_SLEEP=0): the arm that came back - 514's one repair IS in this image, so
+      `SIGPdisabled` is cleared once from `__wrap_poll` on pid 1's thread before the park's real
+      call and `cpu_idle` can leave by its SECOND door: **the window whose `pop {fp, pc}` is this
+      phase's frontier IS ENTERED, so everything below - the slot, the bracket, the window's two
+      ends and the seam - is narration about THIS arm, and its keys are expected PRESENT.** 533's
+      capture carries `xnu_live_slot_cwe_win` and `xnu_live_pce_after_sctlr`, which is the window
+      having been entered and read; 520's carries neither because its image predates the instrument,
+      which is why the pair and not one of them settles what this arm does.
+      **On this arm an absent `xnu_live_repair_seq` is a bug rather than the switch** - the
+      converse of what the 1 arm's block says, and the pair is the reason this gate prints the arm's
+      value from the record before any run rather than leaving it to be inferred from the log after.
+      Its death is the one both parked captures show and the reason this phase has a frontier at
+      all: the exit's `push {fp, lr}` / `pop {fp, pc}` inside `platform_cache_idle_exit`, with the
+      park's poll never returning. The park group's
+      `cpu_signal_handler_internal(FALSE) called 1 time(s)` is therefore **absent for that same
+      reason** - it prints only after the park's real poll returns, so on this arm the group's
+      absence says the park did not return and not that the repair was skipped.
+  capture sites (SLOT_NULL=1): the NULL instrument - entry_slot_null_note publishes the pass
+      count alone, so the four slot words are neither loaded nor stored by this image and the
+      xnu_live_slot_{pre,post}_{sp,m16,m12,m8,m4} keys are expected ABSENT, not missing.
+      So a run of this arm prints two UNREAD lines for the slot's own capture, naming
+      xnu_live_slot_pre_calls - that is this switch and not a disagreement, and a successful
+      boot of this arm carries them. Read them as 'the comparison could not be made here'.
+  bracket (pre note -> rtcpre note -> the real exit -> post note; 538 read the three call sites out of
+      these very bytes): xnu_live_slot_pre_calls, xnu_live_slot_rtcpre_calls and
+      xnu_live_slot_post_calls are published by the exit wrapper in the same pass, on one schedule
+      and one gate - so pre without rtcpre localizes the death between the two notes, and pre and
+      rtcpre without post puts it inside platform_cache_idle_exit, which is the localization this
+      arm exists to buy. **xnu_live_slot_rtcab_* is NOT part of this bracket.** entry_stubs.c:1792
+      publishes it from entry_note_sleh, the *abort* path, so it counts abort records and not
+      entries: in 520's own log it has five (1,2,3,4,8), i.e. at least eight aborts, and a bracket
+      read off it would put the window at eight entries when the exit wrapper's rtcpre has exactly
+      one record. The entry-side pair is entry_trace.c:1973's rtcpre beside :1971's pre, and 556's
+      narration below says the same pair.
+  window's near end (IDLE_CACHE_ENABLE=0): the SCTLR.C write is NOT in this image - the wrapper
+      calls entry_window_note(win, entry_sctlr()) with the register unchanged, so _cwe_win and
+      _cwe_set are the SAME value by construction and the pair says only that the site ran.
+      **Agreement there is this arm's expected reading, not a failed enable.** The 526 narration
+      below predates this line; where its checklist and this derived line differ, this one governs.
+  window's far end (EXIT_POC_FLUSH=0): no exit-side flush of this image's own. That is an absence of
+      THIS flag and not evidence that the inner seam is absent: an arm that flushes inside the real
+      exit would arrive as its own switch, and the converse clause above refuses a record carrying a
+      switch this gate does not print - so such an arm cannot be booted with nobody having read it.
+  the seam (SEAM_POC=0, SEAM_MEASURE=0): NO interception of this image's own - no
+      `--wrap=FlushPoU_Dcache`, so no wrapper of ours sits between the real exit's `push {fp, lr}`
+      and its `pop {fp, pc}`, and the flush inside that function is Apple's own. **Both seam keys are
+      at 0 here, which is the only state this paragraph is printed in**: with either at 1 the
+      interception is in the link, so a 0 beside a 1 above is an arm and not this. The exit's call is
+      untested by such a run: this is the arm 568 already ran (533's configuration), so a record with
+      both keys at 0 is a re-run of that arm and not a test of 535 - 547 section 5's seam is unprobed,
+      and an absent flag here is an absent interception, not an absent problem.
+  interrupt stack (ISTACK_SEPARATE=1): separate from the boot thread's, so an interrupt-path
+      fault is not a fault on the stack the boot is using.
+  idle stack (IDLE_STACK=1): the wrapper is in this image.
+  and the count keys are a schedule, never a total: n publishes while n <= 4 and then at the powers
+      of two (entry_slot_publish, entry_stubs.c:6236), so a published 4 means AT LEAST four - which
+      is why a count read as a total is 406's tell and not a reading.
+
+== the entry image's own sources ==
+the entry image is the build of src/entry/ as it stands: 33 file(s), every one matching the manifest, and none the manifest does not name
+
+== the arm the record owes ==
+  set armed-d13-002b0683: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0184b928: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0343ef45: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0d531453: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0f39207c: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-10b79e5d: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-12427611: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-124cd528: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-13355bf0: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-16fe8885: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-1d5cf20e: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2171f0d1: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-24997fc5: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2544428e: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-299ee994: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-29ec9e48: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2df6333a: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2e0eebf5-spent: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-31bdebf3: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-321e3332: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-35a7e83e: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-3af667a3: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-467d59e4: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-47f664c4: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-4894f20a: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-49031dcb: 8/28 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-4efcabae: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-518b6a94: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-582a19c8: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-5c1fb3ca: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-6435778a: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-64391319: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-64558b47: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-6ab42af7: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-707801c4-spent: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7107b998: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-73475747: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7669309b: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7c230cf9: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7fbd7009: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-8034562e: 3/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-8355c712: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-88074ab3: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-887d60ea: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-89210a26: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-89bcc6e3: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-8b4c9a3e: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-8cfb7ca8: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-96f53c02: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-97d6a511: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-9bf25f8f: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-9cf2f15e: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-ad6b4a68: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b04976fe: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b47131c8: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b5093f00: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b9c224c0: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-bbdf41bc: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-c2168632: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-c36a3e06: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-c54fc40d: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-cea0c1c2: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-d06ee14f: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-d693864f: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-d7f1e533: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-dee822b0: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-e28361f9: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-e51d14fa: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-e92c0c52: 15/15 file(s) of out/ match
+  set armed-d13-ee2dd4fb: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-fa301bd7: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-fce6e8dd: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-fce83837: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-ff937225: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-ffdc8ba1: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-post-endrun-ee7aca87: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-post-endrun2-57d441cc: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-post-endticks-b12616bc: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-seam-endrun-88972ba9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-seam-poc-a43304f2: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-selftest-wdog-ef0361a2: 1/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90-build-config.txt stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-sleepless-696a0f39: 2/11 file(s) of out/ match   [differ: SHA256SUMS.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-054f8269: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-0da7313b: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-0e6eb4b4-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-104b10ce: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-1138fdc6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-185d1069: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-18b0ccf3: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-1cb894c8: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-1d3ae364: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-21086959: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-28c82f79: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-2dbf8098: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-377fb57a: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-3a92aa52: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-3c6803f6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-3fcccaf7: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-4205a945-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-46fe6737: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-47c657af: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-4f4111fa: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-54d5c585: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-5936b246: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-59ec5fd6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-5c440167: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-5fca6210: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-605a43c2: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-63c6d77d: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-65824de4: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-65c6424b: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.elf stage90.bin stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-6a2e94ae: 2/12 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt stage90-qcdt.img]
+  set armed-storage-6cd6fae8: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-6deae815: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-6deb8308: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-7189e9b: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-71b54d73: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-7228e3f9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-7341f5f6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-77a51d33: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-8096cb2c: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-81287a97: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-880a3568: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-8988f8f1-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-8f0d41fd: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-92435ddc: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-92b6c552: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-94de2ede: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-960c57c4: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-979ded08: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-9d2dd2e4: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-a1378a48: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-a703257d: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-af522aca: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-afbb4849: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-b00b87bb: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-b3e19b48: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-b3fbcd31: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-b459a858: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-b7e5a18f: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-bb2269bf: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-bf9408ca: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-c1f89600: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-c3007c37: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-cabba670: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-cb4e17f1: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-cd3d63bf: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-ce2f589c: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-census-4d66f871: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-cid-dc8d7002: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-clkset-b4b696d9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-clock-6e7fbafa: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-cmd-892b8b68: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-completion-6f49e880: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-d301bcb5: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-d5d98738: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-d6e2fbe6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-dfc4ae78: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-e4e9324a: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-e61ce673: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-e8597e3e: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-ee0ab2e6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-enable-953ad0f6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-f347d060-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-f34cf0fb: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-f72e9f18: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-f8d91170: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-f9613649: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-gcc-1fc30bfe: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-instant-e8dc64f7: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-mode-57d55fc9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-power-7b1f3799: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrirq-df4d38e5: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrwait-8b824cac: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrwait-aa2b051d: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrwait-unmask-13366e08: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-quiet-c9738417: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-rb-05645d1a: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-rca-c333d09c: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-reset-00b28262: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-window-0d3591fe: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-1091566c: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-9edaa3b3: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-aac38c50: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-aff86051: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-b97fcd2a: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-c74bde1d: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set frozen-574: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+the bytes in /mnt/data/mi4-ios6/out/stage90 are the recorded set 'armed-d13-e92c0c52', file for file; the other 187 recorded set(s) do not match
+
+== storage tripwire ==
+no storage symbols in the payload or in the entry image it jumps into
+storage-controller references in /mnt/data/mi4-ios6/out/stage90/stage90.elf
+  movt high halves checked: 0xf980-0xf98f
+  literal words checked:    0xf9800000-0xf98fffff
+  embedded entry-image blob: 0x00080a44-0x0068a698 (4 word(s) there not counted)
+  none
+
+== recovery net ==
+hardware watchdog: ARMED. The SoC resets itself if the payload stops making
+                   progress, whatever the CPU is doing - and platform_reboot()
+                   forces a bite so the reboot does not depend on PS_HOLD.
+software dead-man: armed (60s), as a second net.
+MEASURED, this arm: the last four hangs (517's first run, 521, 522, 526) did NOT come back
+         and each needed a power press - 526's port has been silent for hours against a bite
+         due 28 s after the arming. Why they did not come back is NOT measured: the entry
+         image carries no address in the watchdog's page, which is checked below, but that is
+         not the same as unreachable - the watchdog shares its 1 MB section with the GIC, and
+         this image maps that section. Expect a power press, and expect the log to go with it.
+
+== the net's reach in the entry image ==
+  /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry.bin:
+    1582869 aligned words, 51201 carrying the movt encoding (a ceiling)
+    [0xf9010000, 0xf901ffff]   pool word 0   movt rD, #0xf901 0   mov/mvn immediate 0
+    witness, one nibble below - the GIC, which this image does use:
+    [0xf9000000, 0xf900ffff]   pool word 0   movt rD, #0xf900 20   mov/mvn immediate 4
+      the movt counts are ceilings for the same reason: the mask frees the condition field,
+      so a data word sharing the low half is counted too.
+    exempt code (entry_wdt_pet), which a residence arm must carry the page in:
+      4 page reach(es) - pool word 0   movt rD, #0xf901 4   mov/mvn immediate 0
+  positive control - the payload, which arms the net, so it must carry the page:
+    /mnt/data/mi4-ios6/out/stage90/stage90.bin
+    pool word 0   movt rD, #0xf901 10   mov/mvn immediate 0
+  and nothing in this image pets the net, so the run is CAPPED: a run of this arm that goes well
+  also ends within the net's own interval, not when the payload stops. The two constants are read
+  out of stage90.h rather than quoted here:
+    STAGE90_HW_WATCHDOG_TIMEOUT_S    29 s   (the bark)
+    STAGE90_HW_WATCHDOG_BITE_GAP_S   3 s   (bark -> bite)
+    so the bite is at most 32 s after the payload arms it, and the payload
+    spends about 1 s of that before the jump (measured: 533's payload timebase sample to the
+    idle's first read is 1.1805 s on one 19.2 MHz counter).
+  READ IT AS 'UNUSED', NOT 'UNREACHABLE'. This image maps the watchdog's registers on every boot -
+  the GIC probe's own 1 MB section descriptor (0xf901040e, base 0xf9000000, attr index 3 =
+  strongly-ordered) covers 0xf9017000, and both archived captures carry it. What the scan above
+  measures is that nothing STORES to them, and a store is what a pet is. Changing this ceiling is
+  therefore not new machinery: it is one store to 0xf9017004 (WDT0_RST) from a path XNU already
+  runs, in a wrapper this image already has. That is a decision about the arm and not part of it.
+  MEASURED, what that ceiling looks like: 513's two captures - the same regime, an image with no
+  repair - end their payload records at the fifth poll with panic 0, Attempting system restart 0,
+  MACH Reboot 0, pc_sample_watchdog_fired 0 and platform_reboot entered 0, so NO software path
+  ended either run and the records simply stop after the work, with no fault text. Read a capture
+  of this arm that way: 'the log ends without a fault' is the ceiling, not a missing reading.
+== the boot argument that selects the idle arm ==
+549: SKIPPED on D13 - the idle-cache boot argument does not exist in this tree.
+  D13's arm_init parses only maxmem/-no-cache/serial and ships no caches.c; its idle is gated
+  by do_power_save (pmCPU.c:41), a compile default, not a boot argument. The boot image is
+  confirmed NOT to carry up_style_idle_exit=1, so no idle arm is being claimed.
+
+== mode policy ==
+HARD_SKIP: stops before the candidate L1, the watchdog loop and the jump.
+
+== ladder ==
+FULL (4): boot-args, early pmap, PE_init_platform, post-PE bootstrap, arm_vm_init,
+          the high-VA windows and the loader. The only level that reaches the handoff.
+
+== fault injection ==
+off: the handoff targets the Stage-owned high-VA function as usual.
+
+== entering XNU ==
+ENTERING XNU: the payload copies a linked image containing XNU's real osfmk/arm/start.s
+          to PA 0x80000000 (experiment 241's base; 0x00200000 before it), hands it a
+          boot_args (physBase == virtBase), and jumps.
+          Nothing after that jump is the payload's: the page tables, vectors, caches
+          and MMU state are XNU's, and the payload never runs again.
+
+          Endings, and the log says which:
+            '...real XNU entry: _start ran to completion and branched to arm_init'
+                 XNU's own entry sequence ran on this device, end to end.
+            '...real XNU entry: exception: <which>'
+                 it faulted, and the vector names itself.
+            neither, ending at 'jumping to XNU's _start'
+                 it hung; the hardware watchdog brings the phone back in ~28s.
+            no log at all, and the device does not come back
+                 the net below did not recover it and the ram_console died with the
+                 cold boot; the phone needs a power-button press and the run is lost.
+                 This is not hypothetical and it is not rare enough to ignore: it is
+                 experiment 517's first run (2026-09-21). One observation, and the
+                 cause is not known - the run had two changes in it, so the next image
+                 carries one (see STAGE90_XNU_EXIT_POC_FLUSH in build_entry.sh).
+                 A candidate mechanism exists and is now measured rather than
+                 reasoned (experiments 517/518): the interrupt handler's stack starts
+                 at cpu_data->istackptr, which is also where the idle loop runs, so
+                 the handler's 5th and 6th pushed words land on the return address
+                 the idle exit is about to pop - and 518's run shows it popping a
+                 timebase value into the PC. 518's arm (move istackptr to the middle
+                 of the interrupt stack) RAN on 2026-09-22 and could not test it:
+                 istackptr is read by the vector AND by the context switch that puts
+                 the idle thread on that stack, so the arm moved both and the gap is
+                 invariant (SS_SP == istackptr - 16 in 516 and in 518 alike). The
+                 same panic returned, with the device recovering on its own. The arm
+                 cannot be another value of that field, so 519 changes where the idle
+                 thread's stack comes from instead: Idle_context is the one place that
+                 choice is made, and the arm rewrites its ldr sp from
+                 cpu_data->istackptr into a load of this image's own 16 KB array - so
+                 the handler keeps the whole interrupt stack and the idle body runs
+                 outside [intstack_top - 16384, intstack_top), which is exactly what
+                 ml_at_interrupt_context() tests. (518 section 5 proposed
+                 __wrap_Idle_load_context; that hook restores sp from the thread's pcb,
+                 so it cannot choose the idle body's stack - experiment 519 section 1.)
+                 **519 RAN on 2026-09-22 and obtained both of its predictions.**
+                 The arm worked: xnu_live_idlestack_sp = 0x8054fea8 is inside
+                 [stage90_idle_stack, +16384) with xnu_live_idlestack_inwin = 0 and
+                 _calls = 1, so the idle body is out of the window the kernel's
+                 predicate tests - and the live chain agrees with the panic's own sp
+                 from two sides (array top 0x8054fee0, cpu_idle's 'sub sp, sp, #8',
+                 the exit wrapper's 8-byte frame => the exit's entry sp is
+                 0x8054fed0). And the run ends in the *diagnosed* panic, not
+                 Apple's flat one: 'sleh_abort: prefetch abort in kernel mode:
+                 fault_addr=0x7152a6c' with frame_ok = 1, fsr_frame = 5,
+                 sp 0x8054fed0, lr 0x800462dc, pc = far = 0x07152a6c - i.e.
+                 ml_at_interrupt_context() answered false. The panel is the idle
+                 path's own registers one instruction before the pop (r0/r1 are
+                 the exit's own str, r5 and r4 are cpu_idle's, r4 = the value of
+                 cpu_data->rtcPop), so the two words the pop read are two counter
+                 readings one tick apart, the later one the deadline the idle loop
+                 held. 519 section 10 removes 518's mechanism by arithmetic:
+                 EXC_CTX_SIZE is 360 (80 + 264 + 16, genassym.c:188) and the VFP
+                 area never ends above the interrupted sp, so no exception frame
+                 writes above the sp it interrupted - the writer has to be
+                 WATCHED, not reasoned about. **520 RAN on 2026-09-22 and watched it.**
+                 That arm was 519's switch set unchanged with seven live-channel keys
+                 added per site and no state change anywhere. The death reproduced at
+                 the same instruction - xnu_live_sleh_storm = 9, sp = 0x8054fed0,
+                 lr = 0x800462dc, numerically identical to 519's - and the writer is
+                 now a number rather than a candidate: xnu_live_slot_rtcpre_pop =
+                 0x04b79075 is cpu_data->rtcPop read immediately before the fatal
+                 call, and the fault's pc = 0x04b79074 is rtcPop - 1, the Thumb
+                 relationship 519 read off its own r4/far pair. lr = 0x800462dc is
+                 the return address of platform_cache_idle_exit's bl FlushPoU_Dcache
+                 (0x800462d8) and its bcc at 0x80046300 is taken, so the faulting
+                 instruction is that function's own pop {fp, pc} at 0x8004633c - a
+                 pop, which is why lr still names the flush. The deadline reaches
+                 that word only via strd r4, [sp, #-12]! in
+                 __wrap_platform_cache_idle_enter (0x8047c8d4) and
+                 __wrap_cpu_idle_wfi (0x8047c888): pre-indexed 12 from the same X
+                 the exit wrapper's 8-byte frame lands on, so r4 goes to E-4, the
+                 slot's UPPER word. The exit's own push writes it first and still
+                 loses, because the window is open: caches.c:406 clears SCTLR.C,
+                 so the push reaches DRAM and touches neither the valid L1 line nor
+                 the L2 - 516's enter-side CleanPoC_Dcache is DCCSW (c7,c10,2),
+                 which CLEANS and leaves the line VALID - then caches.c:490 sets
+                 SCTLR.C again and the pop's load MISSES nothing, it hits. Apple's
+                 FlushPoU_Dcache is DCCISW, the right operation, but L1 only.
+                 The repair is FlushPoC_Dcache (DCCISW over L1 AND L2), which is
+                 exactly the call 517 added at this site behind
+                 STAGE90_XNU_EXIT_POC_FLUSH and which has never been run on its own.
+                 **So the arm to run is the exit-side PoC flush, switch on, with 520's
+                 instrument repaired per its section 11** - the two slot loads moved
+                 into the wrapper's inline asm (they were read through
+                 entry_slot_note's own frame: pre_m4 = 0x8047c974 is that note's own
+                 saved lr), the abort site publishing every abort instead of a
+                 geometric subsequence (the fatal seq 9 was neither <= 4 nor a power
+                 of two and its SS_SP 0x8054fed0 was INSIDE the guard - the one
+                 reading the arm existed for was sampled away), and the window
+                 widened to the kernel map's own bounds with the rtc note's inner
+                 refusals counted. The prediction is the panic's ABSENCE, not
+                 a further reading: the push then writes the only copy there is and
+                 the pop reads DRAM. Reading 4 answered its own question unused:
+                 ml_get_timebase was called >= 1024 times, 517's instrument
+                 published no xnu_live_tb_* record at all (its early return on
+                 SCTLR.C set), and its own pair spans exactly 24 ticks - so it is
+                 not the source of a 1-tick pair.
+                 **That arm ran (521) and the device did not come back.** One
+                 non-persistent fastboot boot, 'Booting OKAY', and then no adb, no
+                 fastboot, no getvar - a power press, and the log lost with the cold
+                 boot. The second such non-return in the project and the second
+                 flag-on image, which is what leaves the flush as the only remaining
+                 difference from the flag-off runs that all come back: a full L1 AND
+                 L2 clean-and-invalidate inside the idle window, with SCTLR.C clear,
+                 is the one operation this hardware has never survived - 517's first
+                 run carried the same call and also needed a power press.
+                 **So the arm to run is 522: turn the D-cache back ON at the window's
+                 near end and take the flush out of the picture.**
+                 entry_idle_cache_enable does the one thing Apple's own clear does in
+                 reverse - read SCTLR, orr #4, write it back, dsb, isb - and
+                 __wrap_platform_cache_idle_enter calls it the moment the real
+                 platform_cache_idle_enter returns (0x8047c924), before the WFI. That
+                 is a coherence property rather than a maintenance operation: the
+                 WFI, the exit's push {fp, lr} and the pop {fp, pc} that 519 and 520
+                 died in all run with the cache on, so a store updates the line a
+                 later load reads instead of landing in DRAM behind a line nothing
+                 had invalidated. The exit-side flush is OFF in this image, so the
+                 one change from 521 is the cache enable - and a run that does not
+                 come back after this is a datum rather than a failure to fix: the
+                 next arm is a null instrument (the same wrapper with the readings
+                 replaced by a counter) to separate the cost of the measurements
+                 from the cost of the state change.
+                 Four things to read, and the first is the verdict: (1) no
+                 'sleh_abort' panic and no xnu_live_sleh_storm growth past 520's
+                 9 - the idle exit retires its own epilogue; (2)
+                 xnu_live_slot_cwe_win shows C clear and xnu_live_slot_cwe_set shows
+                 it set, with _calls >= 1 - the enable ran inside the window and
+                 really took; (3) xnu_live_slot_post_calls >= 1, which says the exit
+                 RETURNED through the wrapper (520's was 0, its pass dying inside the
+                 call); (4) any later ending than 520's is progress - a different pc
+                 or the boot moving on - and the same death at the same pc says the
+                 mechanism is not the cache state but something the window itself
+                 does.
+                 **The 522 arm ran on 2026-09-22 and nothing came back to adb** (section 3.3
+                 of experiment 522 has the USB timeline: dev 88 = 18d1:d00d at 14:14:45, gone at
+                 14:14:46, nothing after) - and 551 is the repair of how that was concluded,
+                 because the same d00d-then-gone shape appears in the host log followed by a
+                 genuine return ([2163244] through [2173264], serial 4a2fe00b), which is why
+                 run_and_capture.sh now enters 2 only when the log itself shows no new enumeration
+                 of the serial - and 3, a capture failure and not a hang, when it does. Either way
+                 the prediction above is spent and the four readings it named have no values: if
+                 the device never came back there was no log, and if it came back unread the run
+                 was not the arm's run. What the run did produce is a
+                 ledger, and it is the reason the arm to run now is different in kind rather than
+                 in value: 521 and 522 both carry 521's repair of the exit wrapper's capture (the
+                 four words of the idle exit's {fp, lr} slot read by the caller at each of two
+                 sites, 8 loads and 8 stores a pass) and BOTH failed to come back, while 520 -
+                 which carries neither that capture nor any state change - came back; 521 and 522
+                 differ only in which state change they carry, the exit-side FlushPoC_Dcache and
+                 the enter-side SCTLR.C re-enable, so the capture is present in every image that
+                 did not return and absent from every one that did.
+                 **So the arm to run is 526: the null instrument.** Its image is 522's with the
+                 capture replaced by a counter - STAGE90_XNU_SLOT_NULL=1, which takes the four
+                 loads and the four pend_* stores out of each capture site and leaves
+                 entry_slot_null_note publishing the pass count alone; the exit-side flush stays
+                 at 0 and everything else in the wrapper (the 8-byte frame, the single
+                 mov r?, sp, 516's CleanPoC_Dcache, 519's rtcPop reading, the one call to the
+                 real exit, and 522's re-enable in the enter wrapper) is unchanged. That was
+                 checked rather than intended: the same tree built with STAGE90_XNU_SLOT_NULL=0
+                 reproduces 522's image 13d771938336fe65... byte for byte, so the two images
+                 differ by the capture and by nothing else.
+                 What to read, in the order that matters: (1) **does the device come back** - that
+                 is the whole experiment, and a return says the readings cost something (and the
+                 next arm bisects them: the two loads before the call, or the two after it) while a
+                 third non-return says the cost is the state change 521 and 522 do not share; (2) if
+                 it returns, xnu_live_slot_pre_calls and xnu_live_slot_post_calls are present and
+                 rising with the four words ABSENT - the site ran and published a count and nothing
+                 else, which is what a null run should look like, and their absence is the other
+                 reading (the site never ran); (3) the enable: whether the SCTLR.C write is in
+                 this image at all - and therefore whether the _cwe_* pair is a test or a
+                 formality - is what the derived line above the XNU-entry block reads out of
+                 the record, and that line governs this one; where the write IS in the image,
+                 522's block in run_and_capture.sh --summarise reads this log for it too -
+                 xnu_live_slot_cwe_win shows C clear, _set shows it set with _calls >= 1; (4) the
+                 ending, and here the arm decides what the ending means rather than the ending
+                 deciding the arm: 547 section 4 pre-registers this death for the enable-off arm -
+                 the pass reaches the exit, the push runs with C clear, the pop loads the stale
+                 words and the prefetch abort panics - so on that arm a death whose lr is the
+                 address the exit's own bl FlushPoU_Dcache returns to is the *prediction* and not
+                 a negative result, and what falsifies 546's mechanism is a **return with no pop
+                 death at all**, which is the one reading that forbids 535 as designed. Which
+                 cell this log is in, and whether the death is the predicted shape, is what
+                 run_and_capture.sh --summarise decides - it derives that address from this
+                 image's own ELF at run time and separates the two by the log's published
+                 xnu_live_sleh_lr, so nothing above restates the rule and a death read here by
+                 eye is read that way and not by this sentence.
+                 What this arm costs, read off 520's own log rather than assumed: that log's
+                 per-pass publishers have exactly one record each
+                 (xnu_live_slot_pre_calls, xnu_live_slot_rtcpre_calls, xnu_live_sip_seq and the
+                 xnu_live_pce_seq/_after_seq pair), while the door counter's last published record
+                 is 32768 - so the cache window itself was entered once, and that one entry is the
+                 death. A run of this arm gets one pass at the exit, so a non-return costs a power
+                 press and nothing else, which is why this phase is expensive in boots and not in
+                 passes. And the item that localises the death is the *bracket*, not the ending:
+                 pre and rtcpre published with xnu_live_slot_post_calls absent is what puts the
+                 death inside platform_cache_idle_exit, with no second pass to confuse it. (Line
+                 numbers quoted from that log are readable within their own block only: the ram
+                 console's records and its console text are two writers into two blocks, so a
+                 line's number says nothing about its order against a line in the other one.)
+                 The image this preflight is being run against is
+                 dd91a25fb9edbb76... , computed from the file itself two screens up.
+
+          Safety: the hardware watchdog is the only net across the jump, deliberately
+          - the software dead-man needs the payload's GIC and vector state, which are
+          gone the moment _start switches tables. The watchdog needs neither.
+          Its record, read from the ledgers rather than from this text: it recovered
+          every run from 506 to 515, including runs parked in the kernel's own idle
+          WFI and runs in an abort storm, and 516's two runs came back on XNU's own
+          'MACH Reboot'. It then did not recover 517's first run, and the two runs
+          whose non-return is what chose the current arm - 521 and 522 - are further
+          misses; net-pessimistic, and the route has drifted with the ledgers, so
+          what stands is the verdict and not the count. So: a net that has held many
+          times and is not proved to hold always - and not the way a non-return is
+          judged either, since 551 reads that out of the host log (exit 2 against
+          exit 3), which is a reading the net cannot give. A hang here may need a
+          power press, and the device is never at risk of being bricked - nothing in
+          this project is ever written to storage.
+
+== later-phase probes ==
+conforming boot_args (Phase 2): off - only the ladder's own identity-based args exist.
+MSM8974 platform shim (Phase 3): off.
+FIQ availability probe: off.
+
+== mapping attributes ==
+SO_ONLY: every mapping Strongly-ordered, as in every stage so far.
+
+== caches ==
+none: SCTLR.C and SCTLR.I both clear, as in every stage so far.
+      Cacheable DRAM descriptors, if the mode above sets them, are then
+      treated as non-cacheable by the hardware.
+
+== mapping attributes: consistency ==
+ok: cache and attribute switches agree
+
+All checks passed. The run is one command, which re-runs this gate with the same flags,
+enters fastboot, boots the image without writing anything to storage, and captures the
+log before anything else touches the device:
+
+  /mnt/data/mi4-ios6/scripts/run_and_capture.sh 4858 5 939524096
+
+== what run_and_capture.sh's exit status can mean ==
+read out of that section at gate time: 5 exit site(s) (3 written 'exit N', 2
+  written as a 'die' call whose code is die()'s own), distinct code(s) 1 2 3, at
+    run_and_capture.sh:3976   exit 3
+    run_and_capture.sh:3999   die -> exit 1
+    run_and_capture.sh:4037   die -> exit 1
+    run_and_capture.sh:4046   exit 2
+    run_and_capture.sh:4089   exit 2
+which code means which state is that file's own wording at those lines - read them there
+the 2 die site(s) above exit 1 - read out of die()'s definition, because a die
+call does not carry its code on the line. In this section that code has two producers and neither
+owes a power press: the host could not read its own USB log (a reading of the host failing, not of
+the device), and the boot call reporting no success (so a non-return after it is not a verdict
+about the payload). Both refuse to call the run a non-return - the press is owed only by the code
+whose own message says the device did not come back. The lines above name each producer's state in
+that file's own words, and the code set is checked against this gate below; the *count* of
+producers within one code is not checked, so a third one would change this sentence silently.
+for scope: this file has 19 exit site(s) in total over both spellings, code(s) 0 1 2 3 -
+  so the count and the codes above are section 4's, and a code can have a second producer outside it.
+So a non-return is not one thing in that section: it distinguishes states, and its codes are
+not interchangeable - one of them says the device *did* come back, into a state adb cannot
+reach, which is a capture failure and not a hang. Before recording any of them, confirm
+against the host's own log, by serial and not by port (this host's port has a second occupant
+that appears on its own after hours of silence, so a port-only test reads *that* as a return):
+  sudo dmesg | grep 4a2fe00b                 # bare dmesg prints nothing on this host
+and remember what that log cannot say: a payload that never returned and a phone whose Android
+failed to come up are the same reading in adb alone, which is why exit 2 was too wide a claim.
+Only the code whose own message says the device did not come back owes a power press - not the
+one that refuses to call this a non-return - and the log at /tmp/cancro-last_kmsg.txt survives only until that
+press, so read it first.
+== the log those instructions name, as it stands at gate time ==
+  /tmp/cancro-last_kmsg.txt
+  this is a reading of THIS moment, not a claim about the run: the gate cannot see whether a run
+  follows it, and run_and_capture.sh's step 2b parks this file before the boot (that file's own
+  564). So after the run the test is not this number: it is whether /tmp/cancro-last_kmsg.txt is there at all, and
+  whether what is there is non-empty - the hand retry exit 3's message asks for is a shell
+  redirect, which creates the file before adb can fail. One state is the exception and the gate
+  cannot see it from here, because whether the park *succeeds* turns on /tmp's sticky bit and the
+  file's identity (511/512): if step 2b could not move this file aside, the earlier log stays at
+  this name, a capture that fails leaves it looking untouched, and *then* the fingerprint below is
+  the test - the runner says so in its own words when it takes that branch.
+  And the earlier log is not lost when this name is gone after the run: step 2b parks the file
+  at /tmp/cancro-last_kmsg.txt.prev (then .prev.2, ...) whenever there is one to park, and that path is where an
+  earlier bracket lives. Read it for the earlier death and never as this run's, whatever the
+  bracket in it says - and read 'gone with nothing parked' as the capture it is, not as the park
+  it is not: with nothing at this name at gate time (the absent case below) step 2b has nothing to
+  move, so an absence after the run is this run's capture having failed, not an earlier log tucked
+  away.
+  absent - and that is the useful part: after the run, this file *existing* is itself the first
+  check, because nothing here writes it before a capture succeeds. Step 2b says the same thing
+  about this exact state ('no log at ... yet'), and step 5 reads into /tmp/cancro-last_kmsg.txt.new and renames it
+  into place only on a non-empty read - so a name still absent afterwards captured nothing,
+  whatever the exit code said.
+== the address run_and_capture.sh's shape test compares against ==
+  SKIPPED on D13 - the shape-test anchor does not exist in this tree.
+  D13 ships no platform_cache_idle_exit and no FlushPoU_Dcache (grep of osfmk/arm is empty for
+  both), so there is no bl return address for run_and_capture.sh's 554 shape test to compare
+  against. This is 549's clause shape: the subject is 4570's idle machinery. THE READER'S 554
+  SHAPE TEST IS OWED A TREE-AWARE CRITERION (its lane), because until then a D13 summarise run
+  falls back to EXIT_POP_LR_LITERAL - a 4570 number - which is the one-value-two-definitions
+  defect this clause exists to catch from the other side.
+
+== the seam's own body, read out of this image and not out of the record ==
+  no seam in the record and none in the image: entry_seam_flush is not in /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry.elf, and the clause
+  above reads FLUSH_WRAP=0 - so the record's two zeros and this link agree that nothing
+  of ours sits between the real exit's push {fp, lr} and its pop {fp, pc}. **That the image
+  carries no seam at all is measured here rather than inferred from those two keys**; *which*
+  unseamed arm it is still rests on the other keys printed above, so a both-0 record over a
+  rebuilt non-seam image is that paragraph's shape without being 568's run.
+
+  image: /mnt/data/mi4-ios6/out/stage90/stage90-qcdt.img
+  booted, never flashed, so no outcome of this run can write to storage.
+   fastboot boot -s 4a2fe00b out/stage90/stage90-qcdt.img   (fastboot boot, NEVER flash)
+
+== payload output ==
+MI4IOS6_STAGE90 lines: NONE (no file at /tmp/cancro-last_kmsg.txt)
+NONE. There is no log at that path at all, so no line of it was counted and every count
+below is absent rather than zero: either nothing has written one yet (this run has not
+booted anything), or the path is wrong. An empty log is a file that exists - this is not
+that state, and it is not a reading of any log.
+
+
+== the arm this press is for ==
+the bytes to be sent are the recorded set 'armed-d13-e92c0c52'
+  image  dd91a25fb9edbb76ce2276770b30114f4be4bda5acad8c5d4128e2fef6d98ed4  (9351168 bytes, the file `fastboot boot` sends)
+ok: declared arm 'armed-d13-e92c0c52' == the recorded set of the bytes to be sent
+
+== gate ==
+== build configuration ==
+#define STAGE90_HW_WATCHDOG STAGE90_HW_WATCHDOG_ARMED
+#define STAGE90_HANDOFF_MODE STAGE90_HANDOFF_MODE_HARD_SKIP
+#define STAGE90_CACHE_MODE STAGE90_CACHE_MODE_NONE
+#define STAGE90_ENTRY_LADDER_LEVEL STAGE90_ENTRY_LADDER_FULL
+#define STAGE90_XNU_ENTRY 1
+#define STAGE90_HANDOFF_FAULT_INJECT_VA 0u
+#define STAGE90_DEADMAN_SELFTEST 0u
+#define STAGE90_XNU_BOOT_ARGS 0u
+#define STAGE90_XNU_MSM8974_FIQ_PROBE 0u
+#define STAGE90_XNU_REAL_DT 0u
+#define STAGE90_PMAP_ATTR_MODE STAGE90_PMAP_ATTR_MODE_SO_ONLY
+#define STAGE90_BYPASS_ENTRY_STUB 0u
+#define STAGE90_EXCLUSIVE_PROBE 0u
+#define STAGE90_XNU_MSM8974_SHIM 0u
+#define STAGE90_DEADMAN_ENABLE 1u
+#define STAGE90_HW_WATCHDOG_SELFTEST 0u
+  STAGE90_HW_WATCHDOG=STAGE90_HW_WATCHDOG_ARMED
+  STAGE90_HANDOFF_MODE=STAGE90_HANDOFF_MODE_HARD_SKIP
+  STAGE90_CACHE_MODE=STAGE90_CACHE_MODE_NONE
+  STAGE90_ENTRY_LADDER_LEVEL=STAGE90_ENTRY_LADDER_FULL
+  STAGE90_XNU_ENTRY=1
+  STAGE90_HANDOFF_FAULT_INJECT_VA=0u
+  STAGE90_DEADMAN_SELFTEST=0u
+  STAGE90_XNU_BOOT_ARGS=0u
+  STAGE90_XNU_MSM8974_FIQ_PROBE=0u
+  STAGE90_XNU_REAL_DT=0u
+  STAGE90_PMAP_ATTR_MODE=STAGE90_PMAP_ATTR_MODE_SO_ONLY
+  STAGE90_BYPASS_ENTRY_STUB=0u
+  STAGE90_EXCLUSIVE_PROBE=0u
+  STAGE90_XNU_MSM8974_SHIM=0u
+  STAGE90_DEADMAN_ENABLE=1u
+  STAGE90_HW_WATCHDOG_SELFTEST=0u
+
+== image integrity ==
+/mnt/data/mi4-ios6/out/stage90/stage90_fixture.macho: OK
+/mnt/data/mi4-ios6/out/stage90/stage90.elf: OK
+/mnt/data/mi4-ios6/out/stage90/stage90.bin: OK
+/mnt/data/mi4-ios6/out/stage90/stage90.img: OK
+/mnt/data/mi4-ios6/out/stage90/stage90-qcdt.img: OK
+sha256 verified against /mnt/data/mi4-ios6/out/stage90/SHA256SUMS.txt
+
+== image freshness ==
+no source file is newer than the image
+
+== the entry image the payload embeds ==
+  header: page_size=2048 kernel_size=6826884 kernel_addr=0x00008000
+  the image's kernel section is /mnt/data/mi4-ios6/out/stage90/stage90.bin, byte for byte (6826884 bytes)
+  the payload compiled in a 6331476-byte entry blob, and /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry.bin is 6331476 bytes
+  the blob is 6331476 bytes at payload offset 494148 = image offset 496196 (page_size 2048 + 494148)
+  the linker's symbol says the blob is 6331476 bytes at 494148, which agrees
+
+== the entry image's own switches ==
+the kernel sources match the pool they were compiled into (/mnt/data/mi4-ios6/out/xnu_kernel_src_d13.sha256)
+  STAGE90_XNU_ENTRY_SHA256=e92c0c52a15b99923605c949891be5b80182fc1797e1700e6c2cf11d791d51c5
+  STAGE90_XNU_ENTRY_BYTES=6331476
+  STAGE90_ENTRY_TRACE=1
+  STAGE90_ENTRY_REAL_ARM_INIT=1
+  STAGE90_XNU_SLOT_NULL=1
+  STAGE90_XNU_EXIT_POC_FLUSH=0
+  STAGE90_XNU_IDLE_CACHE_ENABLE=0
+  STAGE90_XNU_ISTACK_SEPARATE=1
+  STAGE90_XNU_IDLE_STACK=1
+  STAGE90_XNU_SEAM_POC=0
+  STAGE90_XNU_SEAM_MEASURE=0
+  STAGE90_XNU_SEAM_END_RUN=0
+  STAGE90_XNU_POST_END_RUN=0
+  STAGE90_XNU_POST_END_TICKS=0
+  STAGE90_XNU_STORAGE_PROBE=60
+  STAGE90_XNU_PWR_WAIT_TICKS=1920000
+  STAGE90_XNU_MOUNT=1
+  STAGE90_XNU_HFS_ROOT_MEDIA=1
+  STAGE90_XNU_EMMC_STRATEGY=1
+  STAGE90_XNU_ROOT_FROM_CARD=1
+  STAGE90_XNU_HDD_WRITE=0
+  STAGE90_XNU_HFS_ROOT_RW=1
+  STAGE90_XNU_CARD_TOTAL=1
+  STAGE90_XNU_FULL_EXTENT=1
+  STAGE90_XNU_CARD_COW=1
+  STAGE90_XNU_RESIDENT=1
+  STAGE90_ENTRY_CHECKPOINT=(unset)
+  STAGE90_ENTRY_CHECKPOINT_SKIP=(unset)
+  STAGE90_ENTRY_CHECKPOINT_AFTER=(unset)
+  STAGE90_XNU_IDLE_NO_SLEEP=0
+  STAGE90_XNU_USB_PROBE=1
+  STAGE90_XNU_USB_DEV=1
+  STAGE90_XNU_USB_DEV_FORCE=0
+  STAGE90_XNU_USB_ENUM=1
+  STAGE90_XNU_USB_STREAM=1
+  STAGE90_XNU_SMEM_PROBE=1
+  STAGE90_XNU_MEM_SIZE_MAX=(unset)
+  STAGE90_XNU_MEM_TOTAL=1
+  STAGE90_XNU_ENTRY_WINDOW=0x1e400000
+  STAGE90_XNU_TREE_D13=1
+  STAGE90_XNU_KEXTB_LOGIN=1
+  STAGE90_XNU_SP_ALIGN=1
+  STAGE90_XNU_VMHINT_GUARD=1
+  STAGE90_XNU_COMMPAGE_ALIAS=1
+  STAGE90_XNU_IOS7_TRAPS=1
+  STAGE90_XNU_DYLD_WITNESS=1
+  STAGE90_XNU_SHREG_PROBE=1
+  STAGE90_XNU_SHREG_WIRE=1
+  STAGE90_XNU_SHREG_GEOM=1
+  STAGE90_XNU_USVC=1
+  STAGE90_XNU_SUBMAP_PMAP_SKIP=1
+  STAGE90_XNU_STALL=1
+  STAGE90_XNU_ABORT_TRACE=1
+  STAGE90_XNU_CADENCE=1
+  STAGE90_XNU_FREEZE_WITNESS=1
+  STAGE90_XNU_ABT_SPAN=1
+  STAGE90_XNU_ABT_FAR=1
+  STAGE90_XNU_ABT_PC=1
+  STAGE90_XNU_ABT_PTE=1
+  STAGE90_XNU_VME_PROT=1
+  STAGE90_XNU_PMP_ENTER=1
+  STAGE90_XNU_WRSTRIP=0
+  STAGE90_XNU_PTE_WITNESS=1
+  STAGE90_XNU_FLUSH_WITNESS=1
+  STAGE90_XNU_PERM_WITNESS=1
+  STAGE90_XNU_UNDEF_DIRECT=1
+  STAGE90_XNU_UNDEF_RAISE=1
+  STAGE90_XNU_GENERAL_REGS=1
+  STAGE90_XNU_VM_MAX_SPLIT=1
+  STAGE90_XNU_USTACK_PROBE=1
+  STAGE90_XNU_ABT_ENTRY_PROBE=1
+  STAGE90_XNU_H2_STACK_HEADROOM=1
+  STAGE90_XNU_READER_PROBE=1
+  STAGE90_XNU_WRITER_PROBE=1
+  STAGE90_XNU_CALLER_PROBE=1
+  STAGE90_XNU_EVAL_FRAME=1
+  (recorded in /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry-config.txt, bound to e92c0c52a15b99923605c949891be5b80182fc1797e1700e6c2cf11d791d51c5)
+  root medium: the CARD image /mnt/data/mi4-ios6/out/stage90/xnu_card_hfs.img is HFSX 0x4858 v5 (939524096 bytes) - the family the pressed root uses
+  root medium: FULL_EXTENT=on - the card unit bounds the WHOLE selected partition (13.6 GiB), so
+               the 939524096-byte card image is addressable in full (888's 32-bit bound was 692 MiB)
+== how far up the storage line this arm goes, read against the ladder's own guard ==
+  STAGE90_XNU_STORAGE_PROBE=60  (within [0, 60], the bound its own `#if` guard declares in src/entry/entry_storage.c;
+      what that number DOES is spelled out at that guard, in the `#error` the build refuses on -
+      this gate prints the value and the bound and deliberately does not restate the rungs)
+  STAGE90_XNU_PWR_WAIT_TICKS=1920000  (within [1, 19200000], the bound its own `#if` guard declares in src/entry/entry_storage.c;
+      what that number DOES is spelled out at that guard, in the `#error` the build refuses on -
+      this gate prints the value and the bound and deliberately does not restate the rungs)
+== which arm the entry image in out/ is, in words ==
+  idle sleep (IDLE_NO_SLEEP=0): the arm that came back - 514's one repair IS in this image, so
+      `SIGPdisabled` is cleared once from `__wrap_poll` on pid 1's thread before the park's real
+      call and `cpu_idle` can leave by its SECOND door: **the window whose `pop {fp, pc}` is this
+      phase's frontier IS ENTERED, so everything below - the slot, the bracket, the window's two
+      ends and the seam - is narration about THIS arm, and its keys are expected PRESENT.** 533's
+      capture carries `xnu_live_slot_cwe_win` and `xnu_live_pce_after_sctlr`, which is the window
+      having been entered and read; 520's carries neither because its image predates the instrument,
+      which is why the pair and not one of them settles what this arm does.
+      **On this arm an absent `xnu_live_repair_seq` is a bug rather than the switch** - the
+      converse of what the 1 arm's block says, and the pair is the reason this gate prints the arm's
+      value from the record before any run rather than leaving it to be inferred from the log after.
+      Its death is the one both parked captures show and the reason this phase has a frontier at
+      all: the exit's `push {fp, lr}` / `pop {fp, pc}` inside `platform_cache_idle_exit`, with the
+      park's poll never returning. The park group's
+      `cpu_signal_handler_internal(FALSE) called 1 time(s)` is therefore **absent for that same
+      reason** - it prints only after the park's real poll returns, so on this arm the group's
+      absence says the park did not return and not that the repair was skipped.
+  capture sites (SLOT_NULL=1): the NULL instrument - entry_slot_null_note publishes the pass
+      count alone, so the four slot words are neither loaded nor stored by this image and the
+      xnu_live_slot_{pre,post}_{sp,m16,m12,m8,m4} keys are expected ABSENT, not missing.
+      So a run of this arm prints two UNREAD lines for the slot's own capture, naming
+      xnu_live_slot_pre_calls - that is this switch and not a disagreement, and a successful
+      boot of this arm carries them. Read them as 'the comparison could not be made here'.
+  bracket (pre note -> rtcpre note -> the real exit -> post note; 538 read the three call sites out of
+      these very bytes): xnu_live_slot_pre_calls, xnu_live_slot_rtcpre_calls and
+      xnu_live_slot_post_calls are published by the exit wrapper in the same pass, on one schedule
+      and one gate - so pre without rtcpre localizes the death between the two notes, and pre and
+      rtcpre without post puts it inside platform_cache_idle_exit, which is the localization this
+      arm exists to buy. **xnu_live_slot_rtcab_* is NOT part of this bracket.** entry_stubs.c:1792
+      publishes it from entry_note_sleh, the *abort* path, so it counts abort records and not
+      entries: in 520's own log it has five (1,2,3,4,8), i.e. at least eight aborts, and a bracket
+      read off it would put the window at eight entries when the exit wrapper's rtcpre has exactly
+      one record. The entry-side pair is entry_trace.c:1973's rtcpre beside :1971's pre, and 556's
+      narration below says the same pair.
+  window's near end (IDLE_CACHE_ENABLE=0): the SCTLR.C write is NOT in this image - the wrapper
+      calls entry_window_note(win, entry_sctlr()) with the register unchanged, so _cwe_win and
+      _cwe_set are the SAME value by construction and the pair says only that the site ran.
+      **Agreement there is this arm's expected reading, not a failed enable.** The 526 narration
+      below predates this line; where its checklist and this derived line differ, this one governs.
+  window's far end (EXIT_POC_FLUSH=0): no exit-side flush of this image's own. That is an absence of
+      THIS flag and not evidence that the inner seam is absent: an arm that flushes inside the real
+      exit would arrive as its own switch, and the converse clause above refuses a record carrying a
+      switch this gate does not print - so such an arm cannot be booted with nobody having read it.
+  the seam (SEAM_POC=0, SEAM_MEASURE=0): NO interception of this image's own - no
+      `--wrap=FlushPoU_Dcache`, so no wrapper of ours sits between the real exit's `push {fp, lr}`
+      and its `pop {fp, pc}`, and the flush inside that function is Apple's own. **Both seam keys are
+      at 0 here, which is the only state this paragraph is printed in**: with either at 1 the
+      interception is in the link, so a 0 beside a 1 above is an arm and not this. The exit's call is
+      untested by such a run: this is the arm 568 already ran (533's configuration), so a record with
+      both keys at 0 is a re-run of that arm and not a test of 535 - 547 section 5's seam is unprobed,
+      and an absent flag here is an absent interception, not an absent problem.
+  interrupt stack (ISTACK_SEPARATE=1): separate from the boot thread's, so an interrupt-path
+      fault is not a fault on the stack the boot is using.
+  idle stack (IDLE_STACK=1): the wrapper is in this image.
+  and the count keys are a schedule, never a total: n publishes while n <= 4 and then at the powers
+      of two (entry_slot_publish, entry_stubs.c:6236), so a published 4 means AT LEAST four - which
+      is why a count read as a total is 406's tell and not a reading.
+
+== the entry image's own sources ==
+the entry image is the build of src/entry/ as it stands: 33 file(s), every one matching the manifest, and none the manifest does not name
+
+== the arm the record owes ==
+  set armed-d13-002b0683: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0184b928: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0343ef45: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0d531453: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-0f39207c: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-10b79e5d: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-12427611: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-124cd528: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-13355bf0: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-16fe8885: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-1d5cf20e: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2171f0d1: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-24997fc5: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2544428e: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-299ee994: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-29ec9e48: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2df6333a: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-2e0eebf5-spent: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-31bdebf3: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-321e3332: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-35a7e83e: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-3af667a3: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-467d59e4: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-47f664c4: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-4894f20a: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-49031dcb: 8/28 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-4efcabae: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-518b6a94: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-582a19c8: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-5c1fb3ca: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-6435778a: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-64391319: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-64558b47: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-6ab42af7: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-707801c4-spent: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7107b998: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-73475747: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7669309b: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7c230cf9: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-7fbd7009: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-8034562e: 3/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-8355c712: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-88074ab3: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-887d60ea: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-89210a26: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-89bcc6e3: 2/10 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img]
+  set armed-d13-8b4c9a3e: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-8cfb7ca8: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-96f53c02: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-97d6a511: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-9bf25f8f: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-9cf2f15e: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-ad6b4a68: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b04976fe: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b47131c8: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b5093f00: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-b9c224c0: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-bbdf41bc: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-c2168632: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-c36a3e06: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-c54fc40d: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-cea0c1c2: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-d06ee14f: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-d693864f: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-d7f1e533: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-dee822b0: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-e28361f9: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-e51d14fa: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-e92c0c52: 15/15 file(s) of out/ match
+  set armed-d13-ee2dd4fb: 2/13 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-arm-extra.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-fa301bd7: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-fce6e8dd: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-fce83837: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-ff937225: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-d13-ffdc8ba1: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-post-endrun-ee7aca87: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-post-endrun2-57d441cc: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-post-endticks-b12616bc: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-seam-endrun-88972ba9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-seam-poc-a43304f2: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-selftest-wdog-ef0361a2: 1/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90-build-config.txt stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-sleepless-696a0f39: 2/11 file(s) of out/ match   [differ: SHA256SUMS.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-054f8269: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-0da7313b: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-0e6eb4b4-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-104b10ce: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-1138fdc6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-185d1069: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-18b0ccf3: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-1cb894c8: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-1d3ae364: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-21086959: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-28c82f79: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-2dbf8098: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-377fb57a: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-3a92aa52: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-3c6803f6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-3fcccaf7: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-4205a945-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-46fe6737: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-47c657af: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-4f4111fa: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-54d5c585: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-5936b246: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-59ec5fd6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-5c440167: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-5fca6210: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-605a43c2: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-63c6d77d: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-65824de4: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-65c6424b: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.elf stage90.bin stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-6a2e94ae: 2/12 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt stage90-qcdt.img]
+  set armed-storage-6cd6fae8: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-6deae815: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-6deb8308: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-7189e9b: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-71b54d73: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-7228e3f9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-7341f5f6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-77a51d33: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-8096cb2c: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-81287a97: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-880a3568: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-8988f8f1-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-8f0d41fd: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-92435ddc: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-92b6c552: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-94de2ede: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-960c57c4: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-979ded08: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-9d2dd2e4: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-a1378a48: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-a703257d: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-af522aca: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-afbb4849: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-b00b87bb: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-b3e19b48: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-b3fbcd31: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-b459a858: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-b7e5a18f: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-bb2269bf: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-bf9408ca: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-c1f89600: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-c3007c37: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-cabba670: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-cb4e17f1: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-cd3d63bf: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-ce2f589c: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-census-4d66f871: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-cid-dc8d7002: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-clkset-b4b696d9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-clock-6e7fbafa: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-cmd-892b8b68: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-completion-6f49e880: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-d301bcb5: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-d5d98738: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-d6e2fbe6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-dfc4ae78: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-e4e9324a: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-e61ce673: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-e8597e3e: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-ee0ab2e6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-enable-953ad0f6: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-f347d060-spent: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt SHA256SUMS.txt]
+  set armed-storage-f34cf0fb: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry-config.txt xnu_arm_entry.elf xnu_arm_entry-sources.txt]
+  set armed-storage-f72e9f18: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-f8d91170: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-f9613649: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf stage90.img SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt]
+  set armed-storage-gcc-1fc30bfe: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-instant-e8dc64f7: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-mode-57d55fc9: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-power-7b1f3799: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrirq-df4d38e5: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrwait-8b824cac: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrwait-aa2b051d: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-pwrwait-unmask-13366e08: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-storage-quiet-c9738417: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-rb-05645d1a: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-rca-c333d09c: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-storage-reset-00b28262: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+  set armed-window-0d3591fe: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-1091566c: 2/12 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry.h xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-9edaa3b3: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-aac38c50: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-aff86051: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-b97fcd2a: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set armed-window-c74bde1d: 2/11 file(s) of out/ match   [differ: xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.bin stage90.elf stage90.img stage90-qcdt.img SHA256SUMS.txt]
+  set frozen-574: 2/11 file(s) of out/ match   [differ: stage90-qcdt.img stage90.bin stage90.elf SHA256SUMS.txt xnu_arm_entry.bin xnu_arm_entry.elf xnu_arm_entry-config.txt xnu_arm_entry-sources.txt stage90.img]
+the bytes in /mnt/data/mi4-ios6/out/stage90 are the recorded set 'armed-d13-e92c0c52', file for file; the other 187 recorded set(s) do not match
+
+== storage tripwire ==
+no storage symbols in the payload or in the entry image it jumps into
+storage-controller references in /mnt/data/mi4-ios6/out/stage90/stage90.elf
+  movt high halves checked: 0xf980-0xf98f
+  literal words checked:    0xf9800000-0xf98fffff
+  embedded entry-image blob: 0x00080a44-0x0068a698 (4 word(s) there not counted)
+  none
+
+== recovery net ==
+hardware watchdog: ARMED. The SoC resets itself if the payload stops making
+                   progress, whatever the CPU is doing - and platform_reboot()
+                   forces a bite so the reboot does not depend on PS_HOLD.
+software dead-man: armed (60s), as a second net.
+MEASURED, this arm: the last four hangs (517's first run, 521, 522, 526) did NOT come back
+         and each needed a power press - 526's port has been silent for hours against a bite
+         due 28 s after the arming. Why they did not come back is NOT measured: the entry
+         image carries no address in the watchdog's page, which is checked below, but that is
+         not the same as unreachable - the watchdog shares its 1 MB section with the GIC, and
+         this image maps that section. Expect a power press, and expect the log to go with it.
+
+== the net's reach in the entry image ==
+  /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry.bin:
+    1582869 aligned words, 51201 carrying the movt encoding (a ceiling)
+    [0xf9010000, 0xf901ffff]   pool word 0   movt rD, #0xf901 0   mov/mvn immediate 0
+    witness, one nibble below - the GIC, which this image does use:
+    [0xf9000000, 0xf900ffff]   pool word 0   movt rD, #0xf900 20   mov/mvn immediate 4
+      the movt counts are ceilings for the same reason: the mask frees the condition field,
+      so a data word sharing the low half is counted too.
+    exempt code (entry_wdt_pet), which a residence arm must carry the page in:
+      4 page reach(es) - pool word 0   movt rD, #0xf901 4   mov/mvn immediate 0
+  positive control - the payload, which arms the net, so it must carry the page:
+    /mnt/data/mi4-ios6/out/stage90/stage90.bin
+    pool word 0   movt rD, #0xf901 10   mov/mvn immediate 0
+  and nothing in this image pets the net, so the run is CAPPED: a run of this arm that goes well
+  also ends within the net's own interval, not when the payload stops. The two constants are read
+  out of stage90.h rather than quoted here:
+    STAGE90_HW_WATCHDOG_TIMEOUT_S    29 s   (the bark)
+    STAGE90_HW_WATCHDOG_BITE_GAP_S   3 s   (bark -> bite)
+    so the bite is at most 32 s after the payload arms it, and the payload
+    spends about 1 s of that before the jump (measured: 533's payload timebase sample to the
+    idle's first read is 1.1805 s on one 19.2 MHz counter).
+  READ IT AS 'UNUSED', NOT 'UNREACHABLE'. This image maps the watchdog's registers on every boot -
+  the GIC probe's own 1 MB section descriptor (0xf901040e, base 0xf9000000, attr index 3 =
+  strongly-ordered) covers 0xf9017000, and both archived captures carry it. What the scan above
+  measures is that nothing STORES to them, and a store is what a pet is. Changing this ceiling is
+  therefore not new machinery: it is one store to 0xf9017004 (WDT0_RST) from a path XNU already
+  runs, in a wrapper this image already has. That is a decision about the arm and not part of it.
+  MEASURED, what that ceiling looks like: 513's two captures - the same regime, an image with no
+  repair - end their payload records at the fifth poll with panic 0, Attempting system restart 0,
+  MACH Reboot 0, pc_sample_watchdog_fired 0 and platform_reboot entered 0, so NO software path
+  ended either run and the records simply stop after the work, with no fault text. Read a capture
+  of this arm that way: 'the log ends without a fault' is the ceiling, not a missing reading.
+== the boot argument that selects the idle arm ==
+549: SKIPPED on D13 - the idle-cache boot argument does not exist in this tree.
+  D13's arm_init parses only maxmem/-no-cache/serial and ships no caches.c; its idle is gated
+  by do_power_save (pmCPU.c:41), a compile default, not a boot argument. The boot image is
+  confirmed NOT to carry up_style_idle_exit=1, so no idle arm is being claimed.
+
+== mode policy ==
+HARD_SKIP: stops before the candidate L1, the watchdog loop and the jump.
+
+== ladder ==
+FULL (4): boot-args, early pmap, PE_init_platform, post-PE bootstrap, arm_vm_init,
+          the high-VA windows and the loader. The only level that reaches the handoff.
+
+== fault injection ==
+off: the handoff targets the Stage-owned high-VA function as usual.
+
+== entering XNU ==
+ENTERING XNU: the payload copies a linked image containing XNU's real osfmk/arm/start.s
+          to PA 0x80000000 (experiment 241's base; 0x00200000 before it), hands it a
+          boot_args (physBase == virtBase), and jumps.
+          Nothing after that jump is the payload's: the page tables, vectors, caches
+          and MMU state are XNU's, and the payload never runs again.
+
+          Endings, and the log says which:
+            '...real XNU entry: _start ran to completion and branched to arm_init'
+                 XNU's own entry sequence ran on this device, end to end.
+            '...real XNU entry: exception: <which>'
+                 it faulted, and the vector names itself.
+            neither, ending at 'jumping to XNU's _start'
+                 it hung; the hardware watchdog brings the phone back in ~28s.
+            no log at all, and the device does not come back
+                 the net below did not recover it and the ram_console died with the
+                 cold boot; the phone needs a power-button press and the run is lost.
+                 This is not hypothetical and it is not rare enough to ignore: it is
+                 experiment 517's first run (2026-09-21). One observation, and the
+                 cause is not known - the run had two changes in it, so the next image
+                 carries one (see STAGE90_XNU_EXIT_POC_FLUSH in build_entry.sh).
+                 A candidate mechanism exists and is now measured rather than
+                 reasoned (experiments 517/518): the interrupt handler's stack starts
+                 at cpu_data->istackptr, which is also where the idle loop runs, so
+                 the handler's 5th and 6th pushed words land on the return address
+                 the idle exit is about to pop - and 518's run shows it popping a
+                 timebase value into the PC. 518's arm (move istackptr to the middle
+                 of the interrupt stack) RAN on 2026-09-22 and could not test it:
+                 istackptr is read by the vector AND by the context switch that puts
+                 the idle thread on that stack, so the arm moved both and the gap is
+                 invariant (SS_SP == istackptr - 16 in 516 and in 518 alike). The
+                 same panic returned, with the device recovering on its own. The arm
+                 cannot be another value of that field, so 519 changes where the idle
+                 thread's stack comes from instead: Idle_context is the one place that
+                 choice is made, and the arm rewrites its ldr sp from
+                 cpu_data->istackptr into a load of this image's own 16 KB array - so
+                 the handler keeps the whole interrupt stack and the idle body runs
+                 outside [intstack_top - 16384, intstack_top), which is exactly what
+                 ml_at_interrupt_context() tests. (518 section 5 proposed
+                 __wrap_Idle_load_context; that hook restores sp from the thread's pcb,
+                 so it cannot choose the idle body's stack - experiment 519 section 1.)
+                 **519 RAN on 2026-09-22 and obtained both of its predictions.**
+                 The arm worked: xnu_live_idlestack_sp = 0x8054fea8 is inside
+                 [stage90_idle_stack, +16384) with xnu_live_idlestack_inwin = 0 and
+                 _calls = 1, so the idle body is out of the window the kernel's
+                 predicate tests - and the live chain agrees with the panic's own sp
+                 from two sides (array top 0x8054fee0, cpu_idle's 'sub sp, sp, #8',
+                 the exit wrapper's 8-byte frame => the exit's entry sp is
+                 0x8054fed0). And the run ends in the *diagnosed* panic, not
+                 Apple's flat one: 'sleh_abort: prefetch abort in kernel mode:
+                 fault_addr=0x7152a6c' with frame_ok = 1, fsr_frame = 5,
+                 sp 0x8054fed0, lr 0x800462dc, pc = far = 0x07152a6c - i.e.
+                 ml_at_interrupt_context() answered false. The panel is the idle
+                 path's own registers one instruction before the pop (r0/r1 are
+                 the exit's own str, r5 and r4 are cpu_idle's, r4 = the value of
+                 cpu_data->rtcPop), so the two words the pop read are two counter
+                 readings one tick apart, the later one the deadline the idle loop
+                 held. 519 section 10 removes 518's mechanism by arithmetic:
+                 EXC_CTX_SIZE is 360 (80 + 264 + 16, genassym.c:188) and the VFP
+                 area never ends above the interrupted sp, so no exception frame
+                 writes above the sp it interrupted - the writer has to be
+                 WATCHED, not reasoned about. **520 RAN on 2026-09-22 and watched it.**
+                 That arm was 519's switch set unchanged with seven live-channel keys
+                 added per site and no state change anywhere. The death reproduced at
+                 the same instruction - xnu_live_sleh_storm = 9, sp = 0x8054fed0,
+                 lr = 0x800462dc, numerically identical to 519's - and the writer is
+                 now a number rather than a candidate: xnu_live_slot_rtcpre_pop =
+                 0x04b79075 is cpu_data->rtcPop read immediately before the fatal
+                 call, and the fault's pc = 0x04b79074 is rtcPop - 1, the Thumb
+                 relationship 519 read off its own r4/far pair. lr = 0x800462dc is
+                 the return address of platform_cache_idle_exit's bl FlushPoU_Dcache
+                 (0x800462d8) and its bcc at 0x80046300 is taken, so the faulting
+                 instruction is that function's own pop {fp, pc} at 0x8004633c - a
+                 pop, which is why lr still names the flush. The deadline reaches
+                 that word only via strd r4, [sp, #-12]! in
+                 __wrap_platform_cache_idle_enter (0x8047c8d4) and
+                 __wrap_cpu_idle_wfi (0x8047c888): pre-indexed 12 from the same X
+                 the exit wrapper's 8-byte frame lands on, so r4 goes to E-4, the
+                 slot's UPPER word. The exit's own push writes it first and still
+                 loses, because the window is open: caches.c:406 clears SCTLR.C,
+                 so the push reaches DRAM and touches neither the valid L1 line nor
+                 the L2 - 516's enter-side CleanPoC_Dcache is DCCSW (c7,c10,2),
+                 which CLEANS and leaves the line VALID - then caches.c:490 sets
+                 SCTLR.C again and the pop's load MISSES nothing, it hits. Apple's
+                 FlushPoU_Dcache is DCCISW, the right operation, but L1 only.
+                 The repair is FlushPoC_Dcache (DCCISW over L1 AND L2), which is
+                 exactly the call 517 added at this site behind
+                 STAGE90_XNU_EXIT_POC_FLUSH and which has never been run on its own.
+                 **So the arm to run is the exit-side PoC flush, switch on, with 520's
+                 instrument repaired per its section 11** - the two slot loads moved
+                 into the wrapper's inline asm (they were read through
+                 entry_slot_note's own frame: pre_m4 = 0x8047c974 is that note's own
+                 saved lr), the abort site publishing every abort instead of a
+                 geometric subsequence (the fatal seq 9 was neither <= 4 nor a power
+                 of two and its SS_SP 0x8054fed0 was INSIDE the guard - the one
+                 reading the arm existed for was sampled away), and the window
+                 widened to the kernel map's own bounds with the rtc note's inner
+                 refusals counted. The prediction is the panic's ABSENCE, not
+                 a further reading: the push then writes the only copy there is and
+                 the pop reads DRAM. Reading 4 answered its own question unused:
+                 ml_get_timebase was called >= 1024 times, 517's instrument
+                 published no xnu_live_tb_* record at all (its early return on
+                 SCTLR.C set), and its own pair spans exactly 24 ticks - so it is
+                 not the source of a 1-tick pair.
+                 **That arm ran (521) and the device did not come back.** One
+                 non-persistent fastboot boot, 'Booting OKAY', and then no adb, no
+                 fastboot, no getvar - a power press, and the log lost with the cold
+                 boot. The second such non-return in the project and the second
+                 flag-on image, which is what leaves the flush as the only remaining
+                 difference from the flag-off runs that all come back: a full L1 AND
+                 L2 clean-and-invalidate inside the idle window, with SCTLR.C clear,
+                 is the one operation this hardware has never survived - 517's first
+                 run carried the same call and also needed a power press.
+                 **So the arm to run is 522: turn the D-cache back ON at the window's
+                 near end and take the flush out of the picture.**
+                 entry_idle_cache_enable does the one thing Apple's own clear does in
+                 reverse - read SCTLR, orr #4, write it back, dsb, isb - and
+                 __wrap_platform_cache_idle_enter calls it the moment the real
+                 platform_cache_idle_enter returns (0x8047c924), before the WFI. That
+                 is a coherence property rather than a maintenance operation: the
+                 WFI, the exit's push {fp, lr} and the pop {fp, pc} that 519 and 520
+                 died in all run with the cache on, so a store updates the line a
+                 later load reads instead of landing in DRAM behind a line nothing
+                 had invalidated. The exit-side flush is OFF in this image, so the
+                 one change from 521 is the cache enable - and a run that does not
+                 come back after this is a datum rather than a failure to fix: the
+                 next arm is a null instrument (the same wrapper with the readings
+                 replaced by a counter) to separate the cost of the measurements
+                 from the cost of the state change.
+                 Four things to read, and the first is the verdict: (1) no
+                 'sleh_abort' panic and no xnu_live_sleh_storm growth past 520's
+                 9 - the idle exit retires its own epilogue; (2)
+                 xnu_live_slot_cwe_win shows C clear and xnu_live_slot_cwe_set shows
+                 it set, with _calls >= 1 - the enable ran inside the window and
+                 really took; (3) xnu_live_slot_post_calls >= 1, which says the exit
+                 RETURNED through the wrapper (520's was 0, its pass dying inside the
+                 call); (4) any later ending than 520's is progress - a different pc
+                 or the boot moving on - and the same death at the same pc says the
+                 mechanism is not the cache state but something the window itself
+                 does.
+                 **The 522 arm ran on 2026-09-22 and nothing came back to adb** (section 3.3
+                 of experiment 522 has the USB timeline: dev 88 = 18d1:d00d at 14:14:45, gone at
+                 14:14:46, nothing after) - and 551 is the repair of how that was concluded,
+                 because the same d00d-then-gone shape appears in the host log followed by a
+                 genuine return ([2163244] through [2173264], serial 4a2fe00b), which is why
+                 run_and_capture.sh now enters 2 only when the log itself shows no new enumeration
+                 of the serial - and 3, a capture failure and not a hang, when it does. Either way
+                 the prediction above is spent and the four readings it named have no values: if
+                 the device never came back there was no log, and if it came back unread the run
+                 was not the arm's run. What the run did produce is a
+                 ledger, and it is the reason the arm to run now is different in kind rather than
+                 in value: 521 and 522 both carry 521's repair of the exit wrapper's capture (the
+                 four words of the idle exit's {fp, lr} slot read by the caller at each of two
+                 sites, 8 loads and 8 stores a pass) and BOTH failed to come back, while 520 -
+                 which carries neither that capture nor any state change - came back; 521 and 522
+                 differ only in which state change they carry, the exit-side FlushPoC_Dcache and
+                 the enter-side SCTLR.C re-enable, so the capture is present in every image that
+                 did not return and absent from every one that did.
+                 **So the arm to run is 526: the null instrument.** Its image is 522's with the
+                 capture replaced by a counter - STAGE90_XNU_SLOT_NULL=1, which takes the four
+                 loads and the four pend_* stores out of each capture site and leaves
+                 entry_slot_null_note publishing the pass count alone; the exit-side flush stays
+                 at 0 and everything else in the wrapper (the 8-byte frame, the single
+                 mov r?, sp, 516's CleanPoC_Dcache, 519's rtcPop reading, the one call to the
+                 real exit, and 522's re-enable in the enter wrapper) is unchanged. That was
+                 checked rather than intended: the same tree built with STAGE90_XNU_SLOT_NULL=0
+                 reproduces 522's image 13d771938336fe65... byte for byte, so the two images
+                 differ by the capture and by nothing else.
+                 What to read, in the order that matters: (1) **does the device come back** - that
+                 is the whole experiment, and a return says the readings cost something (and the
+                 next arm bisects them: the two loads before the call, or the two after it) while a
+                 third non-return says the cost is the state change 521 and 522 do not share; (2) if
+                 it returns, xnu_live_slot_pre_calls and xnu_live_slot_post_calls are present and
+                 rising with the four words ABSENT - the site ran and published a count and nothing
+                 else, which is what a null run should look like, and their absence is the other
+                 reading (the site never ran); (3) the enable: whether the SCTLR.C write is in
+                 this image at all - and therefore whether the _cwe_* pair is a test or a
+                 formality - is what the derived line above the XNU-entry block reads out of
+                 the record, and that line governs this one; where the write IS in the image,
+                 522's block in run_and_capture.sh --summarise reads this log for it too -
+                 xnu_live_slot_cwe_win shows C clear, _set shows it set with _calls >= 1; (4) the
+                 ending, and here the arm decides what the ending means rather than the ending
+                 deciding the arm: 547 section 4 pre-registers this death for the enable-off arm -
+                 the pass reaches the exit, the push runs with C clear, the pop loads the stale
+                 words and the prefetch abort panics - so on that arm a death whose lr is the
+                 address the exit's own bl FlushPoU_Dcache returns to is the *prediction* and not
+                 a negative result, and what falsifies 546's mechanism is a **return with no pop
+                 death at all**, which is the one reading that forbids 535 as designed. Which
+                 cell this log is in, and whether the death is the predicted shape, is what
+                 run_and_capture.sh --summarise decides - it derives that address from this
+                 image's own ELF at run time and separates the two by the log's published
+                 xnu_live_sleh_lr, so nothing above restates the rule and a death read here by
+                 eye is read that way and not by this sentence.
+                 What this arm costs, read off 520's own log rather than assumed: that log's
+                 per-pass publishers have exactly one record each
+                 (xnu_live_slot_pre_calls, xnu_live_slot_rtcpre_calls, xnu_live_sip_seq and the
+                 xnu_live_pce_seq/_after_seq pair), while the door counter's last published record
+                 is 32768 - so the cache window itself was entered once, and that one entry is the
+                 death. A run of this arm gets one pass at the exit, so a non-return costs a power
+                 press and nothing else, which is why this phase is expensive in boots and not in
+                 passes. And the item that localises the death is the *bracket*, not the ending:
+                 pre and rtcpre published with xnu_live_slot_post_calls absent is what puts the
+                 death inside platform_cache_idle_exit, with no second pass to confuse it. (Line
+                 numbers quoted from that log are readable within their own block only: the ram
+                 console's records and its console text are two writers into two blocks, so a
+                 line's number says nothing about its order against a line in the other one.)
+                 The image this preflight is being run against is
+                 dd91a25fb9edbb76... , computed from the file itself two screens up.
+
+          Safety: the hardware watchdog is the only net across the jump, deliberately
+          - the software dead-man needs the payload's GIC and vector state, which are
+          gone the moment _start switches tables. The watchdog needs neither.
+          Its record, read from the ledgers rather than from this text: it recovered
+          every run from 506 to 515, including runs parked in the kernel's own idle
+          WFI and runs in an abort storm, and 516's two runs came back on XNU's own
+          'MACH Reboot'. It then did not recover 517's first run, and the two runs
+          whose non-return is what chose the current arm - 521 and 522 - are further
+          misses; net-pessimistic, and the route has drifted with the ledgers, so
+          what stands is the verdict and not the count. So: a net that has held many
+          times and is not proved to hold always - and not the way a non-return is
+          judged either, since 551 reads that out of the host log (exit 2 against
+          exit 3), which is a reading the net cannot give. A hang here may need a
+          power press, and the device is never at risk of being bricked - nothing in
+          this project is ever written to storage.
+
+== later-phase probes ==
+conforming boot_args (Phase 2): off - only the ladder's own identity-based args exist.
+MSM8974 platform shim (Phase 3): off.
+FIQ availability probe: off.
+
+== mapping attributes ==
+SO_ONLY: every mapping Strongly-ordered, as in every stage so far.
+
+== caches ==
+none: SCTLR.C and SCTLR.I both clear, as in every stage so far.
+      Cacheable DRAM descriptors, if the mode above sets them, are then
+      treated as non-cacheable by the hardware.
+
+== mapping attributes: consistency ==
+ok: cache and attribute switches agree
+
+All checks passed. The run is one command, which re-runs this gate with the same flags,
+enters fastboot, boots the image without writing anything to storage, and captures the
+log before anything else touches the device:
+
+  /mnt/data/mi4-ios6/scripts/run_and_capture.sh 4858 5 939524096
+
+== what run_and_capture.sh's exit status can mean ==
+read out of that section at gate time: 5 exit site(s) (3 written 'exit N', 2
+  written as a 'die' call whose code is die()'s own), distinct code(s) 1 2 3, at
+    run_and_capture.sh:3976   exit 3
+    run_and_capture.sh:3999   die -> exit 1
+    run_and_capture.sh:4037   die -> exit 1
+    run_and_capture.sh:4046   exit 2
+    run_and_capture.sh:4089   exit 2
+which code means which state is that file's own wording at those lines - read them there
+the 2 die site(s) above exit 1 - read out of die()'s definition, because a die
+call does not carry its code on the line. In this section that code has two producers and neither
+owes a power press: the host could not read its own USB log (a reading of the host failing, not of
+the device), and the boot call reporting no success (so a non-return after it is not a verdict
+about the payload). Both refuse to call the run a non-return - the press is owed only by the code
+whose own message says the device did not come back. The lines above name each producer's state in
+that file's own words, and the code set is checked against this gate below; the *count* of
+producers within one code is not checked, so a third one would change this sentence silently.
+for scope: this file has 19 exit site(s) in total over both spellings, code(s) 0 1 2 3 -
+  so the count and the codes above are section 4's, and a code can have a second producer outside it.
+So a non-return is not one thing in that section: it distinguishes states, and its codes are
+not interchangeable - one of them says the device *did* come back, into a state adb cannot
+reach, which is a capture failure and not a hang. Before recording any of them, confirm
+against the host's own log, by serial and not by port (this host's port has a second occupant
+that appears on its own after hours of silence, so a port-only test reads *that* as a return):
+  sudo dmesg | grep 4a2fe00b                 # bare dmesg prints nothing on this host
+and remember what that log cannot say: a payload that never returned and a phone whose Android
+failed to come up are the same reading in adb alone, which is why exit 2 was too wide a claim.
+Only the code whose own message says the device did not come back owes a power press - not the
+one that refuses to call this a non-return - and the log at /tmp/cancro-last_kmsg.txt survives only until that
+press, so read it first.
+== the log those instructions name, as it stands at gate time ==
+  /tmp/cancro-last_kmsg.txt
+  this is a reading of THIS moment, not a claim about the run: the gate cannot see whether a run
+  follows it, and run_and_capture.sh's step 2b parks this file before the boot (that file's own
+  564). So after the run the test is not this number: it is whether /tmp/cancro-last_kmsg.txt is there at all, and
+  whether what is there is non-empty - the hand retry exit 3's message asks for is a shell
+  redirect, which creates the file before adb can fail. One state is the exception and the gate
+  cannot see it from here, because whether the park *succeeds* turns on /tmp's sticky bit and the
+  file's identity (511/512): if step 2b could not move this file aside, the earlier log stays at
+  this name, a capture that fails leaves it looking untouched, and *then* the fingerprint below is
+  the test - the runner says so in its own words when it takes that branch.
+  And the earlier log is not lost when this name is gone after the run: step 2b parks the file
+  at /tmp/cancro-last_kmsg.txt.prev (then .prev.2, ...) whenever there is one to park, and that path is where an
+  earlier bracket lives. Read it for the earlier death and never as this run's, whatever the
+  bracket in it says - and read 'gone with nothing parked' as the capture it is, not as the park
+  it is not: with nothing at this name at gate time (the absent case below) step 2b has nothing to
+  move, so an absence after the run is this run's capture having failed, not an earlier log tucked
+  away.
+  absent - and that is the useful part: after the run, this file *existing* is itself the first
+  check, because nothing here writes it before a capture succeeds. Step 2b says the same thing
+  about this exact state ('no log at ... yet'), and step 5 reads into /tmp/cancro-last_kmsg.txt.new and renames it
+  into place only on a non-empty read - so a name still absent afterwards captured nothing,
+  whatever the exit code said.
+== the address run_and_capture.sh's shape test compares against ==
+  SKIPPED on D13 - the shape-test anchor does not exist in this tree.
+  D13 ships no platform_cache_idle_exit and no FlushPoU_Dcache (grep of osfmk/arm is empty for
+  both), so there is no bl return address for run_and_capture.sh's 554 shape test to compare
+  against. This is 549's clause shape: the subject is 4570's idle machinery. THE READER'S 554
+  SHAPE TEST IS OWED A TREE-AWARE CRITERION (its lane), because until then a D13 summarise run
+  falls back to EXIT_POP_LR_LITERAL - a 4570 number - which is the one-value-two-definitions
+  defect this clause exists to catch from the other side.
+
+== the seam's own body, read out of this image and not out of the record ==
+  no seam in the record and none in the image: entry_seam_flush is not in /mnt/data/mi4-ios6/out/stage90/xnu_arm_entry.elf, and the clause
+  above reads FLUSH_WRAP=0 - so the record's two zeros and this link agree that nothing
+  of ours sits between the real exit's push {fp, lr} and its pop {fp, pc}. **That the image
+  carries no seam at all is measured here rather than inferred from those two keys**; *which*
+  unseamed arm it is still rests on the other keys printed above, so a both-0 record over a
+  rebuilt non-seam image is that paragraph's shape without being 568's run.
+
+  image: /mnt/data/mi4-ios6/out/stage90/stage90-qcdt.img
+  booted, never flashed, so no outcome of this run can write to storage.
+
+== device ==
+found 4a2fe00b in adb (adb state: device)
+no log at /tmp/cancro-last_kmsg.txt yet - so after this run, the name existing at all is the first check
+
+== boot ==
+sudo adb -s 4a2fe00b reboot bootloader   # then fastboot boot, never flash
+Sending 'boot.img' (9132 KB)                       OKAY [  0.288s]
+Booting                                            OKAY [  0.012s]
+Finished. Total time: 0.317s
+the bytes sent were the bytes the gate read: dd91a25fb9edbb76ce2276770b30114f4be4bda5acad8c5d4128e2fef6d98ed4, unchanged across the send
+
+== waiting up to 180s for the device to return ==
+(a bounded self-test should return on its own; a hang will not)
+(return criterion: serial 4a2fe00b in `adb devices`, or a new `SerialNumber: 4a2fe00b`
+ enumeration in the host log - adb alone is not it, see the note at serial_enum_count;
+ **or a new enumeration on usb 3-10 itself**, which is the reading that
+ sees a return by a mode with no serial - see the note above `phone_port`)
+
+bounded wait expired after 180s. Evidence:
+  adb:      serial 4a2fe00b not listed
+  host log: 4 -> 4 enumeration(s) of SerialNumber: 4a2fe00b
+  the port 4a2fe00b is on (3-10):
+            4 -> 4 enumeration(s), any id
+
+The device did not come back: no adb entry, and no new enumeration in the host log.
+It needs a power press: hold Power ~10-15 s, release, press Power normally.
+Do NOT power-cycle before considering this: the payload's log lives in the top of
+DRAM and is lost on a cold boot, so a power cycle also loses whatever the run
+produced. If the payload armed its watchdog, the reboot that returns the device
+would have preserved the log - so a failure to return means the log is likely
+unrecoverable anyway, but waiting is free and power-cycling is not.
+
+BUT: a non-returning run's log may still be recoverable. What destroys it is a cold power
+transition or a NEW `fastboot boot` (any later kernel clears the buffer on entry) - not every
+reset. Boot the STOCK ANDROID image directly (its kernel is what reads the console):
+  VolDown+Power -> fastboot -> `fastboot boot /mnt/data/mi4-ios6/xiaomi4-cancro-backup-20260604-112053/boot.img` -> in the Android shell,
+  `cat /proc/last_kmsg`   # returns the *previous* boot's RAM console
+Do NOT boot TWRP first: its kernel has no `/proc/last_kmsg` AND its boot takes the slot
+the log is in. The watchdog sentence above is the case where recovery fails outright.
+   (runner exit 2; a resident rung not returning shows as 2)
+== USB console capture: out/stage90/captures/usb-console-1033-20261018-184923.txt ==
+   (zero bytes)
+   reader exit 143
+== 4. recovery: the run's own log via /proc/last_kmsg (carrier is the FLASHED ROM) ==
+   (device not visible yet; if still dark, the operator power-press is the next step, then:
+    scripts/recover_last_kmsg.sh --read-only while Android is up; do not boot anything else first)
+== 5. read the recovered capture: run the 1033 reader and print its cell ==
+   NO READING - STALE SLOT: the newest capture is OLDER than this press's boot.
+     capture: out/stage90/captures/recovered-unknown-arm-20261018-160331-last_kmsg.txt (mtime 2026-10-18 16:03:32.086028439 +0000, epoch 1792339412)
+     this boot: epoch 1792349451
+   This run did NOT re-write the RAM-console slot ([[mi4-last-kmsg-reader-carrier]]).  NOT
+   adjudicating.  The device needs the OPERATOR's power press; then recover_last_kmsg.sh
+   --read-only and adjudicate ONLY a capture newer than this boot.  Do NOT fastboot boot first.
+== DONE ==
+   ADJUDICATE with tools/check_1033_capture.py on a capture NEWER than this boot (epoch stamped above).
+   The eval rows xnu_live_evf_* name the 1032 frame by value; the cal/wrp groups beside them are
+   the local neighbourhood.  Do NOT pick a fix from this rung: it is the instrument.
