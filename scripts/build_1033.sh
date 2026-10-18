@@ -184,6 +184,13 @@ export "$NEW=1"
 # from the RECORD's value, verified, exactly as 1031 does.
 [[ $(awk -F= '$1=="STAGE90_XNU_GENERAL_REGS"{print $2}' "$REC") == 1 ]] || { echo "FAIL: $REC does not record STAGE90_XNU_GENERAL_REGS=1"; exit 1; }
 export STAGE90_XNU_GENERAL_REGS=1
+# **989's GENERIC switch** (record key; in EXTRA, so the POOL has it -- but the ASM layer reads it from
+# the ENV too, `assemble_arm_layer.sh:110` `SP_ALIGN=${STAGE90_XNU_SP_ALIGN:-0}`, and 1033 never exported
+# it).  So the pool carried the align define while the hand-written .s layer compiled at the default 0,
+# and the entry link's check_sp_alignment refused: "astloop+8001cc14: cumulative stack delta -36 = 4
+# (mod 8) at bl ast_taken" -- the exact family 989 died on.  Export it from the RECORD's value.
+[[ $(awk -F= '$1=="STAGE90_XNU_SP_ALIGN"{print $2}' "$REC") == 1 ]] || { echo "FAIL: $REC does not record STAGE90_XNU_SP_ALIGN=1"; exit 1; }
+export STAGE90_XNU_SP_ALIGN=1
 export STAGE90_XNU_HFS_ROOT_RW=$(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC")
 # **THE HFS PORT ITSELF** (1031 line 307; 1029 line 266).  `STAGE90_XNU_HFS_ROOT_RW` is a tree-layout
 # define that build_xnu_arm_kernel.sh emits only when the PORT is on (`HFS_PORT=${STAGE90_XNU_HFS:-0}`).
