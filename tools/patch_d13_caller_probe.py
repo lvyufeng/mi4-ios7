@@ -129,6 +129,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_READER_PROBE",       # 1029
     "STAGE90_XNU_WRITER_PROBE",       # 1030
     "STAGE90_XNU_CALLER_PROBE",       # 1031 (this rung)
+    "STAGE90_XNU_EVAL_FRAME",         # 1033 (tools/patch_d13_eval_frame.py)
 }
 
 # ---------------------------------------------------------------- kern_exec.c (Site B)
