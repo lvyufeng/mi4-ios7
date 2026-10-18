@@ -79,7 +79,15 @@ if [[ $REAL -eq 1 ]]; then
         echo "                    Set STAGE90_REAL_ROOTFS to point at it." >&2; exit 2; }
     mkdir -p "$(dirname "$OUT_CARD")"
     say "copying the real iOS 7.1.2 rootfs to the card medium: $OUT_CARD"
-    cp -f "$REAL_ROOTFS" "$OUT_CARD"
+    # UNLINK FIRST, then copy under the new name (measured 2026-10-18): `cp -f` onto the existing card
+    # left a file whose content was NOT the rootfs while `patch_cache_libobjc_count.py --check` still
+    # PASSed (its tests are all ADDRESSES - HFSX @0x400, magic @0x455d000, map0, __text - none a hash).
+    # A fresh inode plus the content comparison below makes "the card is the rootfs" a checked claim
+    # ([[mi4-self-written-record-is-not-a-constraint]]).
+    rm -f "$OUT_CARD"
+    cp "$REAL_ROOTFS" "$OUT_CARD"
+    _rc=$(sha256sum "$REAL_ROOTFS" | awk '{print $1}'); _cc=$(sha256sum "$OUT_CARD" | awk '{print $1}')
+    [[ $_rc == $_cc ]] || { echo "build_root_volumes: the card's sha256 $_cc is NOT the rootfs's $_rc - the copy did not deliver the volume" >&2; exit 1; }
     python3 - "$OUT_CARD" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()

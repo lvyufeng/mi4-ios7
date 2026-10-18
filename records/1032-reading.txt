@@ -110,12 +110,14 @@ is read from the capture named in 1; nothing here is inferred from a design docu
   at 0x0BC26720: `40683044 20600120` where the 1032 patch must be, and at 0x10183720: `1200000020000000`
   (userdata's content, not the rootfs's) - while `patch_cache_libobjc_count.py --check` PASSES on the same
   file (its tests read HFSX@0x400, the magic at 0x455d000, map0 and __text - ALL ADDRESSES, none a
-  content hash, so they cannot tell this file from the rootfs).  `cmp` says the difference is 10 bytes;
+  content hash, so they cannot tell this file from the rootfs; the site bytes were ALSO not OLD/NEW, so
+  the content was not this rootfs at all - "content matches the pristine rootfs" is now [1a]).  `cmp` says the difference is 10 bytes;
   `find / -size 939524096c` finds `/tmp/card.before` (pristine, sha c9b9080d...), `/tmp/out1032/...` and
   `/tmp/gcache/card.bin` (both sha 0ea912c2...) - the tooling works on three copies and the live path is
   one of them by default.  WHO wrote each, and WHEN, is not established by this record.
   THE REPAIR MADE HERE: the card is remade from the real rootfs (tools/build_root_volumes.sh --real,
-  7 s, sha c9b9080de2a1de00...) - PRISTINE: it carries NEITHER 1032's clamp NOR this reading's 10 bytes.
+  now unlink-then-copy with a sha256 equality proof, 7 s, sha c9b9080de2a1de00...) - PRISTINE: it
+  carries NEITHER 1032's clamp NOR this reading's 10 bytes.
   Also UNEXPLAINED and stated: while waiting for a cold-boot window this session, Android on the device
   was seen changing WITHOUT any host `fastboot`/`adb` write - at 16:07 the stage's `MI4IOS6_STAGE90 v1
   entered` / `timebase_boot_ticks` lines were ABSENT from `last_kmsg` and the 1031 production rows

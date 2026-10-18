@@ -140,14 +140,39 @@ def revert_one(path, dry):
     return 0
 
 
-def check(path):
-    """Independent reads of the two facts the offset arithmetic rests on."""
+PRIME_ROOTFS = os.environ.get("STAGE90_REAL_ROOTFS", "/mnt/data/ios7-payload/v2/ios7/rootfs.hfs")
+
+
+def anchor_seq():
+    """A golden byte SEQUENCE near the site, read from the pristine rootfs.
+
+    NOT the site's own 10 bytes: a mutant that moved the site read OTHER but an anchor that also moved
+    would compare OTHER to OTHER and pass (measured).  These are the bytes 0x100 BEFORE the site, inside
+    the same function -- content the site arithmetic depends on and no patch of ours touches."""
+    return rd(PRIME_ROOTFS, CARD_OFF - 0x100, 16)
+
+
+def check(path, expect_anchor=None):
+    """Independent reads of the two facts the offset arithmetic rests on.
+
+    expect_anchor: if given, (1) requires the 16 bytes at volhdr +0x400 to equal it.  A bare "HFSX"
+    signature is an ADDRESS-class test: measured 2026-10-18, a card whose content was not the rootfs
+    still passed every earlier test in this function, because each one reads an address, not a value
+    ([[mi4-one-value-two-definitions]])."""
     ok = True
     card = path
     # (1) the card is the real rootfs (header HFSX) -- the cache lives in it, so the offset is meaningful
     hd = rd(card, 1024, 2)
     print("  [1] card header signature at volhdr +0x400 = %s (HFSX = 48 58)" % hd.hex(" "))
     ok &= hd == bytes.fromhex("4858")
+    if expect_anchor is not None:
+        # Content, at an address the arithmetic depends on and no patch touches: a different volume
+        # fails here whatever its header says.
+        f = rd(card, CARD_OFF - 0x100, len(expect_anchor))
+        good = f == expect_anchor
+        print("  [1a] card %#x content = %s (%s)" % (CARD_OFF - 0x100, f.hex(" "),
+              "matches the pristine rootfs" if good else "DIFFERS from the pristine rootfs"))
+        ok &= good
     # (2) the cache inside the card carries the dyld magic at the offset the rootfs map declares
     mag = rd(card, ROOTFS_CACHE_OFF, 16)
     print("  [2] cache magic at card %#x = %r (dyld_v1   armv7)" % (ROOTFS_CACHE_OFF, mag))
@@ -210,7 +235,7 @@ def main(argv):
         print("patch_cache_libobjc_count: %s does not exist (run tools/build_root_volumes.sh --real)" % image, file=sys.stderr)
         return 2
     if "--check" in argv:
-        ok = check(image)
+        ok = check(image, expect_anchor=anchor_seq())
         print("  %s" % ("CHECK OK" if ok else "CHECK FAILED"))
         return 0 if ok else 1
     if "--apply" in argv:
