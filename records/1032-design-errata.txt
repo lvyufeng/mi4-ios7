@@ -1,0 +1,61 @@
+1032 DESIGN ERRATA
+Written 2026-10-18 by the static-analysis lane (trace-vla), at the team lead's request.
+Source of truth for every claim below: the bytes of out/stage90/xnu_card_hfs.img, read at
+card = 0x455D000 + (VA - 0x2C000000) (valid for libobjc / map0). No device action, no build.
+
+================================================================================
+E1. docs/1032-design.md §0.1 line 26: "xnu_live_wrp_r12 = 0x00004000 (16 KiB - the copy/VLA extent)"
+    is a FALSE INTERPRETATION of a REAL value. The reading is fine; the meaning attached to it is not.
+
+E1a. r12 is not a caller extent and no caller VLA uses it.
+  The caller _getPreoptimizedClass @ 0x37C263CC never touches r12: the only VLAs are built with
+      37c2644c bcc 0x37c2648a              (r5 = count; take the VLA path only if count >= 2)
+      37c2644e sub.w r4, sp, r5, lsl #2    (VLA #1 base = sp - 4*count)
+      37c26452 mov   fp, sp ; 37c26454 mov sp, r4
+      37c26456 sub.w r6, sp, r5, lsl #2    (VLA #2 base = VLA#1 - 4*count)
+      37c2645a mov   sp, r6
+      37c26460 mov r2, r4 ; 37c26462 mov r3, r6 ; 37c26464 bl 0x37c266ec
+  The extent is register-resident in r5 as count*4; it is never materialised as a byte size.
+  _copyPreoptimizedClasses @ 0x37C264A8 has the same shape at 0x37C26536/0x37C26540/0x37C26550.
+
+E1b. r12 at the fault is the WRITER's count, not a 0x4000 extent.
+  0x37C266EC is the writer's entry, and r12 is a callee-saved-by-convention-free caller-saved register there.
+  Inside the loop the count lives in r1 (0x37C26730 mla r1, ip, r1, r9) and the word index in r0/ip; the
+  body 0x37C26742..0x37C26756 does not write r12. So the 0x4000 the 1030 probe row showed
+  (xnu_live_wrp_r12 = 0x4000, records/1030-press-read.txt) is whatever the CALLER left in r12 at
+  0x37C26464 / 0x37C26550, and equals neither the VLA extent nor the fault's count.
+  NOTE: it is NOT derived from count either. The 1031 capture's live frame gave r3 = 0xFFFFFFFF at the call
+  (records/1031-caller-derivation.txt; cell CAL-CALLER-OTHER), so 4*count = 0xFFFFFFFC. A stale 0x4000 is
+  therefore a value from BEFORE the negative count was formed (or a compiler constant), and it proves
+  nothing about the block size.
+
+E1c. What follows by value.
+  * §0.1 line 137 "(r12 = 0x4000)" and the sentence "handed that value to a 16 KiB table-rebase copy
+    (r12 = 0x4000) as its output base" have no referent in the code. r3 is the VLA #2 BASE (0x37C26462
+    mov r3, r6), not "the region's exclusive top" as the text calls it. r3 == far == region top
+    (records/1030-press-read.txt) is therefore a COINCIDENCE: the alloca of a negative-length VLA wrapped
+    to sp0 + 8, one word above the stack region. It is not a "derived top".
+  * §1.1's "two distinct upstream computations A1 (a loaded top) / A2 (a computed top)" is a false
+    dichotomy for this fault. The upstream computation is neither: it is `sp - 4*(int32)count` with
+    count = -1. A1 and A2 are both refuted as descriptions (the doc's own §1.4 falsifier 1 fires).
+  * §1.3 line 201 (xnu_live_cal_src_r12 = "the copy extent (1030: 0x4000)") and line 202
+    (xnu_live_cal_src_r3_minus_r12 = "is r3 a [., top) base?") would compare the VLA base against a stale
+    constant. Their difference is noise and carries no information about the block size.
+  * Falsifier 2 (lines 255-257) is vacuous: it only "refutes" branch A if r12 were the extent, which E1a
+    shows it cannot be. Do not read a 1033 r3 - r12 == 0 as a refutation of anything.
+
+================================================================================
+E2. Anything derived from E1 in later rungs must be re-checked. Concretely, the 1033 instrument's
+    cal_src_r12 / cal_src_r3_minus_r12 / calf_r12_mod_page / calf_r12_div_page rows
+    (docs/1032-design.md lines 201-206, 322-325) observe an UNINITIALISED register. They are not a
+    measurement with a named subject ([[mi4-measurement-defects]]); a non-zero or "clean" value is both
+    equally expected.
+
+================================================================================
+E3. UNCHANGED (verified, not errata): the writer prologue, the loop at 0x37C26742, the patch bytes
+    50 10 01 28 01 da f0 bd c0 46 at 0x37C26720 (asrs r0,r2,#1 ; cmp r0,#1 ; bge.n 0x37C2672A ;
+    pop {r4-r7,pc} ; nop), the count = -1 derivation in records/1031-caller-derivation.txt (A)-(S),
+    and the (M2) point that a caller-return clamp cannot affect the writer's own re-read.
+    The one gap in (Q): it stops at the pop and does not follow the caller, which then sets up a VLA with
+    length -1 and faults at 0x37C2646E and 0x37C26554 reading sp0+8. That is the background the team lead
+    already has; it is recorded here only so this file is the one place the corrections meet.
