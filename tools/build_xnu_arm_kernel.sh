@@ -27,6 +27,15 @@
 # `list_sources.py RELEASE` selects from Apple's `*/conf/files` lists under Apple's own
 # configuration. This compiles that set.
 #
+#   XNU_TREE=/absolute/path/to/xnu          which tree to compile.  It selects the output suffix as
+#                                        well (`tools/xnu_tree_roots.sh`: a tree with `osfmk/sys/types.h`
+#                                        -> `_d13`, else none), so a D13 build MUST be pointed at the D13
+#                                        tree: **the default is the 4570 tree**, and a run without
+#                                        XNU_TREE compiles 4570's sources into `out/xnu_kernel_obj`
+#                                        (MEASURED 2026-10-18: a debug run done exactly that way began
+#                                        `rm -f out/xnu_kernel_obj/*.o` and left it a partial 483-object
+#                                        census; that directory is NOT the D13 pool).
+#
 # Prerequisites, both reproducible:
 #   ./tools/build_mig.sh                        -> out/mig/build/migcom
 #   ./tools/gen_mach_headers.sh                 -> out/mach_headers/ (the MIG output)
@@ -1123,6 +1132,25 @@ DEFINES=(
 # format string the compiler materialized for the probe key in trap.o (build_1031.sh refuses on its
 # absence; the link-site clause in build_entry.sh refuses too).
 [[ ${STAGE90_XNU_CALLER_PROBE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_CALLER_PROBE=1)
+
+# ---------------------------------------------------------------------------------------------------
+# 1033: STAGE90_XNU_EVAL_FRAME -- publish the 1032 frame by value (docs/1033-design.md 2).
+#
+# 1032 (FIX-PARTIAL) removed the 1030 stack-end write and the boot now ends in launchctl[2] usermode
+# data abort EXC_BAD_ACCESS at 0x10 (dfsr type 7).  1025's row prints `vm_map_trunc_page(dfar)`, which is
+# 0 for dfar 0x10, and cannot tell a NULL deref from a truncated page-zero write -- so this switch adds a
+# trap.c block that prints the RAW DFAR, the frame (pc/lr/sp/cpsr), pc-far, and the words at far and
+# sp+0x10 read with copyin only (+ their copyin results).  Pre-registered cells: EVF-U1-TRUE /
+# EVF-U1-SUSPECT / EVF-U2-SLIDE0 / EVF-U2-MISTAKE / EVF-FAR0 / EVF-NOPLANE / EVF-MISSING / EVF-PANIC.
+#
+# WHY THE GLOBAL ARRAY AND NOT `EXTRA_DEFINES`.  Same reason as 1024-1031 above: the switch must be on
+# the SAME argv every pool object gets.  **The carrier was ABSENT while build_1033.sh exported the env
+# variable**, so the pool compiled trap.c without the block and step 4 reported "pool objects carry no
+# evf row" (the [[mi4-build-variant-comes-from-an-env-default]] shape: an env switch with no reader).
+# OFF the `#if` compiles the tree's original bytes (`defined()` comes first,
+# [[mi4-off-option-two-spellings]]); the by-value reading is the format string `xnu_live_evf_pc=` in
+# trap.o (build_1033.sh and park_1033.sh refuse on its absence).
+[[ ${STAGE90_XNU_EVAL_FRAME:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_EVAL_FRAME=1)
 
 # 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
 # the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO

@@ -37,7 +37,7 @@ LIVE=out/stage90
 REC=$LIVE/xnu_arm_entry-config.txt
 POOL=out/xnu_kernel_obj_d13
 TRAP_OBJ=$POOL/osfmk_arm_trap.o
-EXEC_OBJ=$POOL/osfmk_kern_kern_exec.o
+EXEC_OBJ=$POOL/bsd_kern_kern_exec.o
 TRAP_SRC=$XNU_TREE/osfmk/arm/trap.c
 EXEC_SRC=$XNU_TREE/bsd/kern/kern_exec.c
 NEW=STAGE90_XNU_EVAL_FRAME
@@ -45,6 +45,12 @@ PATCHER=tools/patch_d13_eval_frame.py
 
 echo "== 1033: THE EVAL-FRAME PROBE ($NEW=1; instrument only) =="
 [[ -f $PATCHER ]] || { echo "REFUSING: $PATCHER is absent - it is the whole edit"; exit 1; }
+# THE CHANNEL.  The first 1033 pool build exported $NEW=1 but tools/build_xnu_arm_kernel.sh had NO
+# `DEFINES+=(...)` reader for it, so the env variable reached nothing, the pool compiled the
+# un-instrumented trap.c, and step 4 refused on the absent evf rows with a message blaming the edit --
+# the [[mi4-build-variant-comes-from-an-env-default]] shape (an env switch with no reader).  Refuse
+# BEFORE the 705-object compile.
+grep -q "DEFINES+=(-D$NEW=1)" tools/build_xnu_arm_kernel.sh || { echo "REFUSING: tools/build_xnu_arm_kernel.sh carries no DEFINES+=(-D$NEW=1) line - the export in step 2 would reach nothing and the pool would keep the un-instrumented trap.c. Add the reader to its global DEFINES array first"; exit 1; }
 
 # ====================================================================================================
 # 0. THE RECORD MUST BE 1032'S LINEAGE (each inherited switch is what makes the parent rows live).
