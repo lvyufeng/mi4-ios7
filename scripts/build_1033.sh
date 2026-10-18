@@ -191,6 +191,17 @@ export STAGE90_XNU_GENERAL_REGS=1
 # (mod 8) at bl ast_taken" -- the exact family 989 died on.  Export it from the RECORD's value.
 [[ $(awk -F= '$1=="STAGE90_XNU_SP_ALIGN"{print $2}' "$REC") == 1 ]] || { echo "FAIL: $REC does not record STAGE90_XNU_SP_ALIGN=1"; exit 1; }
 export STAGE90_XNU_SP_ALIGN=1
+# **EVERY SWITCH THE ASM LAYER READS FROM THE ENV** (tools/assemble_arm_layer.sh).
+# [[mi4-off-option-two-spellings]] and its starvation: EXTRA (`-D`) reaches the pool loop, but a
+# switch that the .s layer reads as `${STAGE90_XNU_X:-0}` is a SECOND spelling -- the pool built with
+# it and the asm layer at 0.  This bit three times in a row in this one build (SP_ALIGN 989,
+# IOS7_TRAPS 1023, then GENERAL_REGS), each found only after a full compile by the entry layer's
+# check.  Export the whole set from the record in ONE place, and verify each is exactly 1 first.
+for _k in SP_ALIGN IOS7_TRAPS RESIDENT; do
+  [[ $(awk -F= -v k="STAGE90_XNU_$_k" '$1==k{print $2}' "$REC") == 1 ]] || { echo "FAIL: $REC does not record STAGE90_XNU_$_k=1 - assemble_arm_layer.sh reads it from the env and the record this build carries must say 1"; exit 1; }
+  export "STAGE90_XNU_$_k=1"
+done
+echo "   exported the ASM layer's env switches: STAGE90_XNU_{SP_ALIGN,IOS7_TRAPS,RESIDENT}=1"
 export STAGE90_XNU_HFS_ROOT_RW=$(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC")
 # **THE HFS PORT ITSELF** (1031 line 307; 1029 line 266).  `STAGE90_XNU_HFS_ROOT_RW` is a tree-layout
 # define that build_xnu_arm_kernel.sh emits only when the PORT is on (`HFS_PORT=${STAGE90_XNU_HFS:-0}`).
