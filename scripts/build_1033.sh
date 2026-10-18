@@ -177,6 +177,15 @@ for _g in VM_MAX_SPLIT USTACK_PROBE ABT_ENTRY_PROBE H2_STACK_HEADROOM READER_PRO
 done
 export "$NEW=1"
 export STAGE90_XNU_HFS_ROOT_RW=$(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC")
+# **THE HFS PORT ITSELF** (1031 line 307; 1029 line 266).  `STAGE90_XNU_HFS_ROOT_RW` is a tree-layout
+# define that build_xnu_arm_kernel.sh emits only when the PORT is on (`HFS_PORT=${STAGE90_XNU_HFS:-0}`).
+# 1031 exported HFS=1 beside it; 1033's first two runs did NOT, so the pool skipped the HFS sources,
+# hfs_vfsops.o kept its stale no-clear form, and the entry link refused LATE -- after the 705-object
+# compile -- with "the pool's hfs_vfsops.o predates 905 B2's clear" ([[mi4-off-option-two-spellings]]:
+# the record asked for a writable root the pool was built without).  The record-vs-export agreement is checked here.
+[[ $(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC") == 1 ]] || { echo "FAIL: $REC does not record STAGE90_XNU_HFS_ROOT_RW=1 - the HFS port export below is only right for the rw arm"; exit 1; }
+export STAGE90_XNU_HFS=1
+echo "-- STAGE90_XNU_HFS=1 STAGE90_XNU_HFS_ROOT_RW=$STAGE90_XNU_HFS_ROOT_RW (the pool's hfs_vfsops.o carries the rw clear; the entry link reads it back) --"
 echo "   exported STAGE90_XNU_{VM_MAX_SPLIT,USTACK,ABT_ENTRY,H2_STACK_HEADROOM,READER,WRITER,CALLER,EVAL_FRAME}_PROBE=1 (channel: global DEFINES)"
 
 # ====================================================================================================
