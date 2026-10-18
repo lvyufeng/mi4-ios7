@@ -206,11 +206,17 @@ _asm_keys=$(grep -oE '^[A-Z0-9_]+=\$\{STAGE90_XNU_[A-Z0-9_]+:-' tools/assemble_a
 for _k in $_asm_keys; do
   case $_k in IDLE_STACK_SIZE) continue ;; esac       # a SIZE, not a 0/1 switch
   _v=$(awk -F= -v k="STAGE90_XNU_$_k" '$1==k{print $2}' "$REC")
-  [[ -n $_v ]] || { echo "FAIL: $REC does not record STAGE90_XNU_$_k, which assemble_arm_layer.sh reads from the env - the .s layer would compile at its default while the record says otherwise"; exit 1; }
+  if [[ -z $_v ]]; then
+    # The record does not carry it: NOT an error (IDLE_STACK is a TREE-derived default in the asm
+    # layer -- 0 for D13, whose cswitch.s has no Idle_context -- and the pool carries the record's value
+    # only as EXTRA, which the entry link reads back by value); export NOTHING so the layer takes its
+    # own default, and say so, rather than inventing a value.
+    _asmset+=" [STAGE90_XNU_$_k (not in record; asm layer's tree default)]"; continue
+  fi
   export "STAGE90_XNU_$_k=$_v"
 done
 _asmset=""
-for _k in $_asm_keys; do _asmset+=" STAGE90_XNU_$_k=$(printenv "STAGE90_XNU_$_k" || true)"; done
+for _k in $_asm_keys; do _asmset+=" STAGE90_XNU_$_k=$(printenv "STAGE90_XNU_$_k" || true)"; done   # (printenv: set -u)
 echo "   exported the ASM layer's env switches, from the record:$_asmset"
 export STAGE90_XNU_HFS_ROOT_RW=$(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC")
 # **THE HFS PORT ITSELF** (1031 line 307; 1029 line 266).  `STAGE90_XNU_HFS_ROOT_RW` is a tree-layout
