@@ -176,6 +176,14 @@ for _g in VM_MAX_SPLIT USTACK_PROBE ABT_ENTRY_PROBE H2_STACK_HEADROOM READER_PRO
   export "STAGE90_XNU_$_g=1"
 done
 export "$NEW=1"
+# **1021d's FLAG switch** (1031 line 324).  build_xnu_arm_kernel.sh reads STAGE90_XNU_GENERAL_REGS into
+# its FP_FLAGS (`--print-flags` showed "STAGE90_XNU_GENERAL_REGS=0 -> ... -mfpu=neon-vfpv4"): it is a
+# COMPILER FLAG, not a -D, so it is in EXTRA's skip list and this loop (which ended before GENERAL_REGS)
+# never exported it.  The pool therefore compiled with NEON ON while the record said 1, and the entry
+# link refused after the compile: "mach_msg_send's own extent still reads the other way".  Export it
+# from the RECORD's value, verified, exactly as 1031 does.
+[[ $(awk -F= '$1=="STAGE90_XNU_GENERAL_REGS"{print $2}' "$REC") == 1 ]] || { echo "FAIL: $REC does not record STAGE90_XNU_GENERAL_REGS=1"; exit 1; }
+export STAGE90_XNU_GENERAL_REGS=1
 export STAGE90_XNU_HFS_ROOT_RW=$(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC")
 # **THE HFS PORT ITSELF** (1031 line 307; 1029 line 266).  `STAGE90_XNU_HFS_ROOT_RW` is a tree-layout
 # define that build_xnu_arm_kernel.sh emits only when the PORT is on (`HFS_PORT=${STAGE90_XNU_HFS:-0}`).
