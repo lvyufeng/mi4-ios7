@@ -197,11 +197,21 @@ export STAGE90_XNU_SP_ALIGN=1
 # it and the asm layer at 0.  This bit three times in a row in this one build (SP_ALIGN 989,
 # IOS7_TRAPS 1023, then GENERAL_REGS), each found only after a full compile by the entry layer's
 # check.  Export the whole set from the record in ONE place, and verify each is exactly 1 first.
-for _k in SP_ALIGN IOS7_TRAPS RESIDENT; do
-  [[ $(awk -F= -v k="STAGE90_XNU_$_k" '$1==k{print $2}' "$REC") == 1 ]] || { echo "FAIL: $REC does not record STAGE90_XNU_$_k=1 - assemble_arm_layer.sh reads it from the env and the record this build carries must say 1"; exit 1; }
-  export "STAGE90_XNU_$_k=1"
+#
+# The list is DERIVED, not hand-copied: every `X=${STAGE90_XNU_K:-...}` in tools/assemble_arm_layer.sh
+# is read from the env (a hand list dropped USVC=1, which 1029/1031 export and which gates the SVC
+# hook in traps_lo.s -- a hook-free object, caught by build_entry's "0 references" check).
+_asm_keys=$(grep -oE '^[A-Z0-9_]+=\$\{STAGE90_XNU_[A-Z0-9_]+:-' tools/assemble_arm_layer.sh | sed -E 's/.*STAGE90_XNU_([A-Z0-9_]+):-/\1/' | sort -u)
+[[ $(grep -c . <<<"$_asm_keys") -ge 5 ]] || { echo "FAIL: the asm layer's env-switch list came out as [$_asm_keys] - the derivation regex no longer matches assemble_arm_layer.sh"; exit 1; }
+for _k in $_asm_keys; do
+  case $_k in IDLE_STACK_SIZE) continue ;; esac       # a SIZE, not a 0/1 switch
+  _v=$(awk -F= -v k="STAGE90_XNU_$_k" '$1==k{print $2}' "$REC")
+  [[ -n $_v ]] || { echo "FAIL: $REC does not record STAGE90_XNU_$_k, which assemble_arm_layer.sh reads from the env - the .s layer would compile at its default while the record says otherwise"; exit 1; }
+  export "STAGE90_XNU_$_k=$_v"
 done
-echo "   exported the ASM layer's env switches: STAGE90_XNU_{SP_ALIGN,IOS7_TRAPS,RESIDENT}=1"
+_asmset=""
+for _k in $_asm_keys; do _asmset+=" STAGE90_XNU_$_k=$(printenv "STAGE90_XNU_$_k" || true)"; done
+echo "   exported the ASM layer's env switches, from the record:$_asmset"
 export STAGE90_XNU_HFS_ROOT_RW=$(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC")
 # **THE HFS PORT ITSELF** (1031 line 307; 1029 line 266).  `STAGE90_XNU_HFS_ROOT_RW` is a tree-layout
 # define that build_xnu_arm_kernel.sh emits only when the PORT is on (`HFS_PORT=${STAGE90_XNU_HFS:-0}`).
