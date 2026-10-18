@@ -2135,6 +2135,7 @@ ENTRY_ARM_KEYS=(STAGE90_ENTRY_TRACE STAGE90_ENTRY_REAL_ARM_INIT STAGE90_XNU_SLOT
                 STAGE90_XNU_READER_PROBE
                 STAGE90_XNU_WRITER_PROBE
                 STAGE90_XNU_CALLER_PROBE
+                STAGE90_XNU_EVAL_FRAME
                 STAGE90_XNU_TREE_D13)
 #
 # **The seven switches are not the whole arm, and finding that out is what made this eleven.** Checking
@@ -2339,6 +2340,15 @@ do
         # place the arm appears, which is why the 1031 clause at the link site reads the pool objects by
         # value.
         STAGE90_XNU_CALLER_PROBE)  _v=${STAGE90_XNU_CALLER_PROBE:-0} ;;
+        # 1033: whether the EVAL-FRAME probe is compiled into this image's pool objects
+        # (`osfmk_arm_trap.o`'s `xnu_live_evf_*` rows), staged by tools/patch_d13_eval_frame.py,
+        # gated `#if defined(STAGE90_XNU_EVAL_FRAME) && STAGE90_XNU_EVAL_FRAME` and NESTED inside
+        # 1025's publisher block (and after 1031's).  Read from the ENVIRONMENT with a default 0,
+        # like its CALLER/WRITER/READER siblings.  POOL-only: the entry bin's hash is IDENTICAL
+        # with it on and off (MEASURED in 1033: the compile ran before this key existed and the
+        # bin did not move), so the record is the ONLY place the arm appears -- a test that
+        # compared this key against the entry bin would be asserting about a value it cannot see.
+        STAGE90_XNU_EVAL_FRAME)  _v=${STAGE90_XNU_EVAL_FRAME:-0} ;;
         # 912: read from the ENVIRONMENT directly and not from `$ENTRY_SIZE`, because this loop runs
         # ~27000 lines ABOVE the assignment (`:28651`) - the same reason `STAGE90_ENTRY_REAL_ARM_INIT`
         # is read with its own `${...:-0}`. The default is the same literal, so an unset switch and an
@@ -40675,6 +40685,10 @@ IDLE_STACK_FOR_RECORD=${STAGE90_XNU_IDLE_STACK:-1}
     # the pool objects by value, which is what makes a record over a stale pool a refusal rather than a
     # promise.
     echo "STAGE90_XNU_CALLER_PROBE=${STAGE90_XNU_CALLER_PROBE:-0}"
+    # **1033's eval-frame switch, written here for the SAME reason as CALLER_PROBE's.**  POOL-only:
+    # the rows live in osfmk/arm/trap.c's block, and the linked image is read back by value at
+    # the link site (trap.o carries the stream) -- the record names the arm, the clause proves it.
+    echo "STAGE90_XNU_EVAL_FRAME=${STAGE90_XNU_EVAL_FRAME:-0}"
     # **1028's H2 headroom fix switch, written here for the SAME reason as 1025's and 1026's.**  The fix is
     # a value change in `create_unix_stack`'s FIXED `mach_vm_allocate` extent (both edited files are POOL
     # objects), so the entry image's own linked bytes are IDENTICAL with it on and off and this record line

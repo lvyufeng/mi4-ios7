@@ -64,6 +64,16 @@ for k in STAGE90_XNU_CALLER_PROBE STAGE90_XNU_WRITER_PROBE STAGE90_XNU_READER_PR
   grep -q "^$k=1\$" "$REC" || { echo "REFUSING: $REC does not carry $k=1 - this is not the 1031 arm 1033 instruments. The rows 1033 is read BESIDE (cal/wrp/rdr/abt) and the geometry it names (H2) ride those switches; without them the eval rows describe a boot this rung was not written against. Build 1031 first"; exit 1; }
 done
 echo "   the record carries all 10 inherited switches"
+# **AND THE RECORD MUST BE ABLE TO CARRY $NEW.**  The v9 build wrote a record WITHOUT the line, and
+# park_1033.sh refused at clause (a) -- the run that took 705 objects died at the last gate, not at the
+# compile (the [[mi4-build-variant-comes-from-an-env-default]] shape again, this time the writer side:
+# a switch with no record key is a switch the pool can see and the record cannot).  Refuse before the compile.
+for f in src/entry/build_entry.sh scripts/preflight_boot_check.sh; do
+  grep -q "                $NEW)" "$f" || { echo "REFUSING: $f does not list $NEW in its arm-key list - the record would omit it and park_1033.sh would refuse the arm after the compile"; exit 1; }
+done
+grep -q "        $NEW)  _v=\${$NEW:-0} ;;" src/entry/build_entry.sh || { echo "REFUSING: src/entry/build_entry.sh has no case arm for $NEW - the key would be read back empty"; exit 1; }
+grep -q "echo \"$NEW=\${$NEW:-0}\"" src/entry/build_entry.sh || { echo "REFUSING: src/entry/build_entry.sh does not ECHO $NEW into the record - build_entry.sh rewrites out/stage90/xnu_arm_entry-config.txt from ENTRY_ARM_KEYS, so the previous 1031 line survives a build and the arm would be recorded for a switch this image never compiled"; exit 1; }
+echo "   the entry layer lists, reads and ECHOES $NEW (the record can carry it)"
 
 # **IDEMPOTENT RE-ENTRY** (the record is shared live state): our own switch may be a prior run's trace,
 # but a half-staged one (present with a value != 1) is a foreign arm - refuse.

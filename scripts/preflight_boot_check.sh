@@ -767,7 +767,8 @@ ENTRY_CFG_KEYS=(STAGE90_XNU_ENTRY_SHA256 STAGE90_XNU_ENTRY_BYTES STAGE90_ENTRY_T
                 STAGE90_XNU_H2_STACK_HEADROOM
                 STAGE90_XNU_READER_PROBE
                 STAGE90_XNU_WRITER_PROBE
-                STAGE90_XNU_CALLER_PROBE)
+                STAGE90_XNU_CALLER_PROBE
+                STAGE90_XNU_EVAL_FRAME)
 # **1024: `STAGE90_XNU_VM_MAX_SPLIT`, the task map's ceiling (`VM_MAX_ADDRESS`).** It went in at the
 # tail after `STAGE90_XNU_GENERAL_REGS`; like every key above it is a REQUIRED key whose value is
 # printed by name, and the CONVERSE check below now accepts it. A record that does not carry it is a
@@ -1297,6 +1298,14 @@ do
   # value against the recorded value.
   if [[ -z $_v && $_k == STAGE90_XNU_CALLER_PROBE ]]; then
     printf '  %s=(absent, and a record that does not name the caller-probe switch is one built before 1031 - no caller frame was published, the only value a pre-1031 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1033's switch, the same one-way rule again.**  Every arm parked before 1033 was built with NO eval
+  # frame: trap.c published no `xnu_live_evf_*` row, so a pre-1033 record's only possible value is 0.
+  # A post-1033 record can never reach this branch: `build_entry.sh` writes the line unconditionally and
+  # its arm-key list includes the key; the value itself is proved at the link site (trap.o carries it).
+  if [[ -z $_v && $_k == STAGE90_XNU_EVAL_FRAME ]]; then
+    printf '  %s=(absent, and a record that does not name the eval-frame switch is one built before 1033 - no eval frame was published, the only value a pre-1033 build could have written)\n' "$_k"
     continue
   fi
   [[ -n $_v ]] \
