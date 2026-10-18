@@ -375,6 +375,38 @@ def stage(xnu, do_apply):
     return 0
 
 
+def caller_closes_inside_1025(t):
+    """**NOT `caller #endif` immediately followed by 1025's `#endif`** (1033 found this check's first
+    form): trap.c is a SHARED namespace ([[mi4-one-file-many-rungs]]), so a LATER rung may legitimately
+    close its own gated block between this one and 1025's -- 1033's eval frame does exactly that, and
+    the literal-adjacency test then failed on a correctly composed tree.  The structural claim is:
+    this block's close, then zero or more WHOLE `#if defined(STAGE90_…)` … `#endif` blocks (each
+    opened and closed here, never leaking a directive past 1025's gate), then 1025's close.  Line
+    scanning rather than one nested-lookahead regex: the regex form was not worth its fragility."""
+    lines = t.split("\n")
+    close = "#endif /* %s */" % SWITCH
+    if lines.count(close) != 1:
+        return False
+    i = lines.index(close) + 1
+    depth = 0
+    while i < len(lines):
+        s = lines[i].strip()
+        if depth == 0:
+            if s == "#endif /* STAGE90_XNU_USTACK_PROBE */":
+                return True
+            if s.startswith("#if ") and "STAGE90_" in s:
+                depth = 1
+            elif s.startswith("#"):
+                return False            # a directive at 1025's level that is not a whole later block
+        else:
+            if s.startswith("#if "):
+                return False            # a later block must not nest (OFF would strip its #endif first)
+            if s.startswith("#endif"):
+                depth = 0
+        i += 1
+    return False
+
+
 def verify_off(xnu):
     """Prove the tree compiles to the 1030 tree's bytes with 1031's switch unset.  Every edit is inside
     `#if defined(STAGE90_XNU_CALLER_PROBE) && STAGE90_XNU_CALLER_PROBE`, so with the switch undefined the
@@ -390,13 +422,13 @@ def verify_off(xnu):
               and t.count(f"#if defined({SWITCH}) && {SWITCH}\n") >= 1
               and t.count(f"#endif /* {SWITCH} */\n") >= 1)
     between = t.count("#endif /* STAGE90_XNU_WRITER_PROBE */\n#if defined(STAGE90_XNU_CALLER_PROBE)") == 1
-    tail = t.count(f"#endif /* {SWITCH} */\n#endif /* STAGE90_XNU_USTACK_PROBE */\n") == 1
+    tail = caller_closes_inside_1025(t)
     have_e = (e.count(EXEC_DONE_MARK) >= 1
               and e.count("p_live_stack_top") >= 2
               and e.count(f"#if defined({SWITCH}) && {SWITCH}\n") >= 1)
     print(f"   trap.c       [ON] : xnu_live_cal_region_end row present + #if/#endif pair: {have_t}")
     print(f"   trap.c            : the caller block sits after 1030's, inside 1025's publisher: {between}")
-    print(f"   trap.c            : it closes immediately before 1025's #endif: {tail}")
+    print(f"   trap.c            : it closes inside 1025's publisher (1025's #endif, or whole later STAGE90 blocks then it): {tail}")
     print(f"   kern_exec.c  [ON] : accessor + stashes present under the switch: {have_e}")
     if have_t and between and tail and have_e:
         print("patch_d13_caller_probe: --verify-off PASS (all edits gated on the switch; OFF removes "

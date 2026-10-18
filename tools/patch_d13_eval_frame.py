@@ -322,7 +322,7 @@ def selftest():
     expect(t1.count("#endif /* STAGE90_XNU_CALLER_PROBE */\n#if defined(STAGE90_XNU_EVAL_FRAME)")
            == 1, "staged: the block opens immediately after 1031's #endif")
     expect(t1.count("#endif /* STAGE90_XNU_EVAL_FRAME */\n#endif /* STAGE90_XNU_USTACK_PROBE */\n")
-           == 1, "staged: the block closes immediately before 1025's #endif")
+           == 1, "staged: the block closes immediately before 1025's #endif (it is the LAST sibling this tree stages; a later rung appended after it must update THIS check -- see tools/patch_d13_caller_probe.py caller_closes_inside_1025 for the structural form)")
     rc2 = stage(r, do_apply=True)
     expect(rc2 == 0 and read(trap_path(r)) == t1, "second --apply is an idempotent no-op")
     rc3 = verify_off(r)
