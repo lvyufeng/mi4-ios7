@@ -222,6 +222,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_H2_STACK_HEADROOM",  # 1028 (tools/patch_d13_h2_stack_headroom.py; edits kern_exec.c)
     "STAGE90_XNU_READER_PROBE",       # 1029 (tools/patch_d13_reader_probe.py)
     "STAGE90_XNU_WRITER_PROBE",  # 1030 (tools/patch_d13_writer_probe.py)
+    "STAGE90_XNU_CALLER_PROBE",  # 1031 (tools/patch_d13_caller_probe.py)
     "STAGE90_XNU_EVAL_FRAME",  # 1033 (tools/patch_d13_eval_frame.py)
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)

@@ -29,7 +29,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-XNU_TREE=${XNU_TREE:-external/xnu-hd2-darwin13/xnu}
+XNU_TREE=${XNU_TREE:-$PWD/external/xnu-hd2-darwin13/xnu}
+# ABSOLUTE: patch_d13_vm_max_split.py runs the real preprocessor from a temp dir over a probe TU
+# that #includes this path -- a relative one resolves from /tmp and 1024's proof fails on its
+# include, AFTER the staging (build_1031.sh pins $PWD for the same reason).
 LIVE=out/stage90
 REC=$LIVE/xnu_arm_entry-config.txt
 POOL=out/xnu_kernel_obj_d13
