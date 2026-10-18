@@ -205,6 +205,10 @@ _asm_keys=$(grep -oE '^[A-Z0-9_]+=\$\{STAGE90_XNU_[A-Z0-9_]+:-' tools/assemble_a
 [[ $(grep -c . <<<"$_asm_keys") -ge 5 ]] || { echo "FAIL: the asm layer's env-switch list came out as [$_asm_keys] - the derivation regex no longer matches assemble_arm_layer.sh"; exit 1; }
 for _k in $_asm_keys; do
   case $_k in IDLE_STACK_SIZE) continue ;; esac       # a SIZE, not a 0/1 switch
+  # IDLE_STACK=1 is NOT valid for D13: cswitch.s there has no Idle_context (Darwin-13 runs the idle
+  # thread on an ordinary kernel thread), the layer's TREE default is 0, and exporting the record's 1
+  # makes patch_idle_stack fail to match. Passing it to `assemble_arm_layer.sh` is a no-op.
+  case $_k in IDLE_STACK) _asmset+=" [STAGE90_XNU_IDLE_STACK (record 1; D13 cswitch.s has no Idle_context - asm layer's tree default applies)]"; continue ;; esac
   _v=$(awk -F= -v k="STAGE90_XNU_$_k" '$1==k{print $2}' "$REC")
   if [[ -z $_v ]]; then
     # The record does not carry it: NOT an error (IDLE_STACK is a TREE-derived default in the asm
@@ -216,7 +220,6 @@ for _k in $_asm_keys; do
   export "STAGE90_XNU_$_k=$_v"
 done
 _asmset=""
-for _k in $_asm_keys; do _asmset+=" STAGE90_XNU_$_k=$(printenv "STAGE90_XNU_$_k" || true)"; done   # (printenv: set -u)
 echo "   exported the ASM layer's env switches, from the record:$_asmset"
 export STAGE90_XNU_HFS_ROOT_RW=$(awk -F= '$1=="STAGE90_XNU_HFS_ROOT_RW"{print $2}' "$REC")
 # **THE HFS PORT ITSELF** (1031 line 307; 1029 line 266).  `STAGE90_XNU_HFS_ROOT_RW` is a tree-layout
