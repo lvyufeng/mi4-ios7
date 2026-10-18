@@ -17206,3 +17206,44 @@ set=armed-d13-49031dcb sha256=fed2c1a15af6d54b73a36b4fdbb4bc9053bda40c0f90620414
 set=armed-d13-49031dcb sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1031-caller-probe;stage90_fixture.macho
 set=armed-d13-49031dcb sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1031-caller-probe;stage90-build-config.txt
 set=armed-d13-49031dcb sha256=5f476c68f8e7b84792131a009f450effd85203e38172dd24d4fda291531e7e4b bytes=560 file=SHA256SUMS.txt role=1031-caller-probe;SHA256SUMS.txt
+
+# =================================================================================================
+# 1032 - THE COUNT CLAMP, IN libobjc, INSIDE THE dyld SHARED CACHE THE CARD DELIVERS.  2026-10-18.
+# NO KERNEL BUILD.  The arm is 1031-s own (armed-d13-49031dcb) verbatim: its cal_*/wrp_*/rdr_*
+# probes are the INSTRUMENT, and the success cell is their ABSENCE with launchd up and the
+# trap24/port_construct controls live (tools/check_1032_capture.py).
+# THE CHANGE: 10 bytes at cache file offset 0x0BC26720 = VA 0x37C26720 = card offset 0x10183720
+#   OLD 0021b1eb620f08bff0bd  movs r1,#0 / cmp.w r1,r2,asr#1 / it eq / popeq {r4-r7,pc}
+#   NEW 5010012801daf0bdc046  asrs r0,r2,#1 / cmp r0,#1 / bge.n +0xa / pop {r4-r7,pc} / nop
+#   (returns for count<1; the OLD guard returned only for count==0, and count<0 fell into a loop
+#    bounded by unsigned count-1 = ~2^32 stores off the stack end. records/1031-caller-derivation.txt
+#    (I)-(S); the bytes are the assembler-s with a symbolic label (P).)
+# THE BY-VALUE PROOF (park_1032.sh): card 0x10183720 == NEW, pristine rootfs == OLD, card differs
+# from rootfs in EXACTLY 10 bytes; the patcher --check PASSes on the card; a fresh
+# objdump decodes asrs/cmp/bge.n/pop 4/4; all 13 kernel members byte-identical to the frozen
+# armed-d13-49031dcb park; linked image carries cal/wrp/lookup_far; record carries 1031-s switches.
+# THE PARK holds the two tools (the edit-s definition), not the 900 MiB card (reconstructible).
+# THE VERIFY: tools/verify_revert_set.sh out/stage90/frozen/armed-d13-49031dcb --set=armed-d13-49031dcb
+#   = VERIFIED, 28 file(s).  The park is the directory this set is verified in: the checkers file=
+#   line is also the LIVE tools/check_1032_capture.py, and no park can carry a copy into out/stage90
+#   without becoming a file the gate reads (both directions were measured and are refused).
+# Revert the card: python3 -I tools/patch_cache_libobjc_count.py --revert ; then re-apply/build per whichever press is next.
+# fastboot boot only, NEVER flash. =================================================================
+set=armed-d13-49031dcb sha256=49031dcb0aaeba1ac7e9062b5f8996dc2617ad7b034bb15a1ca954ac4ef9d2fb bytes=6331476 file=xnu_arm_entry.bin role=1032-count-clamp;xnu_arm_entry.bin
+set=armed-d13-49031dcb sha256=3335673a8cce6573e870cba457314a2e21f7387ac67faea995027b3ad6ea6f47 bytes=7369040 file=xnu_arm_entry.elf role=1032-count-clamp;xnu_arm_entry.elf
+set=armed-d13-49031dcb sha256=88cec71f7dc621e4710c99889a25aa8bbc0528e5bec5c9478501ca731115d631 bytes=1912 file=xnu_arm_entry.h role=1032-count-clamp;xnu_arm_entry.h
+set=armed-d13-49031dcb sha256=f949a037200e5a7417d776074bb4ceae77bc3eeccc28debaadf8935d86d97639 bytes=2304 file=xnu_arm_entry-config.txt role=1032-count-clamp;xnu_arm_entry-config.txt
+set=armed-d13-49031dcb sha256=4ee8afbd7bd8508439d0a968877f0f709364efc4b0abd6e552ce03a9ef3f0b25 bytes=48 file=xnu_arm_entry-arm-extra.txt role=1032-count-clamp;xnu_arm_entry-arm-extra.txt
+set=armed-d13-49031dcb sha256=239ef6702619688c48308845e0f045c9f0b19777e74c25839ed54ce6d6b949a6 bytes=3149 file=xnu_arm_entry-sources.txt role=1032-count-clamp;xnu_arm_entry-sources.txt
+set=armed-d13-49031dcb sha256=eb7e61d55df40b98ca70bcc4cf211d8fcaae8ca25e97b59db2895824306dbf3f bytes=6826884 file=stage90.bin role=1032-count-clamp;stage90.bin
+set=armed-d13-49031dcb sha256=7b680dc34247ded9e6ddcaf7892023f18aaed2429b766b278bdc2c1662daf4fa bytes=6888956 file=stage90.elf role=1032-count-clamp;stage90.elf
+set=armed-d13-49031dcb sha256=2fe0d11e79b73cd44b0b253626a6208067c57d1c54b18e3f6787d82d85b2e2ea bytes=6830080 file=stage90.img role=1032-count-clamp;stage90.img
+set=armed-d13-49031dcb sha256=fed2c1a15af6d54b73a36b4fdbb4bc9053bda40c0f90620414418eea78bc7028 bytes=9351168 file=stage90-qcdt.img role=1032-count-clamp;stage90-qcdt.img
+set=armed-d13-49031dcb sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1032-count-clamp;stage90_fixture.macho
+set=armed-d13-49031dcb sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1032-count-clamp;stage90-build-config.txt
+set=armed-d13-49031dcb sha256=5f476c68f8e7b84792131a009f450effd85203e38172dd24d4fda291531e7e4b bytes=560 file=SHA256SUMS.txt role=1032-count-clamp;SHA256SUMS.txt
+set=armed-d13-49031dcb sha256=7fc81e6c1c5a67d034850bc7d2f5b323fa976ad74d823a8ce3c368ee5c3b8fa5 bytes=11138 file=park_cache_libobjc_count.py role=1032-count-clamp-editors-definition
+set=armed-d13-49031dcb sha256=c135318c558e10c822577cbaaa23d2c64c222ebd2badef8e9b21ae5f6ee16f7d bytes=12713 file=check_1032_capture.py role=1032-count-clamp-capture-reader
+# CACHE the card serves (the delivered value). Not a file named in out/stage90/frozen/ - the card
+# is ~900 MiB and is rebuilt by build_root_volumes.sh --real + tools/patch_cache_libobjc_count.py --apply:
+# card_set=armed-d13-49031dcb card_sha256=0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529 card_bytes=939524096 card_off=0x10183720 card_old=0021b1eb620f08bff0bd card_new=5010012801daf0bdc046 card_rootfs_sha256=c9b9080de2a1de00707c6c282650b61608405a7dbc8fe2c0bced475705fb9fea

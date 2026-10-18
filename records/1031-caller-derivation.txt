@@ -858,3 +858,76 @@ ON design-1032's BYTE REPORT: it decoded `5910 c11d 1adb c046 c046` and found ga
   Its other remark — that a 16-bit `bmi` to 0x37C2675c may be out of range — is moot for the adopted
   patch: the branch is a SHORT FORWARD `bge.n` to a label 6 bytes ahead, well inside 16-bit range.
 ====================================================================================================
+(R) THE VALIDATION QUESTION, ANSWERED WITH THE BINARY (lead, 2026-10-18). No press spent.
+====================================================================================================
+Q: the patch rewrites 10 bytes of libobjc INSIDE the dyld shared cache. Will anything reject the modified
+cache before our code runs? Answer: NO validation can reach our page. Four checks exist; none reads it.
+
+ 1. KERNEL, slide-info sanity — CANNOT FIRE.
+    bsd/vm/vm_unix.c `_shared_region_slide()`: `copyin(slide_start -> slide_info_entry, slide_size)` then
+    `vm_shared_region_slide_sanity_check()` (osfmk/vm/vm_shared_region.c), which walks the slide TOC:
+    `toc[pageIndex] < entry_count` for each pageIndex, after a single `mach_vm_protect` of the entry.
+    It never dereferences a cache code page. `copyin` from dyld's user buffer may fail (EFAULT) but that is
+    a read error, not a content check.
+ 2. KERNEL, mapping — nothing but geometry.
+    osfmk/vm/vm_shared_region.c `vm_shared_region_map_file()` checks ONLY: sr_root_dir identity
+    (KERN_PROTECTION_FAILURE otherwise), non-overlap, and records the mapping whose init_prot has
+    VM_PROT_SLIDE as `mapping_to_slide`. Grep for dyld_v1|magic|slideOpts|codeSignature|DONT_VALIDATE|
+    corrupt across osfmk → NO HITS. The kernel does not read the cache header at all.
+ 3. DYLD, in-memory path — dead here.
+    `dyld::mapSharedCache()` @0x2be04fa0: `bl 0x2be05774` (shared_region_check_np stub, `mov.w r0,#294;
+    blx syscall`) -> `cmp r0,#0; beq 0x2be05018`. At 0x2be05018 the "existing shared cached in memory is
+    not compatible" test runs. THIS BRANCH IS NOT TAKEN once the cache is mapped: check_np returns 1 =>
+    we go to 0x2be04fe8 `bl openSharedCacheFile()`.
+ 4. DYLD, file path — THE ONLY ONE THAT CAN REJECT, and every test looks at the HEADER, not page 0xBC26.
+    After `read(fd, hdr, 0x2000)` (cmp 0x2000, else "cannot be read"):
+      a. `bl 0x2be19fe0` = strncmp(hdr, "dyld_v1   armv7", 16)   -> "is invalid"
+      b. `ldr r0,[hdr,#16]; cmp r0,#0x48; bcc`        -> "is invalid"   (mappingOffset >= 0x48)
+      c. `ldr r1,[hdr,#0x40]; ldr r2,[hdr,#0x44]; orrs; beq` — if the pair is NON-ZERO the slide-info
+         extent (fileOffset,fileSize) is READ FROM THE HEADER and slid; we leave 0x40/0x44 untouched.
+      d. per-mapping: `sfm_file_offset == page_round(sfm_size)` (the file is exactly the concatenation of
+         its maps) else "the file is corrupt". Our page lies inside map0's extent; the extent is unchanged.
+      e. end of map0's file, then `mmap`-and-register.
+    NOTE ON MY EARLIER NOTE (superseded): this session re-read the sites with objdump; my one-line
+    "0x2be050a8 = has slide info" gloss was WRONG. The annotation is the LISTING above, which I read line
+    by line: (b) is the size gate, (c) is the slide-info pair test. The disposition is unchanged.
+
+ CONCLUSION: the byte edit sits in map0 code, inside an extent the header already declares, and no check
+ reads a code page. Nothing in the kernel or in this dyld version hashes, signs, or magic-checks libobjc's
+ bytes. RISK = NONE from validation. The remaining risk is our own patch being wrong, which is why the
+ arm carries the existing reversibility record (records/revert-set.txt).
+(S) THE PATCH SITE RE-READ AT DISASSEMBLY (lead, 2026-10-18). Confirms (M)/(O)/(P); adds exact addresses.
+====================================================================================================
+libobjc fn `_getPreoptimizedClass` @0x37C263CC (real `push {r4-r7,lr}` prologue). Inside it:
+  helper A 0x37C26698 (Sites: the class-header reader) and writer B 0x37C266EC. Both start with the SAME
+  `bl 0x37C1E950` (the getIndex lookup) and both use the SAME base formula:
+     ldr r,[entry]; ldr r2,[entry,#12]; add r2,r,r2; add r2,entry; add r2,r2,r,lsl#2;
+     addw r3,r2,#0x421; ldr.w r2,[r3,r0,lsl#3]
+  (A: 0x37C266B4..0x37C266C4; B: 0x37C26700..0x37C26716.) Then `tst r2,#1`: header absent -> fail;
+  header present -> the COUNT = arithmetic `asrs r0,r2,#1` — identical at A 0x37C266D4 and B 0x37C26736.
+  So "count" and the writer's bound T are THE SAME WORD; (K)/(L) is now visible in the bytes, not inferred.
+
+THE WRITER LOOP, AS ASSEMBLED (0x37C26720..):
+  37c26720  movs r1,#0
+  37c26722  cmp.w r1,r2,asr #1        ; 0 vs count
+  37c26726  it eq
+  37c26728  popeq {r4-r7,pc}
+  37c2672a  add.w r0,r3,r0,lsl#3      ; row = base + 8*index
+  37c2672e  movs r1,#13 ; 37c26730 mla r1,ip,r1,r9 ; 37c26734 ldr r3,[r0,#4]
+  37c26736  asrs r0,r2,#1             ; r0 = count  (T)
+  37c26738  ... 37c26746 subs r0,#1   ; r0 = count-1
+  37c2674a  str.w r2,[r6],#4 ; 37c26756 str.w r2,[r4],#4 ; 37c2675a bne 37c26742
+  For count<0 the OLD guard falls through and the loop bound r0 = T-1 as UNSIGNED is huge: the copy runs
+  ~2^32 words. That is the fault; the loop is not "unbounded" by design, it is UNGUARDED for the sign.
+
+THE PATCH REPLACES 10 BYTES (5 halfwords) WITH:
+  asrs r0,r2,#1  |  cmp r0,#1  |  bge.n .Lc  |  pop {r4-r7,pc}  |  nop   (.Lc = the add.w at +0xa)
+  harm-reasoning, every count class:
+    count<0  -> bge not taken -> POP (return).  The fault is removed at its source.
+    count==0 -> bge not taken -> POP.  OLD also popped (via the it/popeq). UNCHANGED.
+    count>=1 -> bge taken -> add.w at +0xa.  OLD fell through to +0xa too. UNCHANGED.
+  The `add.w r0,r3,r0,lsl #3` at 0xa is exactly what OLD executed after the guard, so the positive path is
+  byte-identical and the branch lands ON that instruction, not on its operand.
+  Byte-verified by a fresh assembly of the replacement (symbolic label, `.org` avoided) => 50 10 01 28 01 da
+  f0 bd c0 46; the branch's `01` is relative to the `add` at VA 0x37C2672A, which is +0xA from the first
+  instruction. (Both earlier hand-encodings got this wrong; (P) records that.)
