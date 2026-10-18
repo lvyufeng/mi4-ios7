@@ -60,3 +60,31 @@ Writable-root/data tooling exists (tools/hfs_patch_*.py); on CANCRO `code_signed
 NEXT: rung 1032 = the libobjc count fix (design in flight). The device is UP; DO NOT fastboot boot (keep
 the slot for any further reading).
 ====================================================================================================
+====================================================================================================
+RE-READ 2026-10-17 23:59:49 (lead; `recover_last_kmsg.sh --read-only`; adb up, transport 34).
+====================================================================================================
+Device was UP (serial 4a2fe00b, device, usb:3-10) — the operator's press stands; no new press needed.
+`scripts/recover_last_kmsg.sh --read-only` wrote
+    out/stage90/captures/recovered-unknown-arm-20261017-235949-last_kmsg.txt   (23:59:50 > boot 07:35:36)
+The full 17-key cal group is present (xnu_live_cal_enter/hostnotify/exit all 1 => the block ran to
+completion). `tools/check_1031_capture.py` verdict:
+
+    CAL-CALLER-OTHER: a complete caller frame but it matches neither shape
+    r0=4294965280 r1=949649176 r2=949410816 r3=4294967295
+    far=735903744 region_end=735903744 (hit=1) r7-sp=12 lr=948017583 pc=948049750
+
+BY VALUE, identical to the 08:10:10 read:
+    r0=0xfffff820 r1=0x389a7f18 r2=0x3896dc00 r3=0xffffffff
+    far=0x2bdd0000 region_end=0x2bdd0000 (hit=1) far_minus_ustack=0x1000
+    r7-sp=0xC lr=0x388199af pc=0x38821756 r9=0x1fff r12=0x4000 r10=0x3896dc00
+
+ADJUDICATION: **CAL-CALLER-OTHER** — exactly the cell the corrected docs/1032-design.md §6 predicts.
+  The cell is a PROBE ARTIFACT, not a caller fact (the cal_* rows are arm_ctx->r[N], the WRITER's
+  fault-time frame; no register carries the caller's count or VLA base). The READING is REPRODUCIBLE
+  across two boots (08:10:10, 23:59:49): identical r-file, identical far == region_end, identical
+  far-ustack = 0x1000. The mechanism is the one derived statically and proven in (L)/(M).
+  NO NEW FACT; no branch of docs/1032-design.md §1/§2 is opened by this cell.
+
+NEXT: unchanged — rung 1032 = the libobjc writer-guard fix (records/1031-caller-derivation.txt (M)).
+Device UP; keep the slot; do NOT fastboot boot until the fix is chosen and built.
+====================================================================================================
