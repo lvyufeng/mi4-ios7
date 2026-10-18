@@ -150,6 +150,15 @@ python3 -I tools/check_1023_trap24.py "$LIVE/xnu_arm_entry.elf" --expect on >/de
 echo "   (0d) by value: the LINKED image's mach_trap_table[24] IS the ios7lab_mach_port_construct_trap row (arg_count=5, rows 25/41/42 still kern_invalid)"
 
 echo "== 1. the real iOS 7.1.2 rootfs as the card image (the COW base) =="
+# [[mi4-one-value-two-definitions]]: `--real` COPIES the pristine rootfs over the card image, so a
+# re-run of this press after 1032 would silently discard the 1032 guard (10 bytes at card 0x10183720)
+# and the press would re-measure an earlier rung while every kernel gate stayed green.  Refuse a card
+# that is already the 1032 patched one instead of overwriting the rung.
+_guard=$(dd if=out/stage90/xnu_card_hfs.img bs=1 skip=$((16#10183720)) count=10 2>/dev/null | od -An -tx1 | tr -d ' \n')
+[[ "$_guard" == "5010012801daf0bdc046" ]] && {
+  echo "REFUSING: out/stage90/xnu_card_hfs.img carries the 1032 guard (5010012801daf0bdc046 at 0x10183720);"
+  echo "  build_root_volumes.sh --real would OVERWRITE it with the pristine rootfs. Use the press that"
+  echo "  matches the card, or revert the patch (tools/patch_cache_libobjc_count.py --revert) deliberately."; exit 1; }
 tools/build_root_volumes.sh --real
 
 echo "== 2. hardware gate =="

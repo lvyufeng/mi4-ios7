@@ -195,6 +195,15 @@ grep -qa '^xnu_live_abt_vmfkrv=' <(strings "$LIVE/xnu_arm_entry.elf") || {
 echo "   (0f) by value: the LINKED image carries the xnu_live_abt_lookup_far= discriminator AND 1025's xnu_live_abt_vmfkrv= publisher (the probe reached the image the press boots)"
 
 echo "== 1. the real iOS 7.1.2 rootfs as the card image (the COW base) =="
+# [[mi4-one-value-two-definitions]]: `--real` COPIES the pristine rootfs over the card image, so a
+# re-run of this press after 1032 would silently discard the 1032 guard (10 bytes at card 0x10183720)
+# and the press would re-measure an earlier rung while every kernel gate stayed green.  Refuse a card
+# that is already the 1032 patched one instead of overwriting the rung.
+_guard=$(dd if=out/stage90/xnu_card_hfs.img bs=1 skip=$((16#10183720)) count=10 2>/dev/null | od -An -tx1 | tr -d ' \n')
+[[ "$_guard" == "5010012801daf0bdc046" ]] && {
+  echo "REFUSING: out/stage90/xnu_card_hfs.img carries the 1032 guard (5010012801daf0bdc046 at 0x10183720);"
+  echo "  build_root_volumes.sh --real would OVERWRITE it with the pristine rootfs. Use the press that"
+  echo "  matches the card, or revert the patch (tools/patch_cache_libobjc_count.py --revert) deliberately."; exit 1; }
 tools/build_root_volumes.sh --real
 
 echo "== 2. hardware gate =="
