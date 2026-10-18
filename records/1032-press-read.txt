@@ -30,8 +30,11 @@ WHAT HAPPENED
    spot as every resident rung (the only bus that could carry the reading is the one that
    never mounted); the primary channel is the recovered /proc/last_kmsg (step 4/5).
 4. Step 4 waited 90x5s for 4a2fe00b in adb or fastboot and saw NEITHER; step 5 printed
-   NO READING - STALE SLOT is NOT what ran (no new capture exists at all; the newest is
-   20261017-235949, OLDER than the boot).  The device is DARK.
+   it found the only capture on disk, recovered-unknown-arm-20261017-235949-last_kmsg.txt
+   (mtime epoch 1792281590, 2026-10-17 23:59Z), computed the boot epoch inside step 3
+   (the log line is `_BOOT_EPOCH=<epoch>`, `grep -n '_BOOT_EPOCH=' press log`), and since
+   the capture is OLDER than the boot it printed **NO READING - STALE SLOT** and did NOT
+   run the checker - the guard fired exactly as designed.  The device is DARK.
 
 DEVICE STATE: dark; not in fastboot (no fastboot devices), not in adb.  **The operator's
 power press is the next step** (vol-down+power for fastboot, or power for Android).
