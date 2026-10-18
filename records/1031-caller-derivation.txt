@@ -747,3 +747,49 @@ STILL OWED: the EXACT word and its location. `count = -1` => word = 0xFFFFFFFF (
   map0) and the cache is contiguous in the card image. The claim that no tool exists is PLAUSIBLE but
   NOT yet verified by me — verify before writing a new one.
 ====================================================================================================
+
+====================================================================================================
+(O) THE PATCH, BYTE-VERIFIED WITH THE ASSEMBLER (lead, 2026-10-18). SUPERSEDES (M3)'s hand-encoded
+    bytes, which were WRONG (objdump showed `1dc1` decodes as `adds r1,r0,#7`, not `subs r1,#1`).
+====================================================================================================
+SCOPE OF THE DEFECT, settled: the writer's existing guard returns iff count == 0. It has NEVER had an
+  upper bound, and legitimate classes work fine with it. So the ONLY defect is the sentinel/negative
+  value. A ONE-SIDED sign guard (return iff signed count < 1) removes exactly the defect and rejects
+  NOTHING a legitimate class returns. A two-sided bound is NOT needed for this bug and does not fit.
+  (It also would not fit: 1<=count<=MAX needs ~12 B in a 10 B span; "move code and re-emit shifted" is
+  real surgery and is not justified by this defect.)
+
+THE PATCH — in place, same 10 bytes, fall-through preserved to `add.w r0,r3,r0,lsl #3` @0x37C2672a:
+    OLD  @0x37C26720: 2100 ebb10f62 bf08 bdf0   movs r1,#0 / cmp.w r1,r2,asr#1 / it eq / popeq
+                                                  (return iff count == 0)
+    NEW  @0x37C26720: 5010 0128 00da f0bd c046   asrs r0,r2,#1 / cmp r0,#1 / bge.n +8 /
+                                                  pop {..} / nop / nop
+                                                  (return iff signed count < 1)
+  ASSEMBLER-VERIFIED (`arm-none-eabi-as -mthumb`, disassembled back):
+        0: 1050  asrs r0, r2, #1
+        2: 2801  cmp  r0, #1
+        4: da00  bge.n 8
+        6: bdf0  pop  {r4,r5,r6,r7,pc}
+        8: 46c0  nop
+        a: 46c0  nop
+  The OLD span in the CARD IMAGE was read back byte-for-byte as `00 21 b1 eb 62 0f 08 bf f0 bd` —
+  matches. `add.w` re-verified at +10 in an assembled context (`...f0 bd 03 eb c0 00`).
+  Semantics on the two paths: dup path (bit0 set) — count>=1 proceeds, else returns (FIX).
+  non-dup path branches to 0x37C2675e before this code and is UNCHANGED. Both call sites covered.
+
+FILE OFFSETS (map0; libobjc lives in map0):
+    cache image : 0xBC26720   in /tmp/dyld-extract/dyld_shared_cache_armv7
+    card image  : 0x10183720  in out/stage90/xnu_card_hfs.img
+   = 0x455d000 + (0x37C26720 - 0x2C000000), verified by reading the card bytes at that offset.
+
+DELIVERY PATH — NO NEW TOOL IS NEEDED (refutes fix-1032's "new patcher required"):
+    tools/build_root_volumes.sh --real  copies rootfs.hfs -> out/stage90/xnu_card_hfs.img (a PLAIN FILE)
+    scripts/press_965c.sh:52-53         adb push that img, then `dd ... of=/dev/block/mmcblk0p25`
+  So a byte patch to out/stage90/xnu_card_hfs.img rides the EXISTING dd path. A tiny patcher that
+  rewrites those 10 bytes and re-verifies them is all that is new; no device-tooling change.
+
+CONSEQUENCE FOR THE 2-BYTE EDIT THE LANES PROPOSED ((N6)): still REJECTED — it is in getClassAndHeader
+  and zeroes the count for EVERY class, destroying duplicate-count behaviour cache-wide, as a "test" of
+  a hypothesis already proven. THIS patch is at the consumer, refuses only the degenerate value, and
+  leaves every legitimate count intact.
+====================================================================================================
