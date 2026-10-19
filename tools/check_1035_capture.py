@@ -83,7 +83,47 @@ def boot_epoch(text, path):
     return None
 
 
+def selftest():
+    """Synthetic captures, written to a private temp dir. Each cell must print; a missing row must NOT
+    be read as a cell (an absent row is never a negative); a stale capture must be refused."""
+    import tempfile
+    import time
+    boot = 1792217325
+    hdr = "[    %d.000000] MI4IOS6_STAGE90 v1 entered\n" % boot
+
+    def capture(walk, table, ok2):
+        rows = ["xnu_live_pcc_seq=0", "xnu_live_pcc_pid=2", "xnu_live_pcc_pc=0x3819d474",
+                "xnu_live_pcc_xor_walk=0x%08x" % walk, "xnu_live_pcc_xor_table=0x%08x" % table,
+                "xnu_live_pcc_near2_ok=%d" % ok2]
+        return hdr + "\n".join(rows) + "\n"
+
+    cases = [("P1", capture(0, 0x030b131b, 1), 0),
+             ("P2", capture(0x29007c09, 0, 1), 0),
+             ("P3", capture(0x11111111, 0x22222222, 1), 0),
+             ("P4", capture(0x11111111, 0x22222222, 0), 0),
+             ("NOROW", hdr + "nothing\n", 1),
+             ("STALE", "xnu_live_pcc_seq=0\nxnu_live_pcc_xor_walk=0\nxnu_live_pcc_xor_table=1\n"
+                       "xnu_live_pcc_near2_ok=1\n", 2)]
+    fails = 0
+    with tempfile.TemporaryDirectory() as d:
+        for name, text, want in cases:
+            p = os.path.join(d, "cap-%s.log" % name)
+            with open(p, "w") as fh:
+                fh.write(text)
+            if name != "STALE":
+                t = time.time() + 10
+                os.utime(p, (t, t))
+            rc = main(["x", p])
+            cond = rc == want
+            print("   %s %s -> exit %d (want %d)" % (name, "ok" if cond else "FAIL", rc, want))
+            fails += 0 if cond else 1
+    print("SELFTEST %s" % ("PASS" if not fails else "FAIL"))
+    return 0 if not fails else 1
+
+
 def main(argv):
+    if len(argv) == 2 and argv[1] == "--selftest":
+        return selftest()
     if len(argv) != 2:
         print("usage: check_1035_capture.py <capture>")
         return 2
