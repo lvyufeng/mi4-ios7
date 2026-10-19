@@ -54,26 +54,19 @@ B. WHAT IT CHANGES (and what it does NOT).
    1. 1037-static-save 4 ("under P no s exists") is FALSIFIED BY SNAPSHOT as a statement about a shift:
       with sp/r4/r7/far matching a single s=0 frame, the k=0/k=-16/k=+13/k=+44 contradictions were an
       artifact of the brief's partially-known values; DO NOT commit that clause.
-   2. CONTAMINATION IS A LIVE CANDIDATE -- AND IT HAS A CONCRETE SUPPORTER: `s3 = 0xffffffff` sits at
-      sp+0xc in the frame, and the word H-SHORTNAME calls mov.w r6,#0xffffffff (BYTES at 0x37C1E990 file 0xBC1E990 are
-      `36 ff f0 4f`, 1036-read 6) does not occur at ANY word-aligned offset in the cache's three maps. The ONLY rule that maps it to sp+0xc is
-      a one-byte-skewed copy of Thumb code onto the stack whose source sits at file `5d3bd7` ->
-      cache VA = file + 0x38268000 (map1 fileOffset, MEASURED @0x88) = 0x3D8023D7; minus U1's slide
-      0x1D7B000 (printed slide=0x1d7b000, slide_start=0x3df27000) = 0x2BE713D7 -> the sp-4..sp+0xd
-      window at the crash. [STRONG, NOT PROVEN:
-      file bytes at 0x5d3bd7 = 45 07 00 9b 5e 04 30 0f 0f 33 04 14 50 5d 27 c0 08 18, and s3/s5 at
-      sp+0xc/sp+0x14 read 0xffffffff/0x2bd8d0ac; check with a byte-exact dump before believing it.]
-      If the copy landed, it landed AFTER the faulting `ldr r1,[r1]-0x40` brought `5d 27 c0 08 18` into
-      registers/lane5, which is why r2=FLT_MAX and s5/r7=sp+0x24 (both are the values of the args the
-      copy destroys) -- a single narrative, still unproven.
-   3. FAR = 0x10 IS PARTIALLY EXPLAINED BY A SECOND JF-NAMED STRING, and it is testable:
-      file 0x140 `... 00 f0 02 2c 00 00 00 00 93 cc 75 53`; under U1 slide 0x1d7b000, VA 0x384CC140
-      holds `0xc0f0` = `mov r0,r0` (a LOAD, not `movw r0,#`) followed by zeros. R1 = read32(0xc0f0)=0 and
-      the walk's `ldrb r1,[r1,#0x10]` faults at 0x10 -- EXACTLY the measured far. So the walk ran with
-      r1=0, i.e. it is the "count*2 == 0" path of getPreoptimizedClass: the page the count comes from
-      has a `mov r0,r0` in front of its count word, because an ARM-disassembled copy of an ARMv7S/Thumb
-      region has been placed where the armv7 count table is expected (same class as (2)).
-      THIS IS 1038's TEST, not 1037's.
+   2. [REFUTED 2026-10-19, hours after it was written -- records/1038-static-copy.txt 0, bytes] The
+      contamination/copy story that stood here is DEAD: file 0x5d3bd7 holds `9e 85 0e 01 00 e3 80 84 ...`
+      (not the 17 bytes quoted here), not one frame word matches the source placed one byte late, and
+      s0 (the MIG header) and s4 (msgh_remote_port) read intact inside the window a wrong-width copy
+      would overwrite. `s3 = 0xffffffff` is launchctl's own -1 (its r2/r5) in the frame's first saved
+      slot; the slot map above (s2=sp-4) is ONE SLOT OFF from `stmea sp,{r0-lr}^`'s layout. KEPT AS
+      WRITTEN, STUCK THROUGH, because the rate at which this project's own prose outruns its bytes is
+      the defect class the 1038 static pass was for.
+   3. [ADDRESS ARITHMETIC WRONG -- records/1038-static-head-verify.txt 1] FAR = 0x10 through a file 0x140
+      `mov r0,r0` was offered here and is NOT supported: 0x140 + 0x38268000 is the MAP2 record's
+      fileOffset (BYTES), so the address quoted (VA 0x384CC140) lies in NO mapping of the cache, and
+      the file's head is a dyld header with no count table near it (nearest count-shaped word is
+      15.9 KiB from the walk). The far=0x10 question stays open for the device rows (1038 B).
    4. (this hour's new finding, not a 1037 question) THE MACHINE DID NOT DIE OF THE U1 MAPPING. The log
       shows, after the U1 map_slide ret=0 succeeded: pid 1 mapped, launched, syscalls flowed, pid 2 was
       exec'd, mapped, launched, ran a bootstrap -- and then launchd's log says "The System bootstrapper
