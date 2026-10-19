@@ -106,6 +106,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_WRITER_PROBE",       # 1030 (this rung)
     "STAGE90_XNU_CALLER_PROBE",       # 1031 (tools/patch_d13_caller_probe.py)
     "STAGE90_XNU_EVAL_FRAME",         # 1033 (tools/patch_d13_eval_frame.py)
+    "STAGE90_XNU_PC_CARRIER",         # 1035 (tools/patch_d13_pc_carrier.py)
 }
 
 

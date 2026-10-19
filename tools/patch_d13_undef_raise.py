@@ -146,6 +146,10 @@ ALLOWED_IF_IDENTIFIERS = {
     # 1025's publisher after 1031's.  Same shared-namespace rule, same OFF reasoning
     # ([[mi4-one-file-many-rungs]]).
     "STAGE90_XNU_EVAL_FRAME",
+    # 1035's PC CARRIER (tools/patch_d13_pc_carrier.py) edits the SAME file, adding a block after
+    # 1033's inside 1025's publisher.  Same shared-namespace rule, same OFF reasoning
+    # ([[mi4-one-file-many-rungs]]).
+    "STAGE90_XNU_PC_CARRIER",
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

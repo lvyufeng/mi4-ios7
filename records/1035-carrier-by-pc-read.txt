@@ -14,16 +14,8 @@ are owed and no row of this kind exists in any capture.
     (b) the device's pc is a data word in the image as the host holds it.
   The frame's registers fit (a) for the walk's register set and the adapter's rows prove the trap
   path mapped six regions with result=0 (records/1034-design-errata.txt E13(a)). The ONE thing not
-  yet read that separates (a) from (b) is THE CONTENT AT THE pc IN THE DEVICE'S OWN TASK MAP. That
-  content is readable from the kernel without copyin at all:
-    the abort's `map` and the 64-bit page table entry the walk-through (AT) would find for the pc
-    page, the entry's PA, and a privilege read of the PA.
-  A privilege read of a shared-cache page's PA is the "measurement can be wrong" class: if the
-  content at PA equals the host file's bytes for one candidate and not the other, that candidate's
-  file VA is the one the device took to that PA, because the shared cache's fileOff -> PA mapping
-  preserves the file's low 12 bits only if the slide is page-multiple (it is, 0x577000) and the
-  page offset is equal -- true for BOTH candidates (both at ..474). So the page OFFSET does not
-  distinguish them; the PAGE_CONTENT does.
+  yet read that separates (a) from (b) is THE DEVICE'S CONTENT AT THE pc, copied from its own task
+  map. The page OFFSET does not distinguish the candidates (both at ..474); the PAGE CONTENT does.
 
 ====================================================================================================
 2. THE ROW (STAGE90_XNU_PC_CARRIER = 1; trap.c, 1025's failure arm, after 1033's evf block)
@@ -71,3 +63,14 @@ are owed and no row of this kind exists in any capture.
     every call launchctl actually made before the abort).
   * It does not read `/proc` or the user's dyld. (pid 2's `dyld_all_image_info_addr` 0x2be76c8c IS
     present -- an argument to launchctl from launchd[1] -- but it is not needed for this row.)
+====================================================================================================
+5. ORDERING DEFECT FOUND WHILE VERIFYING THE CHAIN (fixed in the same breath)
+====================================================================================================
+  build_1035.sh's first draft staged tools/patch_d13_pc_carrier.py FIRST (the list came from a grep
+  order, not the rung order). That moves trap.c past every LATER patcher's anchors: the 1033 eval-frame
+  patcher's insertion point is `#endif /* STAGE90_XNU_CALLER_PROBE */` + `#endif /* STAGE90_XNU_USTACK_PROBE */`
+  and the new block sits between them, so eval_frame would refuse (or insert in the wrong place) on a
+  tree where pc_carrier ran first. MEASURED: with the chain in the correct order (vmwire ... eval_frame,
+  then pc_carrier LAST) the staged tree differs from the current tree in EXACTLY ONE hunk (trap.c
+  @@ -1076,6 +1076,73 @@, the pcc block) and `--verify-off` reports the 1033 tree bytes. The script now stages
+  pc_carrier last.
