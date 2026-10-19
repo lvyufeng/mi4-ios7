@@ -1,0 +1,297 @@
+== 1033 CAPTURE SUPPLEMENT (2026-10-19) -- capture-side bounds on the launchctl[2] fault ==
+
+Capture: out/stage90/captures/recovered-unknown-arm-20261018-192718-last_kmsg.txt
+(38085 lines; every N below is a 1-based line number in THAT file; each line starts with a
+CR that has been stripped in analysis).
+Scope: extends records/1033-reading.txt. Does NOT re-adjudicate the cell (EVF-U1-TRUE stands).
+No file was built, run on a device, or edited except this one.
+
+--------------------------------------------------------------------------------------------
+1. WHAT launchctl[2] WAS DOING IMMEDIATELY BEFORE THE FAULT (exact ordered list)
+
+Kernel-side (whole-system log; no row in the capture carries pid 2 except N4163/N4275/N4287):
+  N4098  IOS7LAB shared region 0x2c000000..0x40000000; stack below 0x2be00000      (boot-time constant)
+  N4146  com.apple.launchd[1] *** launchd[1] has started up. ***
+  N4151  SUBMAPSKIP obj=0xc0005b48 [0x40000000,0x40001000) lr=0x8003ed84            (pid 2's exec image)
+  N4152  SUBMAPSKIP obj=0xc0005ab0 [0x40001000,0x40002000) lr=0x8003ed84
+  N4153  xnu_live_ustack_req=0x2bdab000      N4154 size=0x00100000
+  N4155  xnu_live_ustack_fixed_addr=0x2bcab000   N4156 rc=0     N4157 final=0x2bdab000
+  N4158  xnu_live_ustack_prot_addr=0x2bcab000    N4159 prot_size=0x00001000
+  N4160  mini4: the OS starts the process at 0x2be56028 (the thread's user pc was 0x2bdaaf0c)
+  N4161  IOS7SHREG check_np pid=2 out=0x2bda8980   N4162 check_np ret=0   (0 = NOT cached = a fault
+         into the shared cache IS expected; pid 1's N4109/N4110 gave ret=12, a cache hit)
+  N4163  CODE SIGNING: cs_invalid_page(0x2c577000): p=2[launchctl] clearing CS_VALID
+  N4164  trap15 frame r0=807 r1=2bdaa108 r2=1000 r3=0 r4=0 r5=0 r6=49000001 r8=3
+  N4165  IOS7LAB vm_map64 size=0x1000 mask=0 flags=49000001 prot=3 result=0 address=00067000
+  N4166  trap15 frame r0=807 r1=2bdaa0b8 r2=2000 r3=0 r4=0 r5=0 r6=01000001 r8=3
+  N4167  vm_map64 size=0x2000 mask=0         flags=01000001 prot=3 result=0 address=00068000
+  N4168  trap15 frame r0=807 r1=2bdaa0b8 r2=d000 r3=0 r4=0 r5=0 r6=01000001 r8=3
+  N4169  vm_map64 size=0xd000 mask=0         flags=01000001 prot=3 result=0 address=0006a000
+  N4170  trap15 frame (identical to N4168)
+  N4171  vm_map64 size=0xd000 mask=0         flags=01000001 prot=3 result=0 address=00077000
+  N4172  vm_allocate64 size=0x1000           flags=01000001 result=0 address=00084000
+  N4173  trap15 frame r0=807 r1=2bdaa018 r2=100000 r3=0 r4=0fffff r5=0 r6=07000001 r8=3
+  N4174  vm_map64 size=0x100000 mask=0xfffff flags=07000001 prot=3 result=0 address=16500000
+  N4175  trap15 frame r0=807 r1=2bda9b50 r2=800000 r3=0 r4=7fffff r5=0 r6=02000001 r8=3
+  N4176  vm_map64 size=0x800000 mask=0x7fffff flags=02000001 prot=3 result=0 address=16800000
+  N4177  trap24 frame r0=807 r2=16560a90 r5=2bdaa030
+  N4178  port_construct flags=12 qlimit=6 context=00000000:16560a90 result=0 name=60b bypass_hints=0
+  N4180  port_construct flags=33 ... name=b03 bypass_hints=21
+  N4182  port_construct flags=23 ... name=c03 bypass_hints=21
+  N4184  port_construct flags=23 ... name=d03 bypass_hints=21
+  N4185  vm_deallocate64 address=00000000:00085000 size=0000000c result=0
+  -> then FAULT rows N4186..N4274 (abt/rdr/wrp/cal/evf groups), N4275 abort, N4276-4281 frame.
+System log AFTER the abort (a different, later window -- do not order these against the fault):
+  N4282  dyld_all_image_info_addr: 0x2be76c8c   dyld_all_image_info_size: 0x000000a4
+  N4283/85 vm_allocate64 size=0x1000 flags=1 result=0 address=001a3000 ; N4284/86 its vm_deallocate64
+  N4287  com.apple.launchd 1 com.apple.launchctl.System 2 ... "The System bootstrapper has crashed:
+         Bus error: 10"
+Analysis of the ordered list:
+  * Every user vm_map64/vm_allocate64 above RESULT 0 (N4165..N4176, N4172). None returns 0x10.
+  * The mappings with result=0 and prot=3 in this gap: r6=49000001 -> [0x67000,0x68000);
+    r6=01000001 (mask 0) -> [0x68000,0x6a000), [0x6a000,0x77000), [0x77000,0x84000) (same flags,
+    i.e. segments of one image); r6=07000001 -> [0x16500000,+0x100000); r6=02000001 ->
+    [0x16800000,+0x800000); plus a 0x1000 vm_allocate at 0x84000. None is at or near 0x10.
+  * The SVC trap numbers for pid 2 seen in this gap: r0 = 0x807 in every trap15 frame (N4164-N4175;
+    compare pid 1's 0x103 at N4122-N4133) and r0 = 0x807 in every trap24/port_construct frame
+    (N4177/4179/4181/4183; rows N4178-N4184). The ADDRESS of the mmap/munmap xnu trap is NOT
+    printed in these frames, so "0x101" is NOT a reading from this capture -- only the arg word is.
+    No vm_allocate of a "cache" is logged for pid 2 itself: cs_invalid_page(0x2c577000) at N4163 is
+    the CS rejection of the already-mapped map0 page (a first-touch on the shared region).
+  * The ONLY shared-cache mapping rows carrying a slide are pid 1's (N4111-N4115); none is logged for
+    pid 2 (pid 2's own pages are made visible by the first-touch/CS row N4163), and no row states
+    that pid 2 inherited pid 1's maps -- the identity of pid 2's cache maps is an ASSUMPTION a 1034
+    should replace with a row (see S6 row 11).
+  * DIFF vs pid 1's identical procedure: pid 2's traps carry r0=0x807 where pid 1's carry 0x103
+    (N4164 vs N4122). The word is NOT an address and not an SVC number: usvc r0 at sampling points
+    N23922 = 0x103, N28103 = 0x126, N34048 = 0, N29142 = 0x1b6, i.e. it is a monotonically advancing
+    per-thread counter (a trap/event count) whose value at launchctl's first SVC is 0x807. A 1034
+    must not read it as an argument.
+
+--------------------------------------------------------------------------------------------
+2. THE REGISTER FRAME, IN FULL
+
+Probe rows (the evf group, N4245-N4256) and the abort frame (N4276-N4281) agree register for
+register:
+  r0 : 0x00000001   (N4277; also evf_caller_r0 N4257)
+  r1 : 0x00000000   (N4277; N4258)
+  r2 : 0xffffffff   (N4277; N4259)
+  r3 : 0x38300020   (N4278; N4260)
+  r4 : 0x2bdaa084   (N4279 = sp-4; N4262 r4_minus_sp=0xfffffffc)
+  r5 : 0xffffffff   (N4279)
+  r6 : 0x2bdaa088   (N4279 = sp)
+  r7 : 0x2bdaa0ac   (N4279 = sp+0x24; N4261, and cal_r7 N4233 / cal_r7_minus_sp N4234)
+  r8 : 0x2da2e575   (N4279)
+  r9 : 0x00001fff   (N4279; cal_r9 N4230)
+  r10: 0x382e9c00   (N4279; cal_r10 N4231)
+  r11: 0x2bdaa080   (N4279; = sp-8)
+  r12: 0x00004000   (N4280; cal_r12 N4232; wrp_r12 N4216)
+  sp : 0x2bdaa088   (N4280; evf_sp N4247; abt_vmfkrv_sp N4191)
+  lr : 0x381959af   (N4280; evf_lr N4246)
+  pc : 0x3819d474   (N4280; evf_pc N4245)
+  cpsr:0x00000030   (N4281; evf_cpsr N4248) -- User mode, T bit set (Thumb)
+Other frame rows:
+  N4275 "usermode data abort, EXC_BAD_ACCESS at 0x00000010 in map 0xc0005688 (pmap 0xc0ba3b28)
+        (Translation fault on page)"; exception type EXC_BAD_ACCESS (code 1 = KERN_INVALID_ADDRESS
+        is NOT printed; only the "Translation fault on page" class is).
+  N4199 abt_map = 0xc0005688; N4200 abt_taskmap = 0xc0005688 (task's own map, H1 again excluded);
+  N4198 abt_far_in_map = 0; N4193 lookup_far = 0; N4186 vmfkrv = 1; N4190 vmfkrv_pc = 0x3819d474;
+  N4187 vmfkrv_far = 0x00000000 (truncated -- one value, two widths; N4249 raw = 0x10);
+  N4188 vmfkrv_dfsr = 7; N4246 evf_lr_minus_sp = 0x0c3eb927 (= lr - sp exactly);
+  N4255 evf_pc_minus_far = 0x3819d464.
+  N4160 the thread's user pc BEFORE pid-2 user mode = 0x2bdaaf0c (v == evf_ustack - 0xf4).
+No frame row carries a pmap id for the user map other than the abort line's pmap 0xc0ba3b28.
+
+--------------------------------------------------------------------------------------------
+3. CENSUS: EVERY ROW WHOSE VALUE IS EXACTLY 0x10 (name and line)
+
+Fault-related:
+  N4249 xnu_live_evf_far_raw=0x00000010
+  N4275 (message text) "... EXC_BAD_ACCESS at 0x00000010 in map 0xc0005688 ..."
+  N4251 xnu_live_evf_far_is_0x10=1                (a predicate, carries the literal)
+Boot/static (all fuse-time constants, before N3930 xnu_entry; not observations of this fault):
+  N775  high_kc_entry_table_entry4_object=0x10          N807  high_kc_object_graph_node4_object=0x10
+  N815  high_kc_object_graph_node5_dependencies=0x10    N848  high_kc_dependency_resolution_resolved4_object=0x10
+  N856  high_kc_dependency_resolution_resolved5_dependencies=0x10
+  N862  high_kc_dependency_resolution_activation4_ready=0x10
+  N1267 mmu_high_bootstrap_kc_entry_table_entry4_object_id=0x10
+  N1299 mmu_high_bootstrap_kc_object_graph_node4_object_id=0x10
+  N1307 mmu_high_bootstrap_kc_object_graph_node5_dependencies_id=0x10
+  N1340 mmu_high_bootstrap_kc_dependency_resolution_activation4_ready_id=0x10
+  N1667 macho_stage1_copy_size=0x10
+Counters / masks / sequence numbers that happen to equal 16 (KERNEL-ONLY; none is a user VA):
+  N2507,N2560,N2611,N2625,N2673,N2692,N2738,N2758,N2809,N2833,N2870,N2897,N2933,N2956,N2993,
+  N3018,N3055,N3081  stage90_xnu_iokit_*_mask=0x10
+  N4393 stall_nz  N4426 tmr_setup_seq  N4865 tmr_enter_seq  N5391 storage_dma_address
+  N5647 setpop_count  N5648 tick_irq  N6283 storage_blk_op  N7091 storage_ge_index
+  N8211 storage_rd_ordinal  N11021 rootmedia_card_blocks  N14220 tmr_enter_over
+  N14284 block_seq  N14657 cls_calls  N14807 dtk_named  N14811 dtk_shown  N14835 dtk_seq
+  N14850 dtcc_seq  N15314 pex_seq  N15717 finddrv_seq  N15739 finddrv_some
+  N17646 rootmedia_served  N22403 edge_texr_cpsr  N22592 slot_rtcab_rin  N24006 usvc_cpsr
+  N24069 abt_wctxn  N24072 abt_wdn  N24100 sleh_seq  N24106 sleh_seen  N24121 slot_ab_calls
+  N24129 slot_rtcab_calls  N24133 sleh_back  N24135 sleh_at_back  N24136 abt_n  N24137 abt_seq
+  N24140 abt_farn  N24143 abt_pcn  N24150 abt_pten  N24164 abt_wkn  N24178 abt_wcnt
+  N24212 abt_vmen  N24218 abt_vmfn  N24225 abt_nfar  N24227 abt_ptenx  N24228 abt_wknx
+  N24321 slot_ab_rej  N27615 tmr_qexp_seq  N27853 sleh_cpsr  N28084 abt_vmenx
+  N28429,N29066,N29121,N29133,N31021 usvc_cpsr  N28936 stall_cpsr  N28939 stall_nz
+  N28980 abt_nfsr  N29123 cadence_t  N29124 cadence_sync  N29127 usvc_n
+  N30205 abt_wfn  N30222 abt_wwn  N30237 abt_wwnx  N31278 wdt_pet_n  N38037 ostext_heals
+  N4143/N4185 vm_deallocate64 size=0x0c (NOT 0x10; listed only to rule out a near miss)
+NOTHING ELSE. In particular:
+  * r0-r12/sp/lr/pc (N4277-4280) contain NO 0x10; the words at sp+0x10/+0x14/+0x18 (N4263-4268)
+    contain no 0x10; lr_slot (N4271) has no 0x10.
+  * abt_* ring rows for launchd's XNU prologue (type 3 = user, far = pc, per N24138-N24147
+    abt_type=4, abt_pc=abt_pcfar=0x2be7b018, abt_fsr=0x00000807): N22405-22415 (far 0x2be71fe0),
+    N22448-22458 (0x2be7478f), N24145-24147, N27947-27949 (0x2be6bfe8), N30334-30336 (0x3c73b000),
+    N30747-30749 (0x3c77b000), N31392-31394 (0x2e1f784c), N32301-32303 (0x330593c8), N34456-34458
+    (far 0x3a4676b4, fsr 0x80f = WRITE, the last in the ring). NONE is 0x10; N27947 (fsr 0x07 =
+    register-class read at 0x2be6bfe8) is the nearest analogue of the launchctl[2] row (both
+    type 3, cpsr T set, far in the app image).
+
+--------------------------------------------------------------------------------------------
+4. THE STACK WORDS THE 1033 PROBE PUBLISHED (and what each implies, one sentence each)
+
+  evf_ustack = 0x2bdab000 (N4274; N4157) -- per tools/patch_d13_eval_frame.py:79-107 the five slots are
+    read from the frame's own sp, NOT from this ustack: [0]=sp+0x10, [1]=sp+0x14, [2]=sp+0x18,
+    [3]=far&~3, [4]=(lr-4)&~3. So ustack here is only the region-top anchor (thread user_stack).
+  slot10 = 0x38962ae0, ok=1 (N4263/64) -- the word at sp+0x10 is a non-NULL value inside shared map1
+    [0x387df000,0x3a5bf000) (S5), so IF sp+0x10 is a saved LR the frame's caller was in shared-cache
+    code; the word is NOT the 0x10, and "saved LR" is an assumption no row states.
+  slot14 = 0x00000001, ok=1 (N4265/66) -- the next word is the constant 1 (a small flag/argument),
+    so the faulting frame's slot layout is "ret_addr, 1, 0" at sp+0x10.
+  slot18 = 0x00000000, ok=1 (N4267/68) -- the next word is zero (a NULL slot; a NULL here at sp+0x18 is
+    NOT a carrier witness because far is 0x10, not 0x18).
+  ptr_word = 0x00000000, ok=0 (N4269/70) -- the read AT far (0x10&~3) was GUARDED and refused
+    (vm_map_lookup_entry on far&~3 failed), so this is "unmapped", not "a word that is zero";
+    combined with N4198 far_in_map=0 this is a positive confirmation that 0x10 is unmapped.
+  lr_slot = 0xf0084640, ok=1 (N4271/72) -- the word at (lr-4)&~3 = 0x381959ac is 0xf0084640.
+    BY VALUE this word does NOT encode a `bl` to pc. A Thumb-2 BL target is Align(PC,4) + imm,
+    imm = S:i1:i2:imm10:imm11 with i1 = NOT(J1 EOR S), i2 = NOT(J2 EOR S). An exhaustive search of
+    all 2^25 imm values shows the ONLY imms that land Align(PC,4) on 0x381959ac from pc are (as
+    32-bit words) 0x00007ac4, 0x00007ac6/0x00007ac8/0x00007aca (+ variants that carry into bit25 and
+    so break the S/i1 pattern). Every one has imm10 = 0x007 and imm11 = 0x2c4..0x2cb, i.e. the
+    halfword at the slot would be 0xF007 with imm11 = 0x2c4..0x2cb, and the captured halfword is
+    0xf008 with imm11 = 0x464 -- not in that (or any other) window. pc's low bits are absorbed by
+    Align(PC,4), so the search covers every convention. So "lr_slot decodes as a real
+    call-return" (records/1033-reading.txt:20) is a CHECKER
+    VERDICT (lr_slot_ok=1 means only "the copyin succeeded", patch_d13_eval_frame.py:107), not a value.
+
+--------------------------------------------------------------------------------------------
+5. SHARED-CACHE GEOMETRY ACTUALLY IN EFFECT THIS BOOT
+
+  N4111  IOS7SHREG map_slide pid=1 ... slide=0x577000 slide_start=0x3c723000 size=0x00089000
+  N4117  slide_enter slide=0x577000 src=0x3c723000 n=0x89000 ; N4118 slide_init kr=0 ; N4119 copyin kr=0 ;
+         N4120 map_slide ret=0                                                (the slide WAS applied)
+  N4112  cache mapping 0 va=2c577000 size=0c266000 offset=00000000 max=5  init=5
+  N4113  cache mapping 1 va=387df000 size=01ce0000 offset=0c266000 max=23 init=23
+  N4114  cache mapping 2 va=3a4bf000 size=022ed000 offset=0df46000 max=1  init=1
+  N4115  cache mapping 3 va=3c7ac000 size=00177000 offset=12bda000 max=1  init=1
+  (offset_i + size_i = offset_{i+1}; total extent 0x2c577000..0x3c923000, inside 0x2c000000..0x40000000)
+  N4282  dyld_all_image_info_addr: 0x2be76c8c   size: 0x000000a4   -- NOT inside any mapping above;
+         tools/patch_d13_dyld_witness.py:16-23 records the app image's static __DATA,__all_image_info
+         at 0x2be21c8c, so this row's implied app-image slide is 0x55000. (994's same print was
+         0x2bed9c8c = 0x2be21c8c + 0xB8000; the anchor there was the same 0x2be21c8c, so the shift
+         is real, not a misread.)
+WHAT THE ARITHMETIC PERMITS (and what it does NOT):
+  * lr 0x381959af (below 0x2c577000) and r10 0x382e9c00 (in [0x2c577000,0x387dd000), inside map0's
+    span) are NOT in any usable N4112-15 mapping; slot10 0x38962ae0 IS in map1 [0x387df000,
+    0x3a5bf000) at offset +0x1183ae0; pc 0x3819d474 is below 0x2c577000, outside every mapping.
+    So under the slide-0x577000 rows, pc (the faulting instruction) is NOT in the shared cache, yet
+    N4163 (cs_invalid_page 0x2c577000, p=2) shows pid 2 DID fault into map0 first-touch.
+  * The rows permit exactly ONE image-relative reading: "pc/lr/slot10 are somewhere in the
+    user-space image", because the shared region is 0x2c000000..0x40000000 (N4098). They do NOT
+    permit computing pc's static address: no row
+    states the text-segment slide. N4111's "slide=0x577000" is the IOS7SHREG SLIDE REGION's own value
+    (N4117/N4118 slide_enter/slide_init; memory: the libobjc word sits at 0x3858fed0 = 0x2c000000
+    + 0xc58fed0), NOT a claim about the text slide. The 1032 reading's extra equation
+    pc = c + 0x577000 gives c = 0x37c26474, which is NOT in any N4112-15 mapping (map0 ends at
+    0x387dd000 = 0x2c577000 + 0xc266000; map1 starts at 0x387df000) -- so a text slide of 0x577000 is
+    CONTRADICTED by the cache map rows, not merely unproven.
+  * The one clean arithmetic identity available: pc - lr = 0x7ac5 (N4245, N4246); pc and lr differ
+    by 31 KB+ and their low nibbles both sit on map1's va base low bits (0x9d474 / 0x959af vs
+    0xdf000) -- nothing more. Most likely NEITHER pc nor lr is code; that is a hypothesis (suggested
+    by S5/S7 C1), not a reading, and a 1034 row 1 (the instruction AT pc) decides it.
+--------------------------------------------------------------------------------------------
+6. ROWS A 1034 PROBE SHOULD ADD (name / exact value form / cell it separates)
+
+A. Carrier identity (the faulting instruction itself):
+  1 xnu_live_evf_instr             the 16-bit halfword AT pc (copyin pc&~1)   -- "pc is a load" vs
+                                    "pc is not a load" (a Thumb object-load LDR forms 0x6xxx/0x7xxx/
+                                    0x9xxx/0xF8Dx; a literal-pool LDR.LITERAL is 0x48xx)
+  2 xnu_live_evf_pc_instr_src      0 = Thumb, 1 = ARM (from cpsr T bit + pc bit0, as read) --
+                                    "the frame is Thumb code" vs "T=1 is stale"
+  3 xnu_live_evf_rd_base_first     0/1: pc's instruction is LDR Rt,[Rn,#imm]; and
+    xnu_live_evf_rd_rt / _rn / _imm4/12/8 decoded from the captured halfword(s) -- "carrier is rN" cell
+  4 xnu_live_evf_rt_minus_far      Rt_val - 0x10 for Rt in r0..r12, emitted as 12 rows or the one
+                                    register whose value == 0x10 (or fewest-bit set): "carrier is rN" vs
+                                    "no register holds 0x10" (this capture: NONE of r0-r12 is 0x10 --
+                                    census S3 -- so expect "no register holds 0x10")
+B. Carrier provenance (how the register came to hold the address):
+  5 xnu_live_evf_carrier_slot     for the decoded Rn-base register (e.g. r6=sp, r7, r11): the word the
+                                    frame's saved copy of it points at, or the word in sp's frame at
+                                    the offset the instruction uses -- "carrier is a stack word" vs
+                                    "carrier is a loaded struct field"
+  6 xnu_live_evf_callee_saved     r4..r11, r12 raw -- ALREADY in N4279-4280; a 1034 STILL must
+                                    re-publish them from arm_ctx (the panic print may be a different
+                                    frame format) -- "arm_ctx == panic frame" control
+  7 xnu_live_evf_lr_minus_4_word  the word at lr-4 (== 1033's lr_slot 0xf0084640) PLUS the decoded
+                                    BL imm (S/OFF/J1/J2) or 0 if not a BL -- "lr_slot is a call" vs
+                                    "lr_slot is not a call" (1033's value says the latter)
+C. Source of the 0x10 (the NULL-loaded field):
+  8 xnu_live_evf_far_minus_slot   far - slot10 when slot10's word looks like a pointer's low bits --
+                                    "0x10 came from slot10+something" vs "unrelated to the stack"
+  9 xnu_live_evf_null_src         0 = "carrier register == far" (a register is the carrier),
+                                    1 = "carrier == *(addr) with addr in the frame", 2 = "neither" --
+                                    the top-level cell "carrier is rN" / "carrier is a NULL-loaded
+                                    field" / "carrier is neither" (expected HERE: 2, since no register
+                                    is 0x10 and far is not in the frame)
+ 10 xnu_live_evf_0x10_in_regs     1 iff any of r0-r12 == 0x10 (computable now: 0) -- a one-row
+                                    census the reading may quote without re-deriving
+D. Geometry control (so the pc can be placed without a slide assumption):
+ 11 xnu_live_evf_pc_vs_cachemap   0 = pc in [map0lo,map3hi] of N4112-15, 1 = pc in shared region but
+                                    outside the maps, 2 = pc outside 0x2c000000..0x40000000 --
+                                    "pc is in the shared cache image" vs "pc is in app text"
+ 12 xnu_live_evf_text_slide       ONLY if a row can be made to state it: the loader's slide for the
+                                    executable's __TEXT (or 0xFFFFFFFF if the source has none) --
+                                    "a slide is known" vs "no slide is stated" (do not print 0)
+ 13 xnu_live_evf_prologue_src      (optional) a counter tagging the pre-fault ZN(XNU) prologue rows
+                                    (launchd 0x2be7b018 N24147 / 0x2be6bfe8 N27949, launchctl's own
+                                    prologue is not in the ring) -- closes the S3 census without
+                                    re-reading the capture: "the register-class read is a prologue
+                                    idiom (IV bypassed)" vs "a distinct fault".
+
+--------------------------------------------------------------------------------------------
+7. CAPTURE vs records/1033-reading.txt -- CONTRADICTIONS AND MISBOUNDS
+
+ C1 (contradiction) 1033-reading.txt:20 "lr_slot decodes as a real call-return". Evidence: N4271
+    lr_slot=0xf0084640 does NOT encode a BL to pc (S4, arithmetic above). What IS true: slot10 (N4263)
+    is a non-NULL word inside map1; that it is a RETURN address is not evidenced by any row. The cell
+    EVF-U1-TRUE does not depend on this (it ORs an ok flag that only means "the copyin succeeded"),
+    so the CELL stands; the SENTENCE -- and the "call site decode: name the caller deref from
+    slot10" next step tools/check_1033_capture.py prints -- does not. 1034 must not assume a decode
+    exists, and must carry row 1 (instruction at pc) as its FIRST row.
+ C2 (contradiction) 1033-reading.txt:19-20 "U2 (wrong slide) is refuted by value". Evidence: N4111-N4115
+    show pc 0x3819d474 is outside every cache mapping under slide 0x577000 (map0 hi = 0x387dd000,
+    map1 lo = 0x387df000), and N4282's 0x2be76c8c is outside them too while implying an app-image
+    slide of 0x55000. A WRONG SLIDE IS NOT REFUTED; the 0x577000 text-slide equation is contradicted.
+ C3 (misbound) 1033-reading.txt:29 "xnu_live_evf_ustack 0x2bdab000 (stack is [sp..0x2bdab000))".
+    Evidence: N4160 the thread's user pc before user mode is 0x2bdaaf0c, which is ABOVE sp
+    (0x2bdaa088); N4156/N4157 give rc=0 / final 0x2bdab000 and N4158 gives prot page 0x2bcab000 -- so the
+    physical top 0x2bdab000 is right, but "the stack" the evf slots are read from is the frame at sp,
+    and nothing in the capture says whether [0x2bdaaf0c, 0x2bdab000) is inside this xnu ustack
+    allocation (guard? next block?) or elsewhere. The "0xF78 in" figure is sp's offset only.
+ C4 (incomplete) 1033-reading.txt:37 "It is not a ... truncated-dfar artifact". True for evf_far_raw
+    (N4249), but the same capture's N4187 prints abt_vmfkrv_far=0x00000000 for the SAME pc/sp
+    (N4190/N4191). A reader of N4187 alone sees far=0; the reading must state that the raw row
+    supersedes it (one value, two widths) -- it does so only implicitly.
+ C5 (misplaced) 1033-reading.txt:44-46 says the "1023"/full register state is beside the evf rows. It IS
+    (N4276-4281), but the N4186-4242 groups were emitted by the 1033 evaluation path itself (same burst
+    as N4243 evf_seq=1) -- the wrp/cal/rdr rows are NOT a separate 1032 rung still running; they are
+    the 1033 build's own caller/region rows. Rule for 1034: do not treat wrp/cal/rdr as independent
+    witnesses of the same burst.
+ C6 (hint, not a contradiction) 1033-reading.txt:47-52 "Every card copy available ... decodes pc-0x577000
+    to f248 48f2 ..." -- that decode is of 0x37c26474, which S5 shows is not inside the cache map
+    under this boot's rows; the negative result was expected. It says nothing about the pc bytes.
+ C7 (naming) 1033-reading.txt calls the launchctl crash "the 1032 fault" (line 3) and points to "the
+    1032 panic frame" (lines 43-46). 1033 produced its OWN abort frame (N4275-4281, same value as the
+    abt_vmfkrv rows N4186-N4192). Nothing here needs 1032's frame; a 1034 should cite N4277-4281.
