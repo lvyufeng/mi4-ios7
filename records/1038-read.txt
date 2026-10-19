@@ -1,0 +1,117 @@
+1038 PRE-REGISTRATION -- fixed BEFORE the press.  The reading is appended below the marker at the end.
+Rung 1038 (docs/1038-design.md): ONE trap.c patcher (tools/patch_d13_watch_le.py, switch
+STAGE90_XNU_WATCH_LE=1) with two arms -- A: who wrote the stack (xnu_live_sweq_*), B: the count word
+through the kernel's word view vs a byte-at-a-time view (xnu_live_ler_*) -- plus the kernel's own gates
+xnu_live_wlg_*.  INSTRUMENT ONLY: no cache patch, no walk change.  ONE press.
+Reading tool: tools/check_1038_capture.py (its --selftest PASSes and can FAIL).
+The design's per-block switches (STACK_WATCH / LE_READ / CACHE_HEAD) are NOT created: two blocks in one
+file are one rung ([[mi4-one-file-many-rungs]]).  There is NO C block in this patcher, so no C cell.
+
+====================================================================================================
+0. WHAT 1036 PRE-REGISTERS THIS RUN AGAINST (each a row 1038 must REPRODUCE, not a fact)
+====================================================================================================
+   S  the frame is real (sp 0x2bd8d088, r4 sp-4, r7 sp+0x24, far 0x10, pc 0x399a1474, cpsr 0x30)
+   T  s3 (frame sp+0xc) == 0xffffffff
+   W  r1 == 0 at the walk and the ldrb faults at 0x10
+   V  r5 == -1 AND the word at [r3+0xc] (the count) -- 1037-read B3 predicts [r3+0xc] == 0
+   U1 the run's own slide row; every candidate address derives from THIS row, never from a literal
+
+====================================================================================================
+1. ROWS (tools/patch_d13_watch_le.py is the authority; names exact)
+====================================================================================================
+  A  xnu_live_sweq_seq / _pid / _ssid / _sp / _usp / _k / _tdfar / _tdpc / _td_ok
+     xnu_live_sweq_s0 .. _s15 (+ _ok each)
+     xnu_live_sweq_bp0 .. _bp3 (+ _ok each)            -- 32 bytes at the VALUE of s3
+     xnu_live_sweq_wpc / _wfp / _w_ok                    -- the WALK's pc, through the saved-r11 chain
+     FAULT-IN-USER-CODE (design 1): the (far, pc) pair the kernel itself tested, far == *(pc-0x40).
+       STATUS: tools/patch_d13_watch_le.py DOES emit swb_far/_pc/_ok (with _slot/_tag/_cpsr/_fsr/
+       _r3/_lr/_sp/_ins/_der/_an/_m40; added by wire1038 after this file's first draft).  swb_pc is the
+       REAL faulting pc (the saved context's pc at +0x38), NOT far-0x40.  The host cannot read
+       *(pc-0x40); A1 is adjudicated on the device rows plus wpc (bound below).
+  B  xnu_live_ler_seq / _pid / _r3 / _cnt_w (+ _ok) / _cnt_b (+ _ok) / _al0 / _mfp1 / _mfp2 / _ppc
+     / _le (+ _ok)
+  G  xnu_live_wlg_byte (1/0/2) / xnu_live_wlg_lev (0/1/2) / xnu_live_wlg_need_<row>
+  C  NOT IN THIS RUN (no C block in the patcher).
+  companion (another lane's switch STAGE90_XNU_USTACK_VALIDATE, checked for presence and REPORTED, never
+  a conjunct): xnu_live_uvc_num / xnu_live_uvc_pc.
+  Every value raw; every _ok a 0/1.
+
+====================================================================================================
+2. THE CELLS (decided now; the capture only selects)
+====================================================================================================
+  A1 WATCH-FATAL       bp rows fault AND s3 == 0xffffffff AND the device's own row says
+                        swb_ok == 1 with swb_far == 0x10 AND swb_pc == 0x399a1474 (B2's pair).
+                        A swb_ok=1 stated at ANY OTHER (far, pc) REJECTS A1 (a held conjunct at
+                        another address is a different test).  wlg_byte == 0 WITHDRAWS A1's third
+                        conjunct (the page is not in the task map; not held, not refuted).
+                        THE PAIR MUST BE BOUND (added 2026-10-19, wire1038's correction, still before
+                        any press): wpc == swb_pc AND w_ok == 1 -- the pair's pc is the walk's pc as
+                        this arm's OWN row gives it.  wpc and swb_pc have different producers, so their
+                        agreement is a conjunct.  Unbound: A1 is not adjudicated on it.
+  A2 WATCH-ALIVE       bp readable AND the readable bytes equal the given copy from file 0x5d3bd7
+                        (48 45 07 00 9b 5e 04 30 0f 0f 33 04 14 50 5d 27 c0 08 18: 18 bytes; the
+                        remaining bp bytes are zero pad and are NOT a conjunct).  Only at B2's pc.
+  A3 WATCH-READS-ZERO  bp readable and every word zero.
+  A4 WATCH-NO-STORE    bp readable with s3's source absent -> the copy hypothesis is DEAD.
+  A-NONE               s3 == 0 (the block never ran: no reading); s3_ok != 1; the bp rows incomplete
+                        (an absent row is never readable or faulted); bp partly readable.
+  B1 LE-CONFIRMED      cnt_w_ok AND cnt_b_ok AND le_ok AND cnt_w == 0 AND cnt_b != 0 AND le != ppc
+  B2 NOT-BE            the conjuncts fail -> the byte-swap model is DEAD.
+  B-NONE               cnt_w_ok != 1 (a MISSED control is not a second view), cnt_b_ok != 1, le_ok != 1.
+  Exit: 0 iff a cell fired; 1 if no rows or no cell; 2 STALE SLOT.
+  THE CONJUNCTS ARE THE POINT: one word equal under both views says nothing.
+
+  FALSIFIERS recorded now:
+    F1 far != *(pc-0x40) (or stated at another (far, pc)): the faulting instruction is not what B3 names;
+       A1 MUST NOT be read.
+    F2 s3 == 0: the block never ran; no reading.
+    F3 the bp rows read but disagree with 0x5d3bd7: the copy hypothesis is DEAD (A4), not "partly right".
+    F4 capture identical to the pre-press copy, or its boot epoch < last press's: STALE SLOT, not a
+       negative.
+    F5 an ABSENT row is absent -- never a negative and never a zero.
+  F6 (2026-10-19) the pair is UNBOUND: swb_pc != wpc, or wpc/w_ok absent.  A1 MUST NOT be read.
+  F7 (2026-10-19, wire1038's slot semantics) A1's conjugate is the SLOT's own test, xnu_live_sweq_swb_ge
+     (= word at far-0x40 == far).  It is a reading only with swb_ok=1 AND swb_m40_ok=1 AND swb_far != 0.
+     swb_far == 0 (the 7-arg arm_ctx->far can be 0) -> pc underflows -> A1 WITHHELD, not refuted.
+     swb_ge == 0 under those gates -> A1 REJECTED (far != *(far-0x40) at the recorded fault).
+     Grounds, from the staged tree (external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c:537-561): the
+     `dfar = arm_ctx->far` read is on the SLEH_ABORT_TYPE_DATA_ABORT branch, and this tree's context
+     is 7-argument (far at +0x18), so a hook writing dfr/dfar before it is overwritten from arm_ctx.
+     With reason=4 at the first user fault, tdfar/tdpc are the CURRENT fault (far=0), not the
+     preceding one.  tdfar/tdpc/td_ok are therefore NOT a conjunct of any cell; only swb_* + wpc are.
+
+====================================================================================================
+3. PRE-REGISTERED READING OF THE PRESS AS A WHOLE
+====================================================================================================
+  IF A1 fires: the foreign copy is on record with its source -- file 0x5d3bd7 landing on arg pages;
+  1039 = find who copies it.
+  IF B1: the kernel's word view of the table's count word differs from the byte view on the same four
+  bytes -- the byte-swap model of the count path stands.
+  IF A4 and B2: 1037-read B2/B3 are dead; the walk question returns to the 1037 cells only.
+  Only ONE line per cell; the kernel publishes raw rows, the host decides.
+
+====================================================================================================
+4. BUILD / OPS STATE AT PRE-REGISTRATION (2026-10-19; nothing here is a reading)
+====================================================================================================
+  * scripts/build_1038.sh, scripts/park_1038.sh, scripts/press_1038.sh -- authored, syntax-checked, NOT RUN.
+  * scripts/press_1038.sh requires STAGE90_1038_LAST_PRESS_EPOCH=<boot epoch of the most recent real press
+    since 1036>; 1037's press record does not exist, and an invented constant would be an unchecked claim.
+  * P2 (2026-10-19, after review): the patcher now emits xnu_live_sweq_swb_far/_swb_pc/_swb_ok (td* are
+    aliases of the same slot and _ok). The gate is the checker's --emitter-missing: 26 required rows
+    (23 core + 3 swb), all printable, rc 0. xnu_live_uvc_* is reported (--companion-rows), never gated.
+    2026-10-19 (wire1038's correction): the swb slot stores only far (pc = far - 0x40), and tdfar/tdpc
+    on this tree are the CURRENT fault (F6). A1 is bound to the pair by wpc/_w_ok (both in the 23 core
+    rows) and by nothing else; the checker's A1-UNBOUND-WPC / A1-UNBOUND-NOWOK selftest cases and a
+    mutant run (binding removed -> SELFTEST FAIL) hold the rule.
+    2026-10-19 (b): A1 now reads the slot's own swb_ge under swb_ok / swb_m40_ok / swb_far != 0 (F7);
+    required rows = 29 (core 23 + swb_far/pc/ok/m40/m40_ok/ge), all printable, rc 0.
+  * P3: all 11 other TRAP patchers' allowed-if sets name STAGE90_XNU_WATCH_LE (one each). The patcher's
+    --selftest passes in a mkdtemp copy (the real trap.c is untouched).
+
+  * 2026-10-19, gate defects measured on 1037 (team lead): park names a set by EVERY pack member's sha
+    (not the bin's sha8); the pack member list is checked present and CURRENT before the record write,
+    and the record is written only after every parked member compares equal; press resolves the arm with
+    tools/resolve_arm_set.sh and forwards "$@"; the payload rebuild takes the arm record's switches plus
+    -DSTAGE90_XNU_ENTRY=1 (build_1038.sh header).  The device is DARK since the 1037 press.
+
+===== reading appended after the press =====
