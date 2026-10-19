@@ -17292,3 +17292,42 @@ set=armed-d13-e92c0c52 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161d
 set=armed-d13-e92c0c52 sha256=5835c5b297fd8d56f2b1ea8fd99bb07a69ecb2bbfe96cab5f68777145433125f bytes=560 file=SHA256SUMS.txt role=1033-eval-frame;SHA256SUMS.txt
 set=armed-d13-e92c0c52 sha256=52d600ee417049cf8141d3c054f99bbc2d5d04db938a3706037ec607bb72b822 bytes=20601 file=patch_d13_eval_frame.py role=1033-eval-frame-editors-definition
 set=armed-d13-e92c0c52 sha256=84e65e929031e91eba2e33320f68e4d600ba173fe6602cb928b15898921c4d4a bytes=18437 file=check_1033_capture.py role=1033-eval-frame-capture-reader
+
+# =================================================================================================
+# armed-d13-f4c3aaa5  -  1035: THE pc CARRIER, BY THE DEVICE-S OWN PAGE CONTENT.  INSTRUMENT ONLY.
+# 1033 (records/1033-reading.txt) read EVF-U1-TRUE: launchctl[2] faults on a LOAD at 0x10 (dfsr 7),
+# pc 0x3819d474 lr 0x381959af.  records/1034-design-errata.txt E12 leaves two candidates for the
+# faulting instruction: (a) the caller-s walk at the host file VA 0x37C26474, (b) the data word at
+# pc in the host-s image.  NOT a return if the fault path runs: a resident rung.
+# NEW SWITCH: STAGE90_XNU_PC_CARRIER=1 (tools/patch_d13_pc_carrier.py), a trap.c block INSIDE
+# 1025-s publisher AFTER 1033-s evf block.  Rows xnu_live_pcc_*: pid, pc/lr/r1/r5/r2/r7, the words
+# at pc-0x20, pc-0x08, pc, pc+0x08, pc+0x20, lr read with copyin from the task map (+ _ok rows), and
+# their XOR against the host-s file words for both candidates.  READS ONLY.
+# CHANNEL: the global DEFINES array (build_xnu_arm_kernel.sh); a -D in EXTRA is not the channel.
+# THE POOL MOVES: trap.c is a pool object, so the entry bin (and the arm name) MOVES.
+# [[mi4-one-file-many-rungs]]: trap.c is edited by 994/1020/1025/1026/1029/1030/1031/1033/1035; the
+# new switch is in EVERY trap.c patcher-s ALLOWED_IF_IDENTIFIERS, and a bare
+# `git checkout --` reverts the others SILENTLY.
+# THE CARD: 1035 serves 1032-s 10 bytes (card 0x10183720 = 5010012801daf0bdc046).  Not a park member
+# (the card is ~900 MiB); the card-s sha256 is pinned here and its content anchor is checked by
+# patch_cache_libobjc_count.py --check [2].
+# THE READING: tools/check_1035_capture.py (pre-registered cells P1-P4 in records/1035-carrier-by-pc-read.txt 3).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible.  fastboot boot only, NEVER flash.
+# card_sha256=0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529 card_off=0x10183720 card_new=5010012801daf0bdc046
+# =================================================================================================
+set=armed-d13-f4c3aaa5 sha256=f4c3aaa5c87a30b0b5e5a9fb3bdcb4ed49451cd9f23d94f96c255e4e562a7782 bytes=6331476 file=xnu_arm_entry.bin role=1035-pc-carrier;xnu_arm_entry.bin
+set=armed-d13-f4c3aaa5 sha256=2000cffd136c6e0c9a3b1a07d37a679b5b795f720af19d2a2e553b6fb1a2a7a8 bytes=7369112 file=xnu_arm_entry.elf role=1035-pc-carrier;xnu_arm_entry.elf
+set=armed-d13-f4c3aaa5 sha256=abd2428f35984118cd3d330555806c17a974e8893335b8ac5fabac7f644102e1 bytes=1912 file=xnu_arm_entry.h role=1035-pc-carrier;xnu_arm_entry.h
+set=armed-d13-f4c3aaa5 sha256=1bf0b48bf86f7f5e286ddc853c8d79920c570005892df4246f0224debceb3a89 bytes=2354 file=xnu_arm_entry-config.txt role=1035-pc-carrier;xnu_arm_entry-config.txt
+set=armed-d13-f4c3aaa5 sha256=09eeb6c7621559c6d771de2c7146b804a2249a874b4ac92a5428eb147171c458 bytes=46 file=xnu_arm_entry-arm-extra.txt role=1035-pc-carrier;xnu_arm_entry-arm-extra.txt
+set=armed-d13-f4c3aaa5 sha256=6b72010415cc10e6fef5be9c67201b2657ce92d704a69589dfd379eef75df871 bytes=3149 file=xnu_arm_entry-sources.txt role=1035-pc-carrier;xnu_arm_entry-sources.txt
+set=armed-d13-f4c3aaa5 sha256=3710a8e9cc7f8deac705bcefaf9768af3c0355f29bbd67747b769f50f629a36d bytes=6826884 file=stage90.bin role=1035-pc-carrier;stage90.bin
+set=armed-d13-f4c3aaa5 sha256=a995f7e0f10eced2075a4f04ada59d08900b44616ab1039fca679ed5f125413e bytes=6888956 file=stage90.elf role=1035-pc-carrier;stage90.elf
+set=armed-d13-f4c3aaa5 sha256=872700314e8a29657bd46e0d1860d032a857cba29c72b5adcd86af912306be73 bytes=6830080 file=stage90.img role=1035-pc-carrier;stage90.img
+set=armed-d13-f4c3aaa5 sha256=1f27b5df763490df7dc632cb43f59a73acd2c11e63356385033d866aa9b35706 bytes=9351168 file=stage90-qcdt.img role=1035-pc-carrier;stage90-qcdt.img
+set=armed-d13-f4c3aaa5 sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1035-pc-carrier;stage90_fixture.macho
+set=armed-d13-f4c3aaa5 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1035-pc-carrier;stage90-build-config.txt
+set=armed-d13-f4c3aaa5 sha256=d2d8c49e0e2892e1339b8e7c9aa9868192c0a45fc17599d6c1c3f0de63937433 bytes=560 file=SHA256SUMS.txt role=1035-pc-carrier;SHA256SUMS.txt
+set=armed-d13-f4c3aaa5 sha256=045e026974d05ac677dae5b9266bc45cdbb34984a3a62f5498f78c35910ff6dd bytes=17899 file=patch_d13_pc_carrier.py role=1035-pc-carrier-editors-definition
+set=armed-d13-f4c3aaa5 sha256=d6f51805f38ee5bbdf8d3f77948d40b3efad9836417c179541e31d2bf4808d73 bytes=7816 file=check_1035_capture.py role=1035-pc-carrier-capture-reader
