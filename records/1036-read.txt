@@ -51,15 +51,19 @@ power.  Pre-registration above was committed at 878b7df, before the press.
      arm_ctx in this kernel is a POINTER PARAMETER; a nested frame's ctx copy and a stale/positional
      register read can each misplace a word.  THE MECHANISM IS NAMED AS A CANDIDATE, NOT PROVEN; what is
      proven is that the rows are not the trap frame's.
-  THE LOG IS ALSO SHORTENED: the 1036 capture is 1660521 bytes vs 1035's 1660074 -- 447 bytes MORE, yet
-  it ends where 1035's does, and s8..s11 hold pointers (0x1507f270, 0x3a166ae0) that are not the frame's
-  shape.  A run that reaches /proc/last_kmsg must have flushed the in-memory console; a run that does NOT
-  return leaves it to the next boot's hand-off, and the hand-off is bounded (the 16 MB window, 969).  A
-  TRIMMED TAIL of this kind is exactly what a partial flush writes -- so the rows are truncated, not a
-  window on a different frame.  NAMED AS A CANDIDATE; to be measured, not assumed.
+  THE LOG'S TAIL IS CUT AT A BOUNDED BUFFER -- the mechanism is NAMED, the edge is NOT measured:
+  `debug_putc` (osfmk/kern/debug.c) writes while `(debug_buf_ptr-debug_buf) < (int)debug_buf_size` and
+  SILENTLY DROPS every later character (BYTES of this tree's file); `debug_buf_size` defaults to
+  `sizeof(debug_buf)` = DEBUG_BUF_SIZE and is RESET to it whenever the console is (re)initialised
+  (debug.c:208), which this kernel does.  So a run's log CAN end at that edge, and anything printed after
+  it is ABSENT, not "not reached".  THIS CAPTURE ENDS WITH "No errors detected", which is a natural end,
+  not a pad -- so for THIS run the edge is not where the log stops; it does NOT follow that the rows are
+  a complete account of the run (the frame anomaly above stands).
+  Keep the hazard for 1037 all the same: a row printed after a large dump is unreadable by construction.
   => 1035 P1's "xor_lr != 0 => lr is not a file VA plus any slide" HAS A SECOND EXPLANATION: the xor
      compared the device's word with the file's word at the WRONG address.  Not a prompt to retract P1
      (pc and near0..near4 agreed under 0x50C000); a prompt not to build on the lr conclusion.
+     AND -- after THIS run -- not to build on near0..near4 either without the pc in the same block (5).
 
 ====================================================================================================
 4. THE CELL: C1 BY ITS PRE-REGISTERED CONJUNCT -- AND WHAT IT IS WORTH
