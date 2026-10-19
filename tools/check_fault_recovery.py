@@ -1047,7 +1047,7 @@ def _rebase_offset(kobj_dis, old_offset, new_offset, mnemonic, unique=True):
     (a field-MOVE mutates one access); `unique=False` rewrites EVERY access (a lost read or a moved
     field must leave no correct site behind).
     """
-    pattern = re.compile(r"(^\s*[0-9a-f]+:\s+[0-9a-f]+\s+%s\s+r\d+,\s*\[[a-z]+,\s*#)%d(\])"
+    pattern = re.compile(r"(^\s*[0-9a-f]+:\s+[0-9a-f]+\s+%s\s+r\d+,\s*\[[a-z0-9]+,\s*#)%d(\])"
                          % (re.escape(mnemonic), old_offset), re.M)
 
     def repl(match):

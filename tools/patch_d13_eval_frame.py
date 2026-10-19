@@ -240,6 +240,27 @@ def stage(xnu, do_apply):
     return 0
 
 
+def evf_closes_inside_1025(t):
+    """True iff this block's #endif closes inside 1025's publisher: after it come zero or more WHOLE
+    STAGE90 sibling blocks (`#if defined(SW) && SW` .. `#endif /* SW */`), then 1025's #endif.
+    Literal adjacency was true while this was the last sibling; 1035's pc_carrier appends after it
+    (47df67c's rule, [[mi4-one-file-many-rungs]]: a new rung re-stages and the OFF proofs must
+    accept a whole later block)."""
+    close = "#endif /* %s */\n" % SWITCH
+    blocks = re.compile(r"#if defined\((STAGE90_[A-Z0-9_]+)\) && \1\n.*?#endif /\* \1 \*/\n", re.S)
+    for m in re.finditer(re.escape(close), t):
+        rest = t[m.end():]
+        pos, ok = 0, True
+        while True:
+            if rest.startswith("#endif /* STAGE90_XNU_USTACK_PROBE */\n", pos):
+                return True
+            b = blocks.match(rest, pos)
+            if b is None:
+                break
+            pos = b.end()
+    return False
+
+
 def verify_off(xnu):
     """With the switch undefined the preprocessor removes the whole block -> the 1031 tree's text."""
     tp = trap_path(xnu)
@@ -254,7 +275,7 @@ def verify_off(xnu):
             and t.count("#if defined(%s) && %s\n" % (SWITCH, SWITCH)) == 1
             and t.count("#endif /* %s */\n" % SWITCH) == 1)
     between = t.count("#endif /* STAGE90_XNU_CALLER_PROBE */\n#if defined(%s)" % SWITCH) == 1
-    tail = t.count("#endif /* %s */\n#endif /* STAGE90_XNU_USTACK_PROBE */\n" % SWITCH) == 1
+    tail = evf_closes_inside_1025(t)
     # every emitted row is INSIDE the gated block (so OFF removes it, not just the switch name)
     s = t.find("#if defined(%s) && %s" % (SWITCH, SWITCH))
     e = t.find("#endif /* %s */" % SWITCH)
@@ -262,7 +283,7 @@ def verify_off(xnu):
     missing = [r for r in EVF_ROWS if ("\"%s" % r) not in inside]
     print("   trap.c [ON] : xnu_live_evf_pc row present + one #if/#endif pair: %s" % have)
     print("   trap.c      : the block sits immediately after 1031's, inside 1025's publisher: %s" % between)
-    print("   trap.c      : it closes immediately before 1025's #endif: %s" % tail)
+    print("   trap.c      : it closes inside 1025's publisher (whole sibling blocks allowed after it): %s" % tail)
     print("   trap.c      : all %d rows inside the gated block: %s"
           % (len(EVF_ROWS), "yes" if not missing else "NO: %s" % ", ".join(missing)))
     if have and between and tail and not missing:
@@ -321,8 +342,8 @@ def selftest():
            "staged: exactly one #if/#endif pair for the switch")
     expect(t1.count("#endif /* STAGE90_XNU_CALLER_PROBE */\n#if defined(STAGE90_XNU_EVAL_FRAME)")
            == 1, "staged: the block opens immediately after 1031's #endif")
-    expect(t1.count("#endif /* STAGE90_XNU_EVAL_FRAME */\n#endif /* STAGE90_XNU_USTACK_PROBE */\n")
-           == 1, "staged: the block closes immediately before 1025's #endif (it is the LAST sibling this tree stages; a later rung appended after it must update THIS check -- see tools/patch_d13_caller_probe.py caller_closes_inside_1025 for the structural form)")
+    expect(evf_closes_inside_1025(t1),
+           "staged: the block closes inside 1025's publisher (zero or more whole STAGE90 sibling blocks follow it, then 1025's #endif -- 47df67c's structural form; 1035 appended pc_carrier after it)")
     rc2 = stage(r, do_apply=True)
     expect(rc2 == 0 and read(trap_path(r)) == t1, "second --apply is an idempotent no-op")
     rc3 = verify_off(r)

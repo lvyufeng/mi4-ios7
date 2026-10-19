@@ -191,7 +191,10 @@ done
 
 # Every switch whose channel is the global DEFINES array is exported from the RECORD's value (never a
 # hard-coded default: [[mi4-build-variant-comes-from-an-env-default]]), and THIS rung's switch is set here.
-for _g in VM_MAX_SPLIT USTACK_PROBE ABT_ENTRY_PROBE H2_STACK_HEADROOM READER_PROBE WRITER_PROBE CALLER_PROBE; do
+# NOTE (measured 2026-10-19): EVAL_FRAME had no line in this loop, so the 1033 pool compiled WITHOUT
+# xnu_live_evf_* and step 4 refused. The switch list is now taken from the same case list as EXTRA
+# above, so a switch added there cannot be forgotten here ([[mi4-one-value-two-definitions]]).
+for _g in VM_MAX_SPLIT USTACK_PROBE ABT_ENTRY_PROBE H2_STACK_HEADROOM READER_PROBE WRITER_PROBE CALLER_PROBE EVAL_FRAME; do
   export "STAGE90_XNU_$_g=1"
 done
 export "$NEW=1"
