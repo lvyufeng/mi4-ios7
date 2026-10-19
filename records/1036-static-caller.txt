@@ -32,7 +32,7 @@ File VA = VA - 0x2C000000. Every claim below is labelled BYTES / HASH / INFERENC
   => ON A MISS THIS RETURNS r0 = 0 (BYTES; the `bx lr` at 0x37c267b4 returns r2 = 0). The other
      `mov.w r0,#0xffffffff` at 0x37C1E988 is on the SHORT-NAME path, which is a jump table over 23
      lengths (0x37C1EBDE..0x37C1EC16) and cannot reach a 30-byte class name (BYTES: the table branches
-     to 0x37C1EC7C..0x37C1ECE0 only; INFERENCE: none of those re-enters 0x37C26778). So in the
+     to 0x37C1EC7C..0x37C1ECE0 only; INFERENCE: those are the unrolled CFG hash (each label adds bytes 0..15 of a 16-byte block, then 0x37C1ECEA compares the two 64-bit lanes and XORs) and none re-enters 0x37C26778). So in the
      1033/1035 boot the name lookup's miss encoding is 0, and the map writer's own `cmp.w r0,#0xffffffff`
      early-exit at 0x37C266FA is NOT taken for a name miss.
   => WITH A HASH LOOKUP THE WALK IS REACHED ONLY ON A HIT (r5 = 1, single-result path at 0x37C26428).
