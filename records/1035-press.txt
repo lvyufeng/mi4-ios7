@@ -1,0 +1,11 @@
+1035 PRESS LOG (fastboot boot of armed-d13-f4c3aaa5, stage90-qcdt.img sha 1f27b5df...)
+boot epoch 1792378199 (=2026-10-19 02:49:59 UTC); press script rc=0
+
+Preflight: all by-value gates PASS (arm record, GLOBAL-FIX, trap.c sha, pcc rows in obj+ELF,
+parent publishers, checker selftests, card 10-byte guard == device readback).
+
+fastboot boot -> OKAY; bytes sent == the gate's sha (unchanged across the send).
+RUN = NON-RETURN (runner exit 2). USB console: zero bytes, reader exit 143 (killed here after the runner).
+Recovery: no device visible within 90x5 s -> NO READING - STALE SLOT (no capture newer than this boot).
+NEXT: operator power press; then scripts/recover_last_kmsg.sh --read-only while Android is up;
+then python3 -I tools/check_1035_capture.py <capture> and read P1-P4 (records/1035-carrier-by-pc-read.txt 3).
