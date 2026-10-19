@@ -1,0 +1,78 @@
+1035 READING -- P1 BY VALUE, AND A PREMISE 1034's ERRATA DID NOT CHECK
+Recovered 2026-10-19 05:52:50 (read-only, operator power press); capture
+  out/stage90/captures/recovered-unknown-arm-20261019-055250-last_kmsg.txt
+OF THE 1035 BOOT REQUIRES CONTENT (no net clock in the slot): the two captures differ in exactly the
+1035 rows (pcc block present, evf pc 0x38132474, stack shifted -0x28000), and the press record pins the
+boot epoch at 1792378199 (02:52 UTC). See 3 for the staleness check's defect and 1 for the frame/function
+mismatch that this reading forced.
+
+====================================================================================================
+0. THE CELL: P1 (pre-registered before the press; records/1035-carrier-by-pc-read.txt 3)
+====================================================================================================
+  xnu_live_pcc_seq=1 xnu_live_pcc_pid=2 xnu_live_pcc_pc=0x38132474 xnu_live_pcc_lr=0x3812a9af
+  r1=0x00000000 r2=0xffffffff r5=0xffffffff r7=0x2bd270ac
+  near0=0xebad46a5 near1=0xf856d20b near2=0x29007c09 near3=0xf8500080 near4=0xd1054291
+  near5=0x2800eaf2   ok0..ok5 = 1 1 1 1 1 1
+  xor_walk=0x00000000  xor_table=0x2a0b6f12  xor_m08=0  xor_p08=0  xor_p20=0  xor_lr=0x00711504
+  xnu_live_pcc_slide=0x00577000
+  => P1: THE DEVICE RAN THE WALK AT FILE VA 0x37C26474 (`09 7c 00 29` = ldrb r1,[r1,#0x10]).
+     The page is the host file's own two pages: pc-0x08 and pc+0x08 and pc+0x20 are the file's words
+     at 0x37C2646C / 0x37C2647C / 0x37C26494, and pc-0x20 is 0xebad46a5 = `bl 0x37c266ec` at
+     0x37C26464 (`f000 f942`, verified by re-read of the cache this hour). The pc's true slide is
+     0x38132474 - 0x37C26474 = 0x50C000, NOT the 0x577000 the pid-1 geometry rows print (0x6B000
+     apart). Abort frame (evf): pc 0x38132474 far 0x10 dfsr 7, r1 = 0.
+  xor_lr != 0: the host word at lr-0x500000 is 0x2871fff6 and the device's is 0x2800eaf2. The
+  assumption "lr's file VA = lr - slide" stays UNSETTLED (the 1034 E12 caveat, now measured).
+
+====================================================================================================
+1. THE WALK IS NOT getPreoptimizedClass  --  measured before the capture, confirmed here
+====================================================================================================
+  I re-listed getPreoptimizedClass in full (records/1034-getpreopt-decode.txt, objdump -Mforce-thumb
+  over raw file bytes) and checked the frame against it register by register:
+    its VLA path is ENTERED by `cmp r5,#2; bcc.n return0`; r5 = 0xffffffff is UNSIGNED-above 2, so the
+    function RETURNS 0 -- it never executes the walk (0x37c2646e..0x37c26478) for count = -1.
+    the walk's own bytes sit INSIDE that function's body (0x37c2646e..0x37c26478) and no other bytes
+    in this cache decode to `ldr.w r1,[r6,r0,lsl#2]; adds r0,#1; ldrb r1,[r1,#16]; cmp; beq`. So the
+    device executed code only getPreoptimizedClass contains, on a register set it cannot arrive at
+    through its own entry (r5 = -1) -- see 2.
+    the writer (0x37c266ec) BLs 0x37c1e950 (a NAME HASH lookup) at 0x37c266f6: lr_would = 0x37c266fa
+    -> device 0x381366fa != the frame's lr 0x3812a9af (0x37c1e9af).
+    the writer's loop writes r6 (=[r5+8]) and leaves r5 = the name pointer; the frame's r5 = -1.
+  => The walk is a DIFFERENT function that SHARES the writer's inner loop (0x37c26742..0x37c2675a,
+  which needs r6 = dest1, r4 = dest2, r7 = depth, ip = [r5+0], r9 = [r5+12]); that same loop is
+  reachable from a call site whose lr is 0x37c1e9af. WHAT SET THAT FRAME UP (the caller, its r5) is
+  NOT read by any row yet. 1034's E12 ("0x3819d474 IS THE ARM WALK OF 1034-offset-rule-by-volume 3")
+  is therefore an inference, not a reading; the bytes agree, the function identity does not.
+
+====================================================================================================
+2. THE PREMISE: THE CLAMP OF 1032 IS ON A PATH THIS COUNT NEVER TAKES
+====================================================================================================
+  tools/patch_cache_libobjc_count.py patches the CARD at 0x10183720 (VA 0x37C26720) with
+      asrs r0,r2,#1 ; cmp r0,#1 ; bge .Lc ; pop {r4-r7,pc}      (count < 1 pops)
+  Its docstring calls it "THE COUNT CLAMP INSIDE libobjc": count = -1 -> POP.
+  READ THIS HOUR: 0x37C26720 is the GUARD OF THE COUNTED LOOP 0x37C26742..0x37C2675A INSIDE THE
+  WRITER (the map writer: name hash at 0x37c266f6, store `str.w r2,[r6],#4` at 0x37c2674a,
+  `str.w r2,[r4],#4` at 0x37c26756). The reveal-walk's count in the 1035 frame is a FREE REGISTER:
+  r4 = 0x2bd27084 = sp-4, r6 = 0x2bd27088 = sp, and 1032's own reading says the loop needs
+  r6 = dest1, r4 = dest2, r7 = depth (1030-1033 frames). So count there never passes 0x37C26720,
+  and 1032's clamp cannot be what this frame's count came from.
+  CONSEQUENCE FOR THE RECORD: "FIX = count class" in 1035 3 / 1034 E12 was an inference from the
+  bytes (0x37c26474 is in the same .c as 0x37c26720) projected onto a frame that runs a DIFFERENT
+  loop with a DIFFERENT count register. The clamp is still RIGHT for the map-writer path 1030 read
+  (that write IS at 0x37c26756 under 1030's slide); it is NOT established as covering this fault.
+  WHAT IS STILL MEASURED: the fault is a read of NULL+0x10 from a two-slot register block obtained
+  through the writer's inner loop; the 1035/1033 frames' r5 = r2 = -1, and r5 carries that value to
+  the walk. There is no cache word in this frame whose count 0x37C26720 guards.
+  => THE NEXT RUNG'S ROW IS THE CALLER: publish, at the same 1025 failure arm for pid 2, the frame's
+     caller (lr 0x3812a9af under its own slide), the word at lr-4 / the `bl` that made it, and the
+     stack words it wrote (r4-0x40..r4) -- i.e. what set r5 = -1 and r6 = sp. NOT a new fix yet.
+
+====================================================================================================
+3. CHECKER DEFECT FOUND AND FIXED WITH THIS READING (tools/check_1035_capture.py)
+====================================================================================================
+  FIRST RUN REFUSED a good capture: the staleness guard used the `-YYYYMMDD-HHMMSS-` name stamp as
+  the BOOT time, so a capture recovered 3 h after its boot failed `mtime >= boot` (-3 h) and printed
+  NO READING - STALE SLOT, exit 2. A name stamp is when the capture was TAKEN. Fixed: the in-log
+  `[<sec>.<frac>]` is the boot when present; the name stamp now only guards `mtime >= its own name`.
+  The capture's freshness for THIS rung is established BY CONTENT (section 0's regression diff),
+  because the slot has no net timestamps. --selftest still PASS (P1..P4, NOROW, STALE).

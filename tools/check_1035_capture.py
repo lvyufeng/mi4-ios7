@@ -71,9 +71,16 @@ def parse_rows(text):
 
 
 def boot_epoch(text, path):
+    """The boot the capture is OF.  A `-YYYYMMDD-HHMMSS-` name stamp is when the capture was TAKEN, not
+    which boot it holds (a recovery taken 3 h after the boot still carries that boot's log), so it is
+    used only for the mtime check; an in-log `[<sec>.<frac>]` stamp, when present, is the boot itself."""
     m = re.search(r"\[\s*(\d{9,})\.\d+\]", text)
     if m:
         return int(m.group(1))
+    return None
+
+
+def capture_named_epoch(path):
     m = re.search(r"-(\d{8})-(\d{6})-", os.path.basename(path))
     if m:
         import calendar
@@ -137,6 +144,11 @@ def main(argv):
     mtime = os.stat(path).st_mtime_ns // 1000000000
     if boot is not None and mtime < boot:
         print("NO READING - STALE SLOT: mtime %d older than the boot it stamps %d" % (mtime, boot))
+        return 2
+    # a capture cannot predate the name stamp in its own filename
+    named = capture_named_epoch(path)
+    if named is not None and mtime < named:
+        print("NO READING - STALE SLOT: file mtime %d older than its own name stamp %d" % (mtime, named))
         return 2
     rows = parse_rows(text)
     if not rows:
