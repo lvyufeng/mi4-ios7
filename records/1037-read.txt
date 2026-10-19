@@ -1,0 +1,35 @@
+1037 PRE-REGISTRATION -- fixed BEFORE the press.  The reading is appended below section 2.
+Rung 1037 (docs/1037-design.md): ONE trap.c block that compares the trap entry's OWN saved user state
+(the uss record the `stmea {r0-lr}^` wrote in traps_lo.s) with the C-side `arm_ctx`, and derives the
+slide from lr alone.  Instrument only: NO cache patch, NO walk change.
+
+====================================================================================================
+1. ROWS (tools/patch_d13_trap_frame.py is the authority; names exact)
+====================================================================================================
+  xnu_live_fb_seq / _pid / _pc / _lr / _sp_tr / _sp
+  xnu_live_fb_uss          (the uss VA arm_ctx points at; read through the task map)
+  xnu_live_fb_uss_r0 .. _uss_r12 / _uss_sp / _uss_lr / _uss_pc      (17, TASK-MAP reads, _ok each)
+  xnu_live_fb_ctx_diff     (bitmask of differing words, computed in the kernel)
+  xnu_live_fb_slide        (pc - 0x37C26474, an EXPRESSION)
+  xnu_live_fb_lr_xor4 / _lr_xor8   (device word at lr-4/-8 XOR the file's word at (lr - slide) - 4/-8)
+  xnu_live_fb_ldrh         (file halfword at the walk's load VA, via the slide) + _ok
+  xnu_live_fb_dbg_off / _dbg_off_ok
+  Every value raw; every _ok a 0/1.
+
+====================================================================================================
+2. THE CELLS (decided now; the capture only selects)
+====================================================================================================
+  ctrl : fb_dbg_off_ok AND fb_dbg_off < debug_buf_size     (the rows reached the log)
+  D1   SAVE-MISPLACED   ctrl AND fb_ctx_diff != 0  -> the trap entry's save and the C view differ; the
+        mask names the offsets; 1038 fixes the SAVE.  H-SHORTNAME is moot (r1 = 0 may be misplaced).
+  D2   SAVE-AGREES      ctrl AND fb_ctx_diff == 0  -> arm_ctx IS the saved frame.  Odd lr/r10 are then
+        real: 1038 re-derives the fault from the SPSR/CPSR path, not from the save.
+  D3   NO-BLOCK         ctrl AND the rows are absent -> the block did not run; NOT a cell.
+  L1   (reported but never instead of D1/D2)  lr_xor4 == 0 OR lr_xor8 == 0 -> the slide derived from lr
+        is measured, and pc IS the walk (file VA 0x37C26474).
+
+  FALSIFIERS recorded now: if fb_ctx_diff is not printed while other fb rows are, the mask itself is the
+  defective row (do not read "0"); if fb_sp_tr == 0x2bd8d088 (1036's pcc2 sp) the "trap frame" read is
+  the same narrowed row, not a second witness; if fb_ldrh != 0x7C09 the walk's site is not the file's.
+
+===== reading appended after the press and the recovery =====

@@ -107,7 +107,10 @@ power.  Pre-registration above was committed at 878b7df, before the press.
   address is the second halfword pair of that word (the "trimmed" shape 1035 saw at lr).  The hash's
   `mov.w r6,#0xffffffff` at 0x37C1E990 is a NAMED producer of -1, and 1035's frame has r2 = r5 = -1.
   H-SHORTNAME: the walk's r5 = -1 is the short-name hash's no-match return.  UNPROVEN -- it assumes
-  lr's slide, which 5 leaves open.  1037 tests it: (i) the hash's own pc row on this thread, (ii) host:
+  lr's slide, which 5 leaves open.  CORRECTED 2026-10-19 (docs/1037-design 1(ii)): the walk's load at
+  0x37C26474 is `ldrb r1,[r1,#0x10]` (09 7c 00 29), NOT a 32-bit ldr.w -- the model that a 32-bit load
+  could give r1 = 0 for r5 = -1 is WRONG; r1 = 0 (pcc) is itself a register whose save is suspect
+  (traps_lo.s saves {r0-lr}^ of the uss-under-APSR store; lr and r10 read ODD, which no ARM lr can).  1037 tests it: (i) the hash's own pc row on this thread, (ii) host:
   the two hash functions run over the 30-byte class names the cache's name section holds, (iii) the
   walk's load re-read as a 32-bit `ldr.w` -- r1 = 0 breaks the model.
 
