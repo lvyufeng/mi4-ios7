@@ -1172,6 +1172,25 @@ DEFINES=(
 # tree's bytes; the by-value reading is the 1036 block's format string in trap.o.
 [[ ${STAGE90_XNU_PC_CARRIER_CALLER:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_PC_CARRIER_CALLER=1)
 
+# 1037: STAGE90_XNU_TRAP_FRAME -- compare the trap frame with the task map's own copy of the uss
+# (docs/1037-design.md).  INSTRUMENT ONLY.  1036 read an lr and an r10 with bit0 set on a path whose
+# every function is ARM, so the trap entry stores some register at the wrong offset; this switch adds a
+# block (owned by the 1037 patcher) that prints the trap-frame registers beside the uss copy read
+# through the task map, the near words, and a slide derived from lr alone.  [name note: the design
+# doc's section 2 names this switch STAGE90_XNU_FRAME_BLOCK; the registration uses TRAP_FRAME.]
+# Same GLOBAL ARRAY channel as every probe above (one argv for every pool object).  OFF compiles the
+# tree's bytes; the by-value reading is the 1037 block's format string in trap.o.
+[[ ${STAGE90_XNU_TRAP_FRAME:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_TRAP_FRAME=1)
+
+# 1038: STAGE90_XNU_WATCH_LE -- blocks A (who wrote the stack) and B (little endian at the table)
+# (docs/1038-design.md sections 1-2).  INSTRUMENT ONLY.  Adds a block (owned by the 1038 patcher) to the
+# same trap.c publisher: block A reads the sixteen words at sp-4 through the task map beside the trap
+# frame, block B reads the count word at r3+0xc through a byte accessor and assembles it little-endian.
+# Same GLOBAL ARRAY channel as every probe above (one argv for every pool object).  OFF compiles the
+# tree's bytes; the by-value reading is the block's xnu_live_sweq_s0..s15 / xnu_live_ler_cnt_b literals
+# in trap.o (entry's 1038 link-site clause).
+[[ ${STAGE90_XNU_WATCH_LE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_WATCH_LE=1)
+
 # 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
 # the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO
 # p->user_stack, so the word at the top is unowned and userspace's touch faults.  This switch makes the

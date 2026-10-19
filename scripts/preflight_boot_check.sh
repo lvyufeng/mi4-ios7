@@ -770,7 +770,9 @@ ENTRY_CFG_KEYS=(STAGE90_XNU_ENTRY_SHA256 STAGE90_XNU_ENTRY_BYTES STAGE90_ENTRY_T
                 STAGE90_XNU_CALLER_PROBE
                 STAGE90_XNU_EVAL_FRAME
                 STAGE90_XNU_PC_CARRIER
-                STAGE90_XNU_PC_CARRIER_CALLER)
+                STAGE90_XNU_PC_CARRIER_CALLER
+                STAGE90_XNU_TRAP_FRAME
+                STAGE90_XNU_WATCH_LE)
 # **1024: `STAGE90_XNU_VM_MAX_SPLIT`, the task map's ceiling (`VM_MAX_ADDRESS`).** It went in at the
 # tail after `STAGE90_XNU_GENERAL_REGS`; like every key above it is a REQUIRED key whose value is
 # printed by name, and the CONVERSE check below now accepts it. A record that does not carry it is a
@@ -1318,6 +1320,16 @@ do
   # **1036's switch, the same one-way rule.**  Every arm parked before 1036 ran no caller trace.
   if [[ -z $_v && $_k == STAGE90_XNU_PC_CARRIER_CALLER ]]; then
     printf '  %s=(absent, and a record that does not name the pc-carrier-caller switch is one built before 1036 - the only value a pre-1036 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1037's switch, the same one-way rule.**  Every arm parked before 1037 ran no trap-frame block.
+  if [[ -z $_v && $_k == STAGE90_XNU_TRAP_FRAME ]]; then
+    printf '  %s=(absent, and a record that does not name the trap-frame switch is one built before 1037 - the only value a pre-1037 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1038's switch, the same one-way rule.**  Every arm parked before 1038 ran no stack-watch / LE block.
+  if [[ -z $_v && $_k == STAGE90_XNU_WATCH_LE ]]; then
+    printf '  %s=(absent, and a record that does not name the stack-watch / LE switch is one built before 1038 - the only value a pre-1038 build could have written)\n' "$_k"
     continue
   fi
   [[ -n $_v ]] \

@@ -110,6 +110,7 @@ ALLOWED_IF_IDENTIFIERS = {
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",
+    "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
     "STAGE90_XNU_GLOBAL_FIX",
     "STAGE90_XNU_UNDEF_RAISE",
     "STAGE90_XNU_IOS7_TRAPS",
@@ -154,6 +155,10 @@ ALLOWED_IF_IDENTIFIERS = {
     # block after 1035's inside 1025's publisher.  Same shared-namespace rule, same OFF reasoning
     # ([[mi4-one-file-many-rungs]]).
     "STAGE90_XNU_PC_CARRIER_CALLER",
+    # 1037's TRAP FRAME (tools/patch_d13_trap_frame.py) edits the SAME file, adding a block after
+    # 1036's inside 1025's publisher.  Same shared-namespace rule, same OFF reasoning
+    # ([[mi4-one-file-many-rungs]]).
+    "STAGE90_XNU_TRAP_FRAME",
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

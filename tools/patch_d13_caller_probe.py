@@ -120,6 +120,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",       # 994
+    "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
     "STAGE90_XNU_GLOBAL_FIX",         # 1015b (fires in pmap.c; allowed for the proof)
     "STAGE90_XNU_UNDEF_RAISE",        # 1020
     "STAGE90_XNU_IOS7_TRAPS",         # 1023
@@ -132,6 +133,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_EVAL_FRAME",         # 1033 (tools/patch_d13_eval_frame.py)
     "STAGE90_XNU_PC_CARRIER",         # 1035 (tools/patch_d13_pc_carrier.py)
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036 (tools/patch_d13_pc_carrier_caller.py)
+    "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
 }
 
 # ---------------------------------------------------------------- kern_exec.c (Site B)

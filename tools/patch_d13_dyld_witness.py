@@ -394,6 +394,7 @@ CHUNKS = ((BLOCK_ANCHOR, BLOCK, "witness block"), (CALL_ANCHOR, CALL, "witness c
 # An identifier a HEADER could invent would still be caught, because such a name is not in this set.
 ALLOWED_IF_IDENTIFIERS = {"BOARD_CONFIG_QSD8250_LEO", "BOARD_CONFIG_ARMPBA8", SWITCH,
                           "STAGE90_XNU_UNDEF_RAISE",
+                          "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
                           # 1025's failed-fault publisher (tools/patch_d13_ustack_probe.py) edits the
                           # SAME file (osfmk/arm/trap.c) and adds its own
                           # `#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE` block
@@ -451,7 +452,11 @@ ALLOWED_IF_IDENTIFIERS = {"BOARD_CONFIG_QSD8250_LEO", "BOARD_CONFIG_ARMPBA8", SW
                           # 1036's PC-CARRIER CALLER (tools/patch_d13_pc_carrier_caller.py) edits the SAME
                           # file, adding a block after 1035's.  Same shared-namespace rule, same OFF
                           # reasoning ([[mi4-one-file-many-rungs]]).
-                          "STAGE90_XNU_PC_CARRIER_CALLER"}
+                          "STAGE90_XNU_PC_CARRIER_CALLER",
+                          # 1037's TRAP FRAME (tools/patch_d13_trap_frame.py) edits the SAME file,
+                          # adding a block after 1036's.  Same shared-namespace rule, same OFF
+                          # reasoning ([[mi4-one-file-many-rungs]]).
+                          "STAGE90_XNU_TRAP_FRAME"}
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WORDS = {"defined", "if", "elif", "ifdef", "ifndef"}

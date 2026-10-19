@@ -100,6 +100,7 @@ def if_stage90_ids(text):
 # coexist or the shared-namespace check refuses ([[mi4-one-file-many-rungs]]).
 ALLOWED_STAGE90 = {
     "STAGE90_XNU_USTACK_PROBE",       # 1025
+    "STAGE90_XNU_WATCH_LE",           # 1038 (tools/patch_d13_watch_le.py)
     "STAGE90_XNU_ABT_ENTRY_PROBE",    # 1026
     "STAGE90_XNU_H2_STACK_HEADROOM",  # 1028 (this rung)
     "STAGE90_XNU_READER_PROBE",       # 1029 (tools/patch_d13_reader_probe.py)
@@ -107,6 +108,7 @@ ALLOWED_STAGE90 = {
     "STAGE90_XNU_EVAL_FRAME",         # 1033 (tools/patch_d13_eval_frame.py)
     "STAGE90_XNU_PC_CARRIER",         # 1035 (tools/patch_d13_pc_carrier.py)
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036 (tools/patch_d13_pc_carrier_caller.py)
+    "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
 }
 
 

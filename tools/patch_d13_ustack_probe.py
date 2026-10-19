@@ -95,6 +95,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",     # 994  (tools/patch_d13_dyld_witness.py)
+    "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
     "STAGE90_XNU_GLOBAL_FIX",       # 1015b (fires in pmap.c, allowed here for the shared proof)
     "STAGE90_XNU_UNDEF_RAISE",      # 1020 (tools/patch_d13_undef_raise.py)
     "STAGE90_XNU_IOS7_TRAPS",       # 1023 (row-24 gate, drives mach_trap.c; allowed for the proof)
@@ -107,6 +108,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_EVAL_FRAME",  # 1033 (tools/patch_d13_eval_frame.py)
     "STAGE90_XNU_PC_CARRIER",  # 1035 (tools/patch_d13_pc_carrier.py)
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036 (tools/patch_d13_pc_carrier_caller.py)
+    "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
 }
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

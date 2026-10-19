@@ -33,3 +33,67 @@ slide from lr alone.  Instrument only: NO cache patch, NO walk change.
   the same narrowed row, not a second witness; if fb_ldrh != 0x7C09 the walk's site is not the file's.
 
 ===== reading appended after the press and the recovery =====
+READING (before the device action -- the 1037 rung is NOT yet pressed; this section records what the
+1036 capture, recovered at 08:01:48 and readable on the host only now, answers by value, and what it
+therefore changes about D1/D2.)
+
+A. THE SNAPSHOT 1037-static-save 4 said was unavailable IS AVAILABLE, AND IT MAKES THE FRAME REAL.
+   From out/stage90/captures/recovered-unknown-arm-20261019-080148-last_kmsg.txt (pid 2, launchctl[2]):
+     wrp/cal : r0=1 r1=0 r2=-1 r3=0x39b04020 r4=0x2bd8d084 r5=-1 r6=sp=0x2bd8d088 r7=0x2bd8d0ac
+               r9=0x1fff r10=0x39aedc00 r12=0x4000 lr=0x399999af pc=0x399a1474 cpsr=0x30
+     evf     : far_raw=0x10 dfsr=7 (a READ; translation fault, page); slot10 (*(sp+0x10))=0x3a166ae0 ok=1
+     pcc2    : s0=sp-8 s1=0x399a16fb s2=0x2bd8d084 s3=0xffffffff s4=0x2bd8d088 s5=0x2bd8d0ac
+               s6=0x399a1469 s7=0 s8=0x1507f270 s9=slot10 s10=0x3a16b7f0 s11=slot10 s12=1 s13=0 s14=r8 s15=0x2e
+   Coherence: r4=sp-4, r7=sp+0x24, far=0x10 is READ at sp+0x10, and (pc-0x20)=0x399a1454 holds the
+   file's `4b f0 00 40` = movw r0,#0xf04b under the slide that the near0 reconciliation names. So the
+   frame snapshot is REAL and internally consistent; it is NOT a recovered-function frame.
+   cpsr bit5 = 1 (Thumb) -- same in 1033's launchctl[2] frame. cpsr is a PLACEHOLDER for the user state:
+   it cannot be overwritten by a save at another offset, so bit5 is a reading either way.
+
+B. WHAT IT CHANGES (and what it does NOT).
+   1. 1037-static-save 4 ("under P no s exists") is FALSIFIED BY SNAPSHOT as a statement about a shift:
+      with sp/r4/r7/far matching a single s=0 frame, the k=0/k=-16/k=+13/k=+44 contradictions were an
+      artifact of the brief's partially-known values; DO NOT commit that clause.
+   2. CONTAMINATION IS A LIVE CANDIDATE -- AND IT HAS A CONCRETE SUPPORTER: `s3 = 0xffffffff` sits at
+      sp+0xc in the frame, and the word H-SHORTNAME calls mov.w r6,#0xffffffff (BYTES at 0x37C1E990 file 0xBC1E990 are
+      `36 ff f0 4f`, 1036-read 6) does not occur at ANY word-aligned offset in the cache's three maps. The ONLY rule that maps it to sp+0xc is
+      a one-byte-skewed copy of Thumb code onto the stack whose source sits at file `5d3bd7` ->
+      cache VA = file + 0x38268000 (map1 fileOffset, MEASURED @0x88) = 0x3D8023D7; minus U1's slide
+      0x1D7B000 (printed slide=0x1d7b000, slide_start=0x3df27000) = 0x2BE713D7 -> the sp-4..sp+0xd
+      window at the crash. [STRONG, NOT PROVEN:
+      file bytes at 0x5d3bd7 = 45 07 00 9b 5e 04 30 0f 0f 33 04 14 50 5d 27 c0 08 18, and s3/s5 at
+      sp+0xc/sp+0x14 read 0xffffffff/0x2bd8d0ac; check with a byte-exact dump before believing it.]
+      If the copy landed, it landed AFTER the faulting `ldr r1,[r1]-0x40` brought `5d 27 c0 08 18` into
+      registers/lane5, which is why r2=FLT_MAX and s5/r7=sp+0x24 (both are the values of the args the
+      copy destroys) -- a single narrative, still unproven.
+   3. FAR = 0x10 IS PARTIALLY EXPLAINED BY A SECOND JF-NAMED STRING, and it is testable:
+      file 0x140 `... 00 f0 02 2c 00 00 00 00 93 cc 75 53`; under U1 slide 0x1d7b000, VA 0x384CC140
+      holds `0xc0f0` = `mov r0,r0` (a LOAD, not `movw r0,#`) followed by zeros. R1 = read32(0xc0f0)=0 and
+      the walk's `ldrb r1,[r1,#0x10]` faults at 0x10 -- EXACTLY the measured far. So the walk ran with
+      r1=0, i.e. it is the "count*2 == 0" path of getPreoptimizedClass: the page the count comes from
+      has a `mov r0,r0` in front of its count word, because an ARM-disassembled copy of an ARMv7S/Thumb
+      region has been placed where the armv7 count table is expected (same class as (2)).
+      THIS IS 1038's TEST, not 1037's.
+   4. (this hour's new finding, not a 1037 question) THE MACHINE DID NOT DIE OF THE U1 MAPPING. The log
+      shows, after the U1 map_slide ret=0 succeeded: pid 1 mapped, launched, syscalls flowed, pid 2 was
+      exec'd, mapped, launched, ran a bootstrap -- and then launchd's log says "The System bootstrapper
+      has crashed: Bus error: 10" (the 0x10 read). After that the capture shows NO further user activity:
+      the last IOS7LAB vm_allocate64/deallocate pair is at capture :4363-4366, flight-recorder rows
+      follow, and the LAST line before the RAM-console closing line (:38174 `No errors detected`) is
+      :38172 `xnu_live_freeze_ctlr=0x00000001` -- i.e. the abort storm (nfar/ptenx/wknx, ~0x7ca distinct
+      far) and the tick thread's freeze rows are the last things written. The kernel kept aborting and
+      the console was cut by the end of the RAM log; the machine was then reset (the device came back
+      in Android). THIS RUN'S CUT IS NOT `debug_putc`'s `debug_buf_size` edge (a different writer, and
+      it ends on a complete key=value line).
+   5. NEW NAMED DEFECT (not the mapping): compiled `bsd_kern_kern_descrip.o` and `osfmk_vm_vm_shared_region.o`
+      carry NO IOS7_COMPAT retry (0 references to `dyld_shared_cache_armv7` / `IOS7LAB shared region`
+      string in by-value object scan); a 1,535,514-byte CodeDirectory superblob would be refused by
+      CS_MAX_BLOB_SIZE 1280 KiB -> F_ADDFILESIGS -E2BIG -> dyld halts. Named as a candidate frontier
+      (NOT proven at run time; the blob size in the HFS volume was not read here).
+
+C. THE 1037 RUNG AS PRE-REGISTERED STILL RUNS; its cells stay glue-able:
+   D1 fires iff fb_ctx_diff != 0 with ctrl; D2 iff ==0; L1 is reported. fb_ldrh returning 0x7C09 is
+   already predicted by B(3) under U1; if fb_ldrh != 0x7C09 the walk's site is NOT the file's, which
+   is a stronger finding than any save question. What 1037 can NO LONGER settle by itself: nothing in
+   the save (the save is not the top question any more). What it CAN still settle, cheaply: D1/D2 on
+   the live uss record (a kernel VA -> direct read), and L1 (lr_xor4/xor8 against the same slide).

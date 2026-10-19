@@ -157,6 +157,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",       # 994
+    "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
     "STAGE90_XNU_GLOBAL_FIX",         # 1015b (fires in pmap.c; allowed for the proof)
     "STAGE90_XNU_UNDEF_RAISE",        # 1020
     "STAGE90_XNU_IOS7_TRAPS",         # 1023
@@ -169,6 +170,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_EVAL_FRAME",         # 1033
     "STAGE90_XNU_PC_CARRIER",         # 1035 (this block's immediate predecessor)
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036 (this rung)
+    "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
 }
 
 
@@ -236,6 +238,26 @@ def stage(xnu, do_apply):
     return 0
 
 
+def closes_inside_1025(t):
+    """True iff this block's #endif closes inside 1025's publisher: after it come zero or more WHOLE
+    STAGE90 sibling blocks (`#if defined(SW) && SW` .. `#endif /* SW */`), then 1025's #endif.  1033's
+    evf_closes_inside_1025 widen, as that scan's own docstring asks a later rung to do (1037 stages its
+    block here and its --verify-off must pass; [[mi4-one-file-many-rungs]])."""
+    close = "#endif /* %s */\n" % SWITCH
+    blocks = re.compile(r"#if defined\((STAGE90_[A-Z0-9_]+)\) && \1\n.*?#endif /\* \1 \*/\n", re.S)
+    for m in re.finditer(re.escape(close), t):
+        rest = t[m.end():]
+        pos = 0
+        while True:
+            if rest.startswith("#endif /* STAGE90_XNU_USTACK_PROBE */\n", pos):
+                return True
+            b = blocks.match(rest, pos)
+            if b is None:
+                break
+            pos = b.end()
+    return False
+
+
 def verify_off(xnu):
     """With the switch undefined the preprocessor removes the whole block -> the 1035 tree's text."""
     tp = trap_path(xnu)
@@ -253,7 +275,7 @@ def verify_off(xnu):
     between = t.count("#endif /* STAGE90_XNU_PC_CARRIER */\n#if defined(%s)" % SWITCH) == 1
     # 1035's own switch text must not match this rung's bracket counts (it does not: the prefix
     # STAGE90_XNU_PC_CARRIER never appears as `#if defined(X) && X\n` for this X).
-    tail = t.count("#endif /* %s */\n#endif /* STAGE90_XNU_USTACK_PROBE */\n" % SWITCH) == 1
+    tail = closes_inside_1025(t)
     # every emitted row is INSIDE the gated block (so OFF removes it, not just the switch name)
     s = t.find("#if defined(%s) && %s" % (SWITCH, SWITCH))
     e = t.find("#endif /* %s */" % SWITCH)
@@ -265,7 +287,7 @@ def verify_off(xnu):
     print("   trap.c [ON] : xnu_live_pcc2_pc row present + one #if/#endif pair: %s" % have)
     print("   trap.c      : the block sits immediately after 1035's, inside 1025's publisher: %s"
           % between)
-    print("   trap.c      : it closes immediately before 1025's #endif: %s" % tail)
+    print("   trap.c      : it closes inside 1025's publisher (whole sibling blocks allowed after it): %s" % tail)
     print("   trap.c      : all %d rows inside the gated block: %s"
           % (len(PCC2_ROWS), "yes" if not missing else "NO: %s" % ", ".join(missing)))
     print("   trap.c      : whole-block shape `#if defined(SW) && SW .. #endif /* SW */`: %s"
