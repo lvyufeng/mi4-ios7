@@ -1,0 +1,75 @@
+1036 STATIC CALLER TRACE -- who enters the getPreoptimizedClass walk with r5 = -1?
+READ-ONLY static analysis (2026-10-19). Sources: /tmp/dyld-extract/dyld_shared_cache_armv7 (sha cad2df77,
+== card E1) read with python3 -I + mmap; listings are arm-none-eabi-objdump -Mforce-thumb over raw bytes.
+File VA = VA - 0x2C000000. Every claim below is labelled BYTES / HASH / INFERENCE.
+
+====================================================================================================
+1. THE FACTS THIS TRACE STARTS FROM (measured; records/1035-read.txt)
+====================================================================================================
+  * The device executed the walk 0x37C2646E..0x37C26478 at slide 0x50C000 (pcc xor_walk = 0, 6/6 ok),
+    with r5 = r2 = -1, r1 = 0, fault = read at 0 + 0x10.
+  * The walk lives inside getPreoptimizedClass (0x37C263CC), whose own entry CANNOT reach it with
+    r5 = -1 (`cmp r5,#2; bcc return 0`, unsigned; and its two r0 values on entry are 0 only for "no
+    table"). So the pc is inside a function the frame did not ENTER; the arm that lands there is
+    unnamed.
+  * The walk's caller's lr (0x3812A9AF) is not a file VA plus any 0x1000 slide (BYTES: the byte string
+    28 00 ea f2, the device's word at lr, occurs NOWHERE in the 316 MB cache).
+
+====================================================================================================
+2. THE ONE WAY INTO THE WALK'S BODY THAT RUNS WITH r5 = -1: A HISTOGRAM BUCKET (BYTES)
+====================================================================================================
+  0x37C26778..0x37C267AE (the helper after the map writer, .Lh):
+      37c26778: sub.w r9, r2, #1 ; mov ip, r3        ; upper = hi - 1; mid = lo
+      37c2677e: mov ip, r3 ; movs r2, #0             ; .Lnext: mid = lo; idx = 0
+      37c26782: cmp ip, r9 ; bgt 0x37c267b2          ; lo > hi -> return 0 (NO MATCH)
+      37c26786: add.w r2, ip, r9 ; add.w r2, r2, r2, lsr #31 ; asrs r2, r2, #1   ; mid = (lo+hi)/2
+      37c26790: add.w r3, r2, r2, lsl #2 ; add.w r3, r0, r3, lsl #2 ; ldr r3, [r3, #12]
+      37c2679a: cmp r3, r1 ; beq 0x37c267a6
+      37c2679e: add.w r3, r2, #1 ; bls .Lnext       ; bucket.hash < h -> lo = mid+1
+      37c267a4: b .Lupd                             ; else hi = mid-1
+      37c267a6: add.w r1, r2, r2, lsl #2 ; add.w r0, r0, r1, lsl #2 ; add.w r2, r0, #8
+      37c267b2: mov r0, r2 ; bx lr                  ; HIT -> bucket record + 8
+  => ON A MISS THIS RETURNS r0 = 0 (BYTES; the `bx lr` at 0x37c267b4 returns r2 = 0). The other
+     `mov.w r0,#0xffffffff` at 0x37C1E988 is on the SHORT-NAME path, which is a jump table over 23
+     lengths (0x37C1EBDE..0x37C1EC16) and cannot reach a 30-byte class name (BYTES: the table branches
+     to 0x37C1EC7C..0x37C1ECE0 only; INFERENCE: none of those re-enters 0x37C26778). So in the
+     1033/1035 boot the name lookup's miss encoding is 0, and the map writer's own `cmp.w r0,#0xffffffff`
+     early-exit at 0x37C266FA is NOT taken for a name miss.
+  => WITH A HASH LOOKUP THE WALK IS REACHED ONLY ON A HIT (r5 = 1, single-result path at 0x37C26428).
+     So the walk's r5 = -1 did NOT come from any getPreoptimizedClass path.
+  INFERENCE (strong, not proven): the code is SHARED -- libobjc's optimised-class table (class header
+  read, the map writer, the walk) is also used by the optimised-call path, which asks "which classes
+  implement sel_XXX" with a per-SEL cache (count of implementation rows). `hash` at 0x37C2679A being a
+  tiny MULTIPLIED selector hash and not CHU16 is why the name lookup never reaches it; the call path
+  does. In that caller r5 must be the count.
+
+====================================================================================================
+3. SEARCH: WHO CAN PRODUCE count = 0xFFFFFFFF (BYTES + HASH)
+====================================================================================================
+  (a) The optimised-class table's own words: header [r1+0] and [r1+12] (r1 = the object libobjc is handed
+      by dyld in r0 -- the 1035 frame's r8 = 0x38300020 is the *table*, while r1's entry value was 0).
+      getPreoptimizedClass guards BOTH against 0 but NOT against -1. If dyld's reader took a field that
+      can be -1 (a "class not found" or "no section" sentinel) as a section, count = -1 follows, and the
+      VLA arithmetic (r4 = sp+4, r6 = sp+8) reads the function's own saved {r8,sl,fp}. The 1035 frame's
+      r1 = 0 (the walk's loaded element) does NOT contradict this: the element read is r6[0] = sp+8.
+  (b) A CALLER's return of -1: no CHU16 hit is reachable with count -1 (section 2), so a "not found"
+      from the same code family cannot be it unless the call path's lookup shares the miss encoding.
+  (c) The stack: r4 = 0x2BD27084, r7 = 0x2BD270AC. The frame therefore lives ~0x20 above the walker's
+      sp, on the libobjc caller's stack. Nothing in the published rows reads those slots.
+  CHU16 (BYTES of the hash: `h = ror(h,5) + byte`): a reference hash for `_OBJC_CLASS_$_NSObject` is
+  0xF01970F2, not a name-table index -- the name table is reached only through 0x37C1E950's compare.
+
+====================================================================================================
+4. WHAT A RUNG MUST PRINT (not built; design only)
+====================================================================================================
+  It must NOT patch the cache and must NOT change the walk. At the same 1025 failure arm for pid 2:
+    * xnu_live_c36_lr, and the 4 words at lr-4 and lr-8 (through the task map, _ok rows) -- the caller
+      instruction itself;
+    * xnu_live_c36_r4_minus_sp / _r7_minus_sp, and 16 words at r7-0x40..r7 -- the caller's frame;
+    * xnu_live_c36_r8_word (the table header [r8+0] and [r8+12], gated) -- the two count candidates of 3(a);
+    * the 14 registers raw, so a second reading of the same fault is comparable.
+  Cells: CALLER-BYTES-KNOWN (the lr-4 word decodes as a BL to a named target) -> build that caller's
+  trace; TABLE-COUNTS-MINUS1 ([r8+12] == 0xffffffff) -> the fix is the table reader (dyld), not the walk;
+  NEITHER -> the caller is in a mapping we cannot name yet, read the stack.
+
+===== end =====
