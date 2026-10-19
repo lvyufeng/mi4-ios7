@@ -1,0 +1,67 @@
+1037 PRESS -- records/1036-press.txt's successor.  One press, 2026-10-19; the reading is in
+records/1037-read.txt (appended after the recovery, below its section C).
+====================================================================================================
+1. WHAT WAS SENT
+====================================================================================================
+  arm: armed-d13-f03bc0c7  (named by the PACK's content -- see 4(a); the entry bin's own sha8 is eb8eaf0a,
+       xnu_arm_entry.bin 6,339,668 B; the file `fastboot boot` sends is stage90-qcdt.img, 9,359,360 B)
+  command: scripts/press_1037.sh  ->  scripts/run_and_capture.sh --allow-xnu-entry --expect-arm=
+           armed-d13-f03bc0c7   (fastboot boot ONLY; the press script's own grep guard for the flash verb ran)
+  switches this run adds to 1036's: STAGE90_XNU_TRAP_FRAME=1 (trap.c block tools/patch_d13_trap_frame.py).
+  the card: 1032's 10 bytes at 0x10183720 (card sha pinned by the park; --check PASS at park and press).
+  boot epoch: the runner's own log records it (section 3 line of scripts/press_1037.sh);
+  ~2026-10-19 09:47:57 UTC (USB capture file name).  The capture carries NO in-log timestamp
+  (the 1036 reading showed this), so a capture is judged stale/fresh by its mtime against the
+  press log's _BOOT_EPOCH line, not by any stamp inside it.
+2. WHAT HAPPENED
+====================================================================================================
+  runner exit 2 (a resident rung that did not return), USB console reader: ZERO bytes
+  (reader exit 143 = killed after the runner returned; nothing enumerated as 18d1:0910).
+  The device is NOT visible to adb or fastboot afterwards -> it is DARK.
+  This is the same shape as 1030-1036.  NOTHING host-side brings it back: the OPERATOR'S POWER PRESS
+  is the next step ([[mi4-device-dark-needs-power-press]]).  Then, BEFORE anything else:
+    scripts/recover_last_kmsg.sh --read-only     (while Android is up; --read-only does not reboot)
+  and adjudicate ONLY a capture whose mtime is newer than this press.  Do NOT boot anything first:
+  the slot is this run's only copy ([[mi4-last-kmsg-reader-carrier]]).
+  A /tmp/watch_1037.sh loop is running in the session: on adb device it runs recover --read-only,
+  on fastboot it stops and says so (in fastboot the operator must let Android boot instead).
+3. WHAT THE PRESS COST -- THREE REFUSALS, ALL BEFORE SENDING (the presses that did send: one)
+====================================================================================================
+  (i)   The gate refused: the entry sources manifest named build_entry.sh's OLD sha because the
+        registration edit preceded the build -- and the rebuild, then, did not rewrite the manifest.
+        The entry image is a function of src/entry/ only; the reproducible rebuild with the arm
+        record's switches produced a NEW bin (source -> product, not a lookup problem).
+  (ii)  The gate refused: an entry binary of a NEW size was embedded in a payload built for the OLD
+        one (the containment test in preflight, by content).  The payload must be rebuilt with
+        STAGE90_EXTRA_CFLAGS = the arm record's switches + -DSTAGE90_XNU_ENTRY=1, and
+        XNU_TREE=<hd2-darwin13>.  A payload rebuilt WITHOUT the entry switch was refused by the
+        runner at zero cost ("STAGE90_XNU_ENTRY off").
+  (iii) The gate refused: the live pack was a set nobody recorded -- see 4(a)-(c).
+4. DEFECTS FOUND BY THESE REFUSALS (each a named class; fixes are in this hour's commit)
+====================================================================================================
+  (a) A SET NAMED BY ONE MEMBER CAN HOLD ANOTHER BUILD.  park_1037.sh named the set by the entry
+      bin's sha8, and two parks of the same bin (trap.c-only, then trap.c + registration) wrote the
+      same set name; the second park's cp of the payload members hit ENOENT (out/ still held the old
+      names) and `set -e` did not stop the record write, so out/ became trap.c(new)+payload(old) -- a
+      MIXED set.  FIX: the set is named by the sha of EVERY member (a content name), so a second park
+      of a changed pack cannot reuse the name.
+  (b) PRESS RESOLVED THE ARM BY RECOMPUTING IT.  press_1037.sh derived EXPECT_ARM as armed-d13-<bin
+      sha8> instead of reading the recorded set -- one value, two definitions, and with (a)'s fix the
+      two disagree by construction.  FIX: EXPECT_ARM := tools/resolve_arm_set.sh out/stage90 | cut -f1.
+  (c) A PARK THAT FAILS MIDWAY LEAVES A RECORD.  The cp loop's failure was invisible to the record
+      writer.  FIX in the fix's shape, not the writer's: a pack copy that fails is now a pack that is
+      not named (the content name changes), so the gate's "NO recorded set" refusal catches it.
+  (d) THE PRESS LAUNCHER COULD NOT FORWARD THE RUNNER'S FLAGS (so --self-test, the only no-send
+      exercise, could not be run through it).  FIX: "$@" is forwarded at the runner call.
+  (e) AN EMPTY-BUT-SET ARM KEY MADE THE ENTRY RECORD UNREADABLE (TRAP_FRAME= , WATCH_LE=: the
+      environment carried them empty; the value case left _v empty).  FIX: both normalize an empty
+      value to 0 in build_entry.sh.
+  (f) THE MUTATION SWEEP COULD NOT RUN FOR THIS BUILD AND SAID SO ("the arm it describes is not
+      known") because the record carried the two empty keys above; from this build on it can.
+5. CARRIED FORWARD
+====================================================================================================
+  * preflight_boot_check.sh's stale-payload containment branch cites "rebuild the payload to embed the
+    image now in out/" -- this press PROVED it right; do not merge it away.
+  * The one remaining path to a press with mixed payload/entry is a merge landed between an entry
+    rebuild and the payload rebuild.  No tool orders those two; the gate's content test is the only
+    thing that catches the merge, and it did.
