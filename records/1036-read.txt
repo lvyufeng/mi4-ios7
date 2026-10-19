@@ -1,0 +1,29 @@
+1036 READING -- PRE-REGISTRATION (fixed BEFORE the press; the reading is appended below section 2)
+Rung 1036 (docs/1036-design.md): instrument only. At the same 1025 failure arm for pid 2, publish the
+caller's lr words, the caller frame (r7-0x40..r7), the table header [r8+0] and [r8+12], and the
+registers. It patches NOTHING in the cache and does not change the walk. Switch: STAGE90_XNU_PC_CARRIER_CALLER.
+
+====================================================================================================
+1. ROWS THE RUNG MUST PUBLISH (tools/patch_d13_pc_carrier_caller.py is the authority)
+====================================================================================================
+  xnu_live_pcc2_seq / _pid / _pc / _lr / _sp / _r7 / _r3 / _r6 / _r8 / _r9 / _r12 / _slide
+  xnu_live_pcc2_lr_m4(_ok) / _lr_m8(_ok)
+  xnu_live_pcc2_tbl_hdr(_ok) / _tbl_used(_ok)
+  xnu_live_pcc2_s0(_ok) .. _s15(_ok)
+
+====================================================================================================
+2. THE CELLS (decided now; the capture only selects)
+====================================================================================================
+  C1 CALLER-BL-TO-WALK  lr_m4_ok == 1 AND lr_m8_ok == 1 AND lr_m4 != 0.
+     The caller instruction is readable; the next rung traces that caller. The host decodes lr-4 in
+     the record: if it is a Thumb `bl`/`blx` whose target is the walk body (0x37C2646E..0x37C26478) or
+     a function head, that names the entry; otherwise the caller's section is named from the bytes.
+  C2 TABLE-MINUS1        tbl_used_ok == 1 AND tbl_used == 0xFFFFFFFF.
+     The -1 was read out of the optimised-class table's field; the fix is the table READER.
+  C3 NEITHER             pcc2 rows present with their confirming conjuncts, and neither C1 nor C2.
+  Absent rows are not cells: no pcc2 rows => "no reading". Stale capture => "no reading".
+
+  Falsifiers (design 4): lr_m4 not a branch instruction falsifies C1's premise; tbl_used != -1 under a
+  valid frame falsifies the table-header source of the -1 (1036 static 3(a)).
+
+===== reading appended after the press and the recovery =====
