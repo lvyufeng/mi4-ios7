@@ -17367,3 +17367,45 @@ set=armed-d13-67782da0 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161d
 set=armed-d13-67782da0 sha256=e75aab3aea73694fd38b7f294e637343a688bcb4ee7c4eb76dd484eac876e789 bytes=560 file=SHA256SUMS.txt role=1036-pc-carrier;SHA256SUMS.txt
 set=armed-d13-67782da0 sha256=fbc0bfaa872dfe989a369f755b8ce298ec7d9c482cc1da0ab4edf66027fc1da0 bytes=22189 file=patch_d13_pc_carrier_caller.py role=1036-pc-carrier-editors-definition
 set=armed-d13-67782da0 sha256=e434f98abd06597be021f5dba2cdd109ffa2a0c489f4dc85025d578eb19bb97f bytes=8800 file=check_1036_capture.py role=1036-pc-carrier-capture-reader
+
+# =================================================================================================
+
+# =================================================================================================
+
+# =================================================================================================
+
+# =================================================================================================
+# armed-d13-f03bc0c7  -  1037: THE TRAP FRAME vs THE TASK MAP-S OWN COPY OF THE uss, BY VALUE.  INSTRUMENT ONLY.
+# 1036 READ = lr and r10 read ODD on an all-ARM path, while arm_ctx agrees with evf/pcc/pcc2;
+# so the trap entry stores some register at the WRONG OFFSET.  1037 compares the trap
+# entry-s own uss stmea block (TASK-MAP read) with arm_ctx and derives the slide from lr.
+# NOT a return if the fault path runs: a resident rung.
+# NEW SWITCH: STAGE90_XNU_TRAP_FRAME=1 (tools/patch_d13_trap_frame.py), a trap.c block INSIDE
+# 1025-s publisher AFTER 1036-s pcc2 block.  Rows xnu_live_fb_*: seq/ctx_diff/uss/dbg_off/
+# dbg_off_ok (+ the tray: pc/lr/sp_tr/near/uss_r0..r12/slide/lr_xor4/lr_xor8/ldrh).  READS ONLY.
+# CHANNEL: the global DEFINES array (build_xnu_arm_kernel.sh); a -D in EXTRA is not the channel.
+# THE POOL MOVES: trap.c is a pool object, so the entry bin (and the arm name) MOVES.
+# [[mi4-one-file-many-rungs]]: trap.c is edited by 994/1020/1025/1026/1029/1030/1031/1033/1035/1036/1037;
+# PC_CARRIER, PC_CARRIER_CALLER and TRAP_FRAME must be in EVERY trap.c patcher-s ALLOWED_IF_IDENTIFIERS.
+# THE CARD: 1037 serves 1032-s 10 bytes (card 0x10183720 = 5010012801daf0bdc046).  Not a park member; the card-s
+# sha256 is pinned here and its content anchor is checked by patch_cache_libobjc_count.py --check [2].
+# THE READING: tools/check_1037_capture.py (pre-registered cells ctrl/D1/D2/D3/L1 in records/1037-read.txt 2).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible.  fastboot boot only, NEVER flash.
+# card_sha256=0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529 card_off=0x10183720 card_new=5010012801daf0bdc046
+# =================================================================================================
+set=armed-d13-f03bc0c7 sha256=eb8eaf0a8a8c68f85f874b99a4e5909612028001b5c23858605db97a07fdb44b bytes=6339668 file=xnu_arm_entry.bin role=1037-trap-frame;xnu_arm_entry.bin
+set=armed-d13-f03bc0c7 sha256=fe27aae7c1a76d48ab8c8ffcf39916a50d04928f929437eddb6391c4899d7dc7 bytes=7377376 file=xnu_arm_entry.elf role=1037-trap-frame;xnu_arm_entry.elf
+set=armed-d13-f03bc0c7 sha256=d505dd0fc99d34b56839dbc5dfb0be30eb7a5aa97b580cf2c2024e3b2e27e1c3 bytes=1912 file=xnu_arm_entry.h role=1037-trap-frame;xnu_arm_entry.h
+set=armed-d13-f03bc0c7 sha256=4d108e583bc8cee6dc25505b66eb4085acc9e76c12f3a0d7cfcd1fcfaff094db bytes=2434 file=xnu_arm_entry-config.txt role=1037-trap-frame;xnu_arm_entry-config.txt
+set=armed-d13-f03bc0c7 sha256=d5a6863f57a0e4bed96872e7b17a5cb512e8608ae86a893c793aa48f414cfbe4 bytes=46 file=xnu_arm_entry-arm-extra.txt role=1037-trap-frame;xnu_arm_entry-arm-extra.txt
+set=armed-d13-f03bc0c7 sha256=57b5a1fb37842572109d25be2ac895b95f5945e7d7fe11c57185f306d1bfdd4d bytes=3149 file=xnu_arm_entry-sources.txt role=1037-trap-frame;xnu_arm_entry-sources.txt
+set=armed-d13-f03bc0c7 sha256=64bb1df3e54489075ba0df25cbf69a49fba42ac4b1da83bc517c8e37e85c266a bytes=6835084 file=stage90.bin role=1037-trap-frame;stage90.bin
+set=armed-d13-f03bc0c7 sha256=4dc78c2440df26c2f13abaa53faed21d3999feb7aa888dd5529d848f5e9c94e6 bytes=6897156 file=stage90.elf role=1037-trap-frame;stage90.elf
+set=armed-d13-f03bc0c7 sha256=22b95f8754f9e69995dc4dcd67aa3504d14464757d5faafdfa73f08cf72c752b bytes=6838272 file=stage90.img role=1037-trap-frame;stage90.img
+set=armed-d13-f03bc0c7 sha256=01ddc2b2e234c573ad43d89d72f4a79372d1f2cf460edd441bbfdb9957ebc350 bytes=9359360 file=stage90-qcdt.img role=1037-trap-frame;stage90-qcdt.img
+set=armed-d13-f03bc0c7 sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1037-trap-frame;stage90_fixture.macho
+set=armed-d13-f03bc0c7 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1037-trap-frame;stage90-build-config.txt
+set=armed-d13-f03bc0c7 sha256=a0c194bf960158df76512baec2e0e36136cb095ca8a78da7eba6ab2980dac63f bytes=560 file=SHA256SUMS.txt role=1037-trap-frame;SHA256SUMS.txt
+set=armed-d13-f03bc0c7 sha256=7497a5b9f36a1588415f5ccd86ae35a784afcb67ffd805ecd6d310451bc23866 bytes=25206 file=patch_d13_trap_frame.py role=1037-trap-frame-editors-definition
+set=armed-d13-f03bc0c7 sha256=23d3da8ae0aa5bf73b2b4844216fd99020086ff39909cc25c109bcf74fbce142 bytes=15878 file=check_1037_capture.py role=1037-trap-frame-capture-reader
