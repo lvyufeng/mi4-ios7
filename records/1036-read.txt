@@ -27,3 +27,92 @@ registers. It patches NOTHING in the cache and does not change the walk. Switch:
   valid frame falsifies the table-header source of the -1 (1036 static 3(a)).
 
 ===== reading appended after the press and the recovery =====
+
+Recovered 2026-10-19 08:01:48 (read-only; operator power press); capture
+  out/stage90/captures/recovered-unknown-arm-20261019-080148-last_kmsg.txt
+FRESHNESS: the slot's content differs from the pre-press copy (it was re-read at 08:01 with pcc2 rows
+present), so the slot is this rung's; Android's `uptime -s` is NOT usable here (it reads 2026-01-04,
+months off), and NEITHER boot of this rung returned -- Android's appearance means the operator pressed
+power.  Pre-registration above was committed at 878b7df, before the press.
+
+====================================================================================================
+3. THE FRAME ROWS CHANGE WITH EVERY RUN, AND THE LOG IS SHORT -- A RECTIFIER DROPPING THE TAIL
+====================================================================================================
+  EVERY near slot is IDENTICAL to 1035's (near0..near5 all equal; evf slot10 differs, 0x3a166ae0 vs
+  0x388f7ae0), and xor_lr = 0x00711504, the same number.  near0..near4 are pc-relative words at ONE pc
+  and they do not move between runs -- yet pc, lr, sp and r7 DO (all five differ from 1035's).  A fixed
+  slide would move them together; a pc that moves while its neighbourhood does not means the ROW is not a
+  reading of the pc the run executed, or the slide is fixed and pc's row is the earlier run's.  Either
+  way, the pcc frame cannot be used as the trap frame.  Also evf_caller_r2 = 0xffffffff, r3 = 0x39b04020,
+  r1 = 0, r4 = sp-4, and s0/s2/s4 (= r4 at sp-4, sp-4 again, sp) are the caller's stack, not the
+  recovering function's.
+  => The frame evf/pcc/pcc2 report is TRIMMED: it is not the trap frame.  It is a frame PUSHED BY
+     the recovering function (copyin -> sleh_abort -> ... -> vm_fault) at or above the trap frame's sp.
+     arm_ctx in this kernel is a POINTER PARAMETER; a nested frame's ctx copy and a stale/positional
+     register read can each misplace a word.  THE MECHANISM IS NAMED AS A CANDIDATE, NOT PROVEN; what is
+     proven is that the rows are not the trap frame's.
+  THE LOG IS ALSO SHORTENED: the 1036 capture is 1660521 bytes vs 1035's 1660074 -- 447 bytes MORE, yet
+  it ends where 1035's does, and s8..s11 hold pointers (0x1507f270, 0x3a166ae0) that are not the frame's
+  shape.  A run that reaches /proc/last_kmsg must have flushed the in-memory console; a run that does NOT
+  return leaves it to the next boot's hand-off, and the hand-off is bounded (the 16 MB window, 969).  A
+  TRIMMED TAIL of this kind is exactly what a partial flush writes -- so the rows are truncated, not a
+  window on a different frame.  NAMED AS A CANDIDATE; to be measured, not assumed.
+  => 1035 P1's "xor_lr != 0 => lr is not a file VA plus any slide" HAS A SECOND EXPLANATION: the xor
+     compared the device's word with the file's word at the WRONG address.  Not a prompt to retract P1
+     (pc and near0..near4 agreed under 0x50C000); a prompt not to build on the lr conclusion.
+
+====================================================================================================
+4. THE CELL: C1 BY ITS PRE-REGISTERED CONJUNCT -- AND WHAT IT IS WORTH
+====================================================================================================
+  C1 CALLER-BL-TO-WALK: lr_m4_ok=1, lr_m8_ok=1, lr_m4=0xf0084640 != 0.  Printed.
+  The host decode (seen AFTER this capture, because 3 was not known when 1036 was designed):
+    * slide 0x50C000: lr file VA 0x3948d9af; the file there is NOT code (the neighbourhood holds no
+       branch at lr-4), so the word 0xf0084640 is not a file word either.
+     * slide 0x577000: lr file VA 0x394229af; lr_m4=0xf0084640 takes those bytes as a T32 `bl`,
+       S=0, J1=0, J2=1, imm11=0x640 -> a target ~0x3a42298b -- a plausible-looking decode of a word
+       that the same slide's near0..near4 (5) say is not at that address.  A well-formed decode of a
+       wrong word is not evidence.
+  The decode is therefore NOT a reading of code.  Its only usable content is that lr_m4 is readable
+  and branch-shaped -- which the conjuncts already said.
+  C1's conjuncts are confirming but NOT decisive: they say "a readable word with the branch top bytes".
+  It is kept as the cell the pre-registration names, and its content is NOT used below.
+
+====================================================================================================
+5. WHAT THE SLIDE LITERAL SAYS, AND WHY THIS READING DOES NOT PICK ONE
+====================================================================================================
+  pcc_slide / pcc2_slide print the LITERAL 0x00577000 in both runs, while 1035-read 0 reconciled
+  near0..near4 to file words at pc - 0x50C000 and measured pc's slide as 0x50C000 from that.  Both
+  cannot be true of the same pc.  THIS RUN does not settle it: its pc (0x399a1474) moved by 0x33000
+  from 1035's while near0..near4 did not (3), so the pc row and the near rows are not both readings of
+  this run's fault.  Positions:
+    * if pc is right and the slide is 0x50C000, the pc is the walk and lr is in libobjc -- but then
+      the near rows are stale and 1035's "P1" rests on them;
+    * if the slide is 0x577000, the near rows are this run's and pc 0x3942a474 is a different,
+      non-libobjc page.
+  THE RUNG'S DUTY IS TO NAME THIS, NOT TO CHOOSE.  1037 must print the slide as an EXPRESSION and must
+  print pc, near[0..4] and the trap frame in ONE block so they cannot come from two runs.
+
+====================================================================================================
+6. THE CALLER IS A CANDIDATE, NOT NAMED: H-SHORTNAME  (HASH; supporting only)
+====================================================================================================
+  IF lr's file VA were 0x37C1E9AF (pc slide 0x50C000), lr would fall in libobjc's short-name hash
+  (0x37C1E8F8..0x37C1E9B2; the only instance of its shape in the 316 MB cache, BYTES), on an ALIGNED
+  16-byte block whose 4th word is [0x4FF0FF36, 0x3046, 0x5DF8048B, 0xBF00BDF0] -- i.e. the return
+  address is the second halfword pair of that word (the "trimmed" shape 1035 saw at lr).  The hash's
+  `mov.w r6,#0xffffffff` at 0x37C1E990 is a NAMED producer of -1, and 1035's frame has r2 = r5 = -1.
+  H-SHORTNAME: the walk's r5 = -1 is the short-name hash's no-match return.  UNPROVEN -- it assumes
+  lr's slide, which 5 leaves open.  1037 tests it: (i) the hash's own pc row on this thread, (ii) host:
+  the two hash functions run over the 30-byte class names the cache's name section holds, (iii) the
+  walk's load re-read as a 32-bit `ldr.w` -- r1 = 0 breaks the model.
+
+====================================================================================================
+7. NAMED DEFECTS (for 1037; not fixed here)
+====================================================================================================
+  a) Slide literals: 0x00577000 printed by both patchers (1035's own record says 0x50C000). One
+     expression, printed with the pc.
+  b) The pcc/pcc2 frames are not the trap frame (3): 1037 reads the trap entry's own saved sp/far/ctx.
+  c) The log is trimmed / the tail is not trustworthy (3). 1037 must prove its rows were flushed.
+  d) C1's conjuncts are not decisive (4); do not pre-register a cell that a well-formed decode of the
+     wrong word can satisfy.
+
+===== end of reading (2026-10-19 08:10 UTC) =====
