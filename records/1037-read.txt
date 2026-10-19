@@ -90,3 +90,53 @@ C. THE 1037 RUNG AS PRE-REGISTERED STILL RUNS; its cells stay glue-able:
    is a stronger finding than any save question. What 1037 can NO LONGER settle by itself: nothing in
    the save (the save is not the top question any more). What it CAN still settle, cheaply: D1/D2 on
    the live uss record (a kernel VA -> direct read), and L1 (lr_xor4/xor8 against the same slide).
+
+===== RUNG READING (appended after THE 1037 PRESS, 2026-10-19 10:29, capture
+      out/stage90/captures/recovered-unknown-arm-20261019-102252-last_kmsg.txt, 38,209 lines) =====
+
+FRESHNESS: the capture's mtime (10:22:52) is NEWER than this press's boot epoch (_BOOT_EPOCH line in
+the press log, ~09:47:57); it is a MI4IOS6_STAGE90 console carrying fb rows seq=1 -> it is this rung's.
+
+0. THE ROWS (raw; tools/check_1037_capture.py printed them, exit 0)
+     fb : pc=0x38492474 lr=0x3848a9af sp_tr=0x2bd4c088 uss=0xc0bb3784 uss_ok=0 uss_armctx_diff=0
+          ctx_diff=0x00000000 slide=0x0086c000 ldrh=0x7c09(ok) dbg_off=0x5ba(ok)
+          lr_xor4=0xd0aeb480(ok) lr_xor8=0x3415264f(ok)  uss_r0..r12/sp/lr/pc: ALL _ok=0
+     cmp: pcc_pc=evf_pc=pcc2_pc=fb_pc=0x38492474; sp=0x2bd4c088 in all four; pcc2_s0..s15 reprinted
+          IDENTICAL to 1036's VALUES (s3=0xffffffff, s5=0x2bd4c0ac = sp+0x24, s9=slot10=0x38c57ae0).
+1. THE CELL: D2 SAVE-AGREES -- and its content is NOT a save reading
+====================================================================================================
+  ctx_diff == 0 with ctrl held.  D2's text said this would make arm_ctx "the saved frame".  IT DOES NOT:
+  the block read back the uss THROUGH arm_ctx itself (patch comment: "arm_ctx IS the user record"), so the
+  mask compares a VA with itself -- a tautology (this project's "measurement can be wrong"), not a second
+  witness.  The independent rows all FAIL: uss_ok=0 and the 17 uss_r*_ok=0 (the read was attempted and
+  denied).  So D2 is set by a defensible-looking row that cannot fail; the cell records it as D2-EMPTY.
+  Named defect (1039): fb_ctx_diff must compare arm_ctx against thread->machine.uss CONTENTS through the
+  port's kernel-side address, or not be a cell.
+2. WHAT THIS RUN MEASURED, BY VALUE (beyond the save question)
+====================================================================================================
+  (a) THE SLIDE IS NOT THE RUN'S: fb_slide (pc-0x37C26474) = 0x86c000 = THE SAME RUN'S OWN
+      IOS7SHREG map_slide row (slide=0x86c000 slide_start=0x3ca18000), while pcc_slide/pcc2_slide print
+      the literal 0x577000.  The two numbers cannot both be this run's, and the expression agrees with the
+      run's own row -> THE LITERAL IS DEAD in the following sense: the run that ran this pc had
+      0x86c000.  pc - 0x86c000 = 0x37C26474, THE WALK.  pcc_xor_walk = 0 and pcc_near0..near5 under
+      that slide (near0 0xebad46a5, near2 lo 0x29007c09) are byte-identical to 1036's and 1035's -- i.e.
+      the SAME file words at the SAME file VA in three runs with DIFFERENT console addresses of the
+      slides.  INFER (OPEN): pcc's near rows may be read through a FILE-vs-DEVICE comparison that ignores
+      the slide (a constant), which is exactly why they never move.
+  (b) D1/D2 ARE MOOT FOR THE REGISTER QUESTION: the 1036 register dump (:4426-4431) is the kernel's
+      OWN 'Thread has ARM register state' print of arm_ctx -- the same object 1036 reported -- showing
+      lr=0x3848a9af (odd) and r10=0x385dec00 (even; the 1036 capture's r10 0x39aedc00 was also even --
+      1037-design (iii)'s "r10 is odd" was WRONG).  One odd register remains: lr.  The ARM layer's lr on
+      the fault path is all-ARM, so an odd lr means the saved lr is NOT the frame's: some producer wrote a
+      Thumb-tagged return address there (lazy-swzzle class, or a foreign frame), or the load path loaded a
+      word that is not what the trap entry stored.
+  (c) FAR=0x10 GAVE THE REAL FAULT: same (pc, lr, sp, far=0x10, cpsr=0x30 Thumb) as 1036, r1=0, r2/r5=-1,
+      r3=0x385f5020, r8=0x2dd23575; launchd logs 'The System bootstrapper has crashed: Bus error: 10'
+      (:4433) and the run then went quiet (RAM console ends on a complete line).  W holds: r1=0, the ldrb
+      faults at 0x10.  Where r1's 0 comes from is now 1039's question (candidates: machine_load_context's
+      `mov r0, #0` before `ldmia {r4-lr}` makes hardware restore r0=0 from a register-loaded context; a
+      lazy lazydylib bind through the USER lr; 1038's Block B count read [r3+0xc]).
+  (d) 1020's undef handler and 1024's ceiling rows present; boot reached launchctl[2]; resident rung,
+      no return, no panic.
+3. NEXT: 1039 -- the odd lr and the r0=0 carrier; the fb block's uss read must cross to the kernel-side
+   address; 1038's A/B stay designed and now also carry (c).
