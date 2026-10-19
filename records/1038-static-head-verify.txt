@@ -1,0 +1,30 @@
+1038 STATIC HEAD -- the reviewer's check of records/1038-static-head.txt, by value
+2026-10-19.  Host only (python3 -I).  Same file: sha256 cad2df775e122c66..., 315,952,666 B.
+====================================================================================================
+1. FIELD OFFSETS -- BOTH THE PRIOR RECORD AND MY OWN BRIEF WERE WRONG BY 4 B
+====================================================================================================
+  BYTES file:0x00..0x18 = "dyld_v1   armv7\0" | 0x10 u32=0x68 | 0x14 u32=3 | 0x18 u32=0xc8 | 0x1c u32=0x2b8
+  so after the 16-byte magic: mappingOffset=0x68, imagesOffset=0xc8, imagesCount=3, (0x2b8 store).
+  BYTES u64 @0x20 = 0x2be00000 (sharedRegionStart), @0x28 = 0x12bda000 (size); the "0x00000001009617ec"
+        I quoted in the 1038 lane was the 16-byte-block-read artifact; and the "pair at 0x18=3, 0x20"
+        in records/1038-static-head.txt is one field late (0x18 is 0xc8, 0x1c is 0x2b8).
+  BYTES mapping records are 12 B {vmAddr, vmSize, fileOffset} starting at 0x68:
+        0x68 {0x2c000000, 0x0c266000, 0x0}   0x74 {0,0,0}   0x80 {5,5,0x38268000}
+        0x8c {0x1ce0000, 0x0c266000, 0x0}     0xa0 {3,3,0x39f48000}   0xac {0x022ed000, 0x0df46000, 0}
+  so 1038-static-head's "0x80 {0x5, 0x1ce0000, 0x38268000}" is a 4 B merge of two records; the MEASURED
+        earlier rows {0x2c000000,0xc266000,0}, {0x38268000,0x1ce0000,0xc266000}, {0x39f48000,0x22ed000,
+        0xdf46000} are ALL PRESENT in this file (they are: 0x68, 0x80+0x8c, 0xa0+0xac read as the typed
+        struct the kernel's parser uses in the ARMv7 32-bit mode -- layout OPEN, but the VALUES agree).
+  => the record's answer "HEAD-LAYOUT, ARMv7, maps present" stands; its FIELD TABLE needs the +4 fix.
+2. VERDICT OF THE RECORD: HEAD-LAYOUT (file 0 is a dyld header, not code) -- CONFIRMED by BYTES.
+   Additional BYTES: file 0x1000 has code, file 0x8924 is a small-int+zeros hit inside header data
+   (a lone candidate, not a table head) -- consistent with "no count table at a fixed head offset".
+3. WHAT THE RECORD'S "ARMv7, NOT armv7s" MEANS AND DOES NOT MEAN
+====================================================================================================
+  The magic names the CACHE FORMAT/arch as armv7.  It does NOT by itself say the images in it target
+  ARMv7S (the 1036 reading's "ARMv7S/Thumb file" hypothesis is about CODE, not this magic) and it does
+  NOT say the count table is where an ARMv7S image would put it.  The record is right to refute
+  "the file is an ARMv7S raw pull" only in the weak sense "its header is an ARMv7 dyld header".
+4. OPEN (unchanged): where libobjc's optimised-class table is in this file; the walk's page is a code
+  page (BYTES 0xbc26474 = 09 7c 00 29 ... ldrb/cmp/beq) -- so a count read there is a count the CALLER
+  passes, and Block B's [r3+0xc] read is the right place to look.
