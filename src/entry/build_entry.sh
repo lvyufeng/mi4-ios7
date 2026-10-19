@@ -2137,6 +2137,7 @@ ENTRY_ARM_KEYS=(STAGE90_ENTRY_TRACE STAGE90_ENTRY_REAL_ARM_INIT STAGE90_XNU_SLOT
                 STAGE90_XNU_CALLER_PROBE
                 STAGE90_XNU_EVAL_FRAME
                 STAGE90_XNU_PC_CARRIER
+                STAGE90_XNU_PC_CARRIER_CALLER
                 STAGE90_XNU_TREE_D13)
 #
 # **The seven switches are not the whole arm, and finding that out is what made this eleven.** Checking
@@ -2353,6 +2354,9 @@ do
         # 1035: the pc-carrier probe (tools/patch_d13_pc_carrier.py, trap.c, pid 2 only).
         # POOL-only, read from the ENVIRONMENT with a default 0, like its EVF sibling.
         STAGE90_XNU_PC_CARRIER)  _v=${STAGE90_XNU_PC_CARRIER:-0} ;;
+        # 1036: the pc-carrier CALLER trace (trap.c, staged by the 1036 patcher).
+        # POOL-only, read from the ENVIRONMENT with a default 0, like its PC_CARRIER sibling.
+        STAGE90_XNU_PC_CARRIER_CALLER)  _v=${STAGE90_XNU_PC_CARRIER_CALLER:-0} ;;
         # 912: read from the ENVIRONMENT directly and not from `$ENTRY_SIZE`, because this loop runs
         # ~27000 lines ABOVE the assignment (`:28651`) - the same reason `STAGE90_ENTRY_REAL_ARM_INIT`
         # is read with its own `${...:-0}`. The default is the same literal, so an unset switch and an
@@ -40695,6 +40699,8 @@ IDLE_STACK_FOR_RECORD=${STAGE90_XNU_IDLE_STACK:-1}
     echo "STAGE90_XNU_EVAL_FRAME=${STAGE90_XNU_EVAL_FRAME:-0}"
     # **1035's pc-carrier switch, same POOL-only shape as EVAL_FRAME's.**
     echo "STAGE90_XNU_PC_CARRIER=${STAGE90_XNU_PC_CARRIER:-0}"
+    # **1036's pc-carrier caller switch, same POOL-only shape as PC_CARRIER's.**
+    echo "STAGE90_XNU_PC_CARRIER_CALLER=${STAGE90_XNU_PC_CARRIER_CALLER:-0}"
     # **1028's H2 headroom fix switch, written here for the SAME reason as 1025's and 1026's.**  The fix is
     # a value change in `create_unix_stack`'s FIXED `mach_vm_allocate` extent (both edited files are POOL
     # objects), so the entry image's own linked bytes are IDENTICAL with it on and off and this record line

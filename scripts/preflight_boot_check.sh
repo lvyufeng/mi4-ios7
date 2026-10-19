@@ -769,7 +769,8 @@ ENTRY_CFG_KEYS=(STAGE90_XNU_ENTRY_SHA256 STAGE90_XNU_ENTRY_BYTES STAGE90_ENTRY_T
                 STAGE90_XNU_WRITER_PROBE
                 STAGE90_XNU_CALLER_PROBE
                 STAGE90_XNU_EVAL_FRAME
-                STAGE90_XNU_PC_CARRIER)
+                STAGE90_XNU_PC_CARRIER
+                STAGE90_XNU_PC_CARRIER_CALLER)
 # **1024: `STAGE90_XNU_VM_MAX_SPLIT`, the task map's ceiling (`VM_MAX_ADDRESS`).** It went in at the
 # tail after `STAGE90_XNU_GENERAL_REGS`; like every key above it is a REQUIRED key whose value is
 # printed by name, and the CONVERSE check below now accepts it. A record that does not carry it is a
@@ -1312,6 +1313,11 @@ do
   # **1035's switch, the same one-way rule.**  Every arm parked before 1035 published no pcc row.
   if [[ -z $_v && $_k == STAGE90_XNU_PC_CARRIER ]]; then
     printf '  %s=(absent, and a record that does not name the pc-carrier switch is one built before 1035 - the only value a pre-1035 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1036's switch, the same one-way rule.**  Every arm parked before 1036 ran no caller trace.
+  if [[ -z $_v && $_k == STAGE90_XNU_PC_CARRIER_CALLER ]]; then
+    printf '  %s=(absent, and a record that does not name the pc-carrier-caller switch is one built before 1036 - the only value a pre-1036 build could have written)\n' "$_k"
     continue
   fi
   [[ -n $_v ]] \

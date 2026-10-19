@@ -1164,6 +1164,14 @@ DEFINES=(
 # tree's bytes; the by-value reading is the format string `xnu_live_pcc_pc=` in trap.o.
 [[ ${STAGE90_XNU_PC_CARRIER:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_PC_CARRIER=1)
 
+# 1036: STAGE90_XNU_PC_CARRIER_CALLER -- trace who enters the getPreoptimizedClass walk with r5=-1
+# (records/1036-static-caller.txt).  INSTRUMENT ONLY.  1035 read the pc-0x20 word and found it
+# modulated (device 0xebad46a5 vs the file's `bl`), so the walk's caller is still unknown; this
+# switch adds a caller-side block (owned by the 1036 patcher) that records the caller's lr/sp/pc.
+# Same GLOBAL ARRAY channel as every probe above (one argv for every pool object).  OFF compiles the
+# tree's bytes; the by-value reading is the 1036 block's format string in trap.o.
+[[ ${STAGE90_XNU_PC_CARRIER_CALLER:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_PC_CARRIER_CALLER=1)
+
 # 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
 # the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO
 # p->user_stack, so the word at the top is unowned and userspace's touch faults.  This switch makes the
