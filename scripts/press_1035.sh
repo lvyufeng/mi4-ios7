@@ -23,7 +23,7 @@ cd "$(dirname "$0")/.."
 # names the flash verb is this refusal, which fires if any line of the body (comments, echoes, traps)
 # contains it: refuse the WHOLE script rather than run a press one edit away from a flash.
 if grep -v '^[[:space:]]*#' "$0" | grep -qE '(^|[[:space:]])fastboot([[:space:]]+-[A-Za-z-]+)*[[:space:]]+flash([[:space:]]|$)'; then
-  echo "REFUSING: this script's body names a fastboot flash - press_1035 is fastboot boot ONLY"; exit 1; fi
+  echo "REFUSING: this script's body names the flash verb in a fastboot command - press_1035 is fastboot boot ONLY"; exit 1; fi
 
 LIVE=out/stage90
 REC=$LIVE/xnu_arm_entry-config.txt
@@ -80,7 +80,7 @@ _have=$(awk -v a="$TRAP_SRC" -v b="external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.
 [[ -n "$_have" ]] || { echo "REFUSING: $_src_rec names NO entry for $TRAP_SRC - the pool's manifest does not cover trap.c, so the probe's content is unrecorded (a lookup that never matches is a defective CLAUSE, not evidence - [[mi4-self-written-record-is-not-a-constraint]])"; exit 1; }
 [[ "$_want" == "$_have" ]] || { echo "REFUSING: the pool's source record says $_have but the staged trap.c hashes $_want - the pool was NOT rebuilt from the probed source"; exit 1; }
 echo "   (0a-0) by value: the pool's source record names the SAME trap.c sha ($_want) - the probe IS in the object the image was linked from"
-for s in xnu_live_pcc_seq= xnu_live_pcc_pc= xnu_live_pcc_near[2]= xnu_live_pcc_near_ok[2]= xnu_live_pcc_dev_xor_f0= xnu_live_pcc_dev_xor_f1=; do
+for s in xnu_live_pcc_seq= xnu_live_pcc_pc= xnu_live_pcc_near2= xnu_live_pcc_near2_ok= xnu_live_pcc_xor_walk= xnu_live_pcc_xor_table=; do
   grep -qa "^$s" <(strings "$TRAP_OBJ") || { echo "REFUSING: $TRAP_OBJ carries no $s - the pool was not recompiled with $NEW=1"; exit 1; }
   grep -qa "^$s" <(strings "$ELF") || { echo "REFUSING: the LINKED image carries no $s - the linker dropped the probed object"; exit 1; }
 done
