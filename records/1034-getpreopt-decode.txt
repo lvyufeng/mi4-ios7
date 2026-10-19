@@ -1,0 +1,67 @@
+1034 GETPREOPT DECODE (2026-10-19) -- getPreoptimizedClass read as Thumb halfwords from the raw cache.
+READ-ONLY static analysis; host file /tmp/dyld-extract/dyld_shared_cache_armv7 (sha cad2df77, == card E1).
+Every line below is objdump's own text over bytes at fo = VA - 0x2C000000; no listing here is built from
+context. This file exists because records/1034-caller-decode.txt's 7 was a hand listing that had the
+r7 slots and the path off by one register; that section is now corrected and marked so.
+
+0. WHAT THE BYTES SETTLE (the 1035 rung's premise, stated before its capture exists)
+  * THE CONTIGUITY. At the fault (1033 reading) r7 = 0x2bdaa0ac and lr = 0x381959af = the abort
+    frame's lr. getPreoptimizedClass's `bl 0x37c26698` at 0x37c2641e sets lr = 0x37c26422 = 0x3819d422
+    at slide S, so 0x381959af - 0x3819d422 = lr of that call minus what that call set = -0x7a73, NOT
+    zero: the fault's lr is NOT getPreoptimizedClass's return address. Either the pc is not this
+    function's walk (P2/P3 in records/1035-carrier-by-pc-read.txt) or some function between them is
+    the caller of the walk's frame. NOT SETTLED by this file; the pcc row decides.
+  * r4 AT THE FAULT. At 0x37c2645c (the bl to the writer) r4 = sp - 4*r5 and r6 = sp - 8*r5. After
+    the call nothing writes r4; the walk's `ldr.w r1,[r6, r0, lsl #2]` at 0x37c2646e reads r6 — which
+    the walk NEVER writes. So the frame's r6 = 0x2bdaa088 must be r6 = sp0 - 8*r5 = sp0 + 8 (r5 = -1),
+    and sp0 = 0x2bdaa080. The pushes: void w[2] first (r7+4..r7+11 = [sp+0]..[sp+7] relative to the
+    post-stmdb sp), then VLA<3> w[r5] at sp = 0x2bdaa080 - 4*0xffffffff = 0x2bdaa084 — the FAULT's r4
+    = 0x2bdaa084, VLA<0> = sp0 - 4*r5 = 0x2bdaa084 = 0x2bdaa080 + (uint32)(-1)*... i.e. the value
+    the 1032 rule gives for an INDEXED VLA of count (uint32)-1. CONSISTENT: the r4 = sp-4 "contra-
+    diction" of E12 resolves IF the walk runs BEFORE the VLA<2>/VLA<3> declarations (C scoping: VLA<2>
+    is declared after the walk's block in the source), which the frame's values support.
+  * THE LOOP BOUND. `cmp r5,#2; bcc` at 0x37c26448 (unsigned) sends r5 = 0xffffffff INTO the VLA
+    path. The walk then reads r6 = sp+8 (r5=-1) and bounds `i < 0xffffffff`.
+  * THE ELEMENT READ. 0x37c2646e `ldr.w r1,[r6, i*4]` = the word at sp+8+4i; for i=0 that is
+    sp+8 == r7+4 (right ABOVE fp), i.e. the function's own saved {r8,sl,fp}, not the writer's pair
+    block. So r6 is NOT the writer's second output (the draft's "pair block" reading is wrong): r1 at
+    i=0 = saved r8 = the NAME pointer, and `ldrb r1,[r1,#0x10]` faults only if the name string
+    itself is unmapped. In the 1033 frame r1 = 0 and far = 0x10 — read the alternative: the walk ran
+    a second time with r1 = 0 in that slot, which the writer (0x37c266ec) must have produced.
+  * THE WRITER (0x37c266ec) is a DIFFERENT listing to re-read; bytes raw: section 2. Its own loop
+    stores into r4 and r3 (r4 = the first output, r3 = second), so under the walk's r4/r6 = sp-4*r5,
+    sp-8*r5 both outputs land in the VLA<0>/VLA<3> frame — the store target of the r1 = 0 word is inside
+    the VLA, not above fp. Section 2's listing is NOT yet done; do not cite the walk beyond this.
+
+1. THE LISTING (objdump -Mforce-thumb, --adjust-vma=0x37c263cc)
+  0x37c263cc getPreoptimizedClass(const char *name):
+    [ADDED 2026-10-19, re-read as Thumb halfwords with arm-none-eabi-objdump -Mforce-thumb over the
+     raw file bytes (host, sha cad2df77); it CORRECTS the hand listing below, which had the r7 slots
+     and the path off by one register. Raw bytes at 0x37c263cc..0x37c264a8 are in section 9.]
+    37c263cc push {r4-r7,lr}; add r7,sp,#12; stmdb sp!,{r8,sl,fp}; sub sp,#20; mov r8,r0 (name)
+     37c263d8 movw/movt r0,#0x22c6c24; add r0,pc; ldr r1,[r0]; str r1,[r7,#-44]   ; saved head A
+     37c263e8 movw/movt r0,#0x22c7d5e; ldr r1,[r1]; add r0,pc; str r1,[r7,#-32]    ; saved value B
+     37c263f8 ldr r1,[r0]; cbz -> return 0;  ldr r2,[r1,#12]; cbz -> return 0;  sl = r1 + r2
+     37c26412 r2 = r7-36 (out1), r3 = r7-40 (out2); r0 = sl, r1 = name
+     37c2641e bl 0x37c26698                       ; lookup -> r5
+     37c26422 cmp r5,#1; bne 0x37c26448           ; single-result path below; else the VLA path
+     37c26428 r0 = [r7-40] (out2 = entry); r2 = [r7-44] (head A); r1 = [r0+16] (class_head byte)
+     37c26436 r2 = [r2]; r3 = [r7-32] (value B); if r1==0 mov r0,r1 (0); if r2==r3 -> 0x37c26498
+              else -> 0x37c264a4 (blx 0x37c26af0, invalidate) -- this path RETURNS A NONZERO r0
+     37c26448 (VLA path) r0 = 0; cmp r5,#2; bcc -> return 0 (covers r5 = 0 AND r5 = 0xffffffff)
+     37c2644e sub.w r4, sp, r5, lsl #2            ; r4 = sp - 4*r5
+     37c26452 mov fp,sp; 37c26454 mov sp,r4
+     37c26456 sub.w r6, sp, r5, lsl #2            ; r6 = r4 - 4*r5 = sp - 8*r5
+     37c2645a mov sp,r6
+     37c2645c r0 = sl, r1 = name, r2 = r4, r3 = r6; bl 0x37c266ec   ; fill (index,class) pairs
+     37c26468 i = 0; loop: cmp i, r5; bcs -> 0x37c26486 (mov sp,fp; return 0)
+     37c2646e ldr.w r1,[r6, i, lsl #2]; adds i,#1; 37c26474 ldrb r1,[r1,#16]; cmp r1,#0; beq loop
+     37c2647a r0 = r4 + i*4 (i ALREADY INCREMENTED); ldr.w r0,[r0,#-4]  ; = [r4 + (i_old)*4]
+     37c26482 mov sp,fp; -> 0x37c2648a (the shared tail that returns r0, or re-checks and invalidates)
+
+2. THE WRITER AT 0x37c266ec -- raw bytes only until its listing is done
+   fo 0xff66ec: f0 b5 03 af 1c 46 16 46 05 46 f8 f7 2b f9 b0 f1 ff 3f 2d d0 d5 f8 00 c0 d5 f8 0c 90
+                0c eb 09 02 2a 44 02 eb 8c 02 02 f2 21 43 53 f8 30 20 12 f0 01 0f 1e d0 ...
+   thumb: push {r4-r7,lr}; add r7,sp,#12; mov r4,r3; mov r6,r2; mov r5,r0; bl (0x37c26698-class helper);
+          cmp.w r0,#0xffffffff; beq +0x2d; ... r2 = [r5]; r9 = [r5,#12] ...
+   NOT LISTED HERE; a rung that names a store must list it first.

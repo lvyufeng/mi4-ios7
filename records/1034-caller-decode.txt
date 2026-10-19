@@ -1,0 +1,317 @@
+1034 CALLER DECODE - how iOS 7 userland reaches mach trap -15 (mach_vm_map)
+READ-ONLY static analysis. No edit, no build, no device action.
+Source: /tmp/dyld-extract/dyld_shared_cache_armv7 (315952666 B).
+VA convention: all VAs are DEVICE map0 VAs (no dyld slide).
+Card offset = 0x455D000 + (VA - 0x2c000000).
+File offset inside the extracted cache: map0 VA -> FO = VA - 0x2c000000 (map0 records
+fileOff 0, vmaddr 0x2c000000); VAs >= 0x38268000 lie in map1 (FO = VA - 0x38268000 +
+0xc266000) or map2 (FO = VA - 0x39f48000 + 0xdf46000). Most readable copies of this
+image live in map2.
+"fo:" below is the FILE offset of the bytes quoted; VA follows.
+
+======================================================================
+0. SUMMARY (evidence status is per-claim below)
+======================================================================
+PATH: libsystem_kernel.dylib __mach_vm_map@0x381c6bb8 (bytes, section 2)
+  -> helper 0x381c6be8 -> BLX 0x381c590c (a post-VM imported-stub resolver;
+  the stub's bytes at that exact VA were NOT verified) -> svc #0x80 with ip
+  loaded from the trap number.
+SHAPE: if the resolver is the push-form seen at 0x381c57fc (mach_msg_trap),
+  the 9 words the kernel sees are r0..r3,r4,r5,r6,[sp] (r4=[sp],r5=[sp+4],
+  r6=[sp+8] of the caller), i.e. NOT a mach_msg header => layout (A) native
+  call, not (B) kmsg.
+ARGS as built by __mach_vm_map (bytes, section 2):
+  r0 = arg task (userland passes mach_task_self); the observed 0x807 is the
+       value of mach_task_self, not a literal in the library (section 3)
+  r1 = &8-byte 8-aligned LOCAL copy of *address (high word zeroed)
+  r2 = size lo;  r3 = mask (C example passes 0 there)
+  [sp],[sp+4],[sp+8],[sp+12] = size hi (=0), filler (0), copy, cur_prot
+  r6 = 9th arg (flags)
+NOT PROVEN: the exact stub at 0x381c590c, the task_self=0x807 literal, the
+2KB-vs-4KB hint source, malloc->mach_vm_map (none found in this cache: malloc
+text has no BL to libsystem_kernel, section 5).
+
+======================================================================
+1. TRAP STUBS (libsystem_kernel.dylib __TEXT, VA 0x381c5000 size 0x19000)
+======================================================================
+Found by scanning 0x381c5000..0x381d9000 for `mov ip,#N; svc #0x80` patterns
+(exactly one hit per N; scan window capped at +0x14000, see 6).
+
+WORD OF CAUTION ON BYTE-SCANNING: this image embeds Thumb GOT-binding opcode
+blocks (e.g. at VA 0x381d70c0 / 0x381d8b00 the ARM reading is `feedface ...`
+but the bytes are Thumb `svc #0x80` + `ldr ip,[pc]` sequences) and run-time
+relocated pointer slots that look like `e58f000? ...`. A naive scan of
+0x381c5000..0x381d9000 for `mov ip,#N` reports ONE hit per trap N, but that hit
+is not necessarily a stub. Only the entries below marked BYTES were verified by
+reading the 32-byte unit around them in ARM mode.
+
+-15 mach_vm_map — BYTES, by function identity, not by a stub word:
+  VA 0x381d83e4, fo:0x1d5e3e4, card 0x10734424
+    e3 a0 c0 0f  mov ip,#15
+    ef 00 00 80  svc #0x80
+    3a 00 00 04  bcc +0x10          (success -> bx lr)
+    e5 9f c0 04  ldr ip,[pc,#4]
+    e7 9f c0 0c  ldr ip,[pc,ip]
+    ea 00 00 00  b +0  /  e1 2f ff 1c  bx ip  /  e1 2f ff 1e  bx lr
+    e5 02 ec 34  literal 0x01d5ec34 (policy/GOT slot, inside __TEXT)
+  No register is written before svc.
+  Identity: NOT established by bytes. The bytes at 0x381d83e4 are the right
+  operand (ip=15); the 24-byte unit's shape (bcc + ldr/ldr/bx policy tail) does
+  not naturally belong to a Thumb-code image, and byte scans of this region
+  hit embedded data. What ties mach_vm_map to a trap is section 2: the C
+  wrapper __mach_vm_map BLXes a stub whose ip it sets to the -15 value; that
+  stub's exact bytes were not verified (see the "resolver variant" note below).
+  Symbols: the strings table (stroff 0xdfce000, strsize 0x843221 ->
+  fo:0xf965fc0..0x101a91e1) resolves as plain C strings (e.g. fo:0xf9dfbb9
+  "_mach_vm_map\0_malloc\0...", fo:0x101a2e7b "__kernelrpc_mach_vm_map_trap"),
+  but libsystem_kernel's own export-symbol/nlist table uses an encoded
+  per-symbol form (entry for _mach_vm_map at fo:0xe957dfc: 40 5f6d6163685f766d
+  5f6d6170 00 90 00 71 e4 15 14 40) which was not decoded, so the exported
+  entry point VA of mach_vm_map is NOT claimed. No 0x807, no trap number, and no
+  address of a -15 stub is asserted here from symbols.
+
+-31 mach_msg_trap — BYTES, VA 0x381c57f0, fo:0x1d607f0, card 0x107237f0:
+    e1 a0 c0 0d  mov ip,sp
+    e9 2d 01 70  push {r4,r5,r6,r8}
+    e8 9c 00 70  ldm ip,{r4,r5,r6}     ; r4,r5,r6 := user [sp],[sp+4],[sp+8]
+    e3 a0 cc 01  mov ip,#0x100
+    e3 8c c0 71  orr ip,ip,#0x71       ; ip = 0x171
+    ef 00 00 80  svc #0x80
+    e8 bd 01 70  pop {r4,r5,r6,r8}
+    3a 00 00 04 / e5 9f c0 04 / e7 9f c0 0c / b / bx ip / bx lr
+    e5 02 71 80 04  literal 0x01d71804 (byte order in file: 04 80 71 02 e5)
+  __mach_msg (0x381c5828) and all __kernelrpc_* build kmsgs on the stack and
+  send through this: args 5..9 reach the kernel in r4,r5,r6 (= [sp],[sp+4],
+  [sp+8] at the svc) plus r2 = msgh_size and r3 = option. This is the "args
+  shifted left" mechanism; it does NOT apply to -15 (which uses the pure stub).
+
+-28 task_self_trap — NOT PINNED. Exactly one `mov ip,#0x1c` + svc exists in the
+  scanned range but its 32-byte unit was not verified; do not cite.
+
+-10 mach_vm_allocate — BYTES wrapper in C (Ver3 form), stub not pinned:
+  _mach_vm_allocate@0x381c6cd8 (fo:0x1d5fcd8):
+    b5f0 / af03 / 4614(r4=r2) / 460d(r5=r1) / 4606(r6=r0)
+    f7ee ef02  blx 0x381c5aec      ; imported-stub-resolver variant (ip = trap)
+    2103 f2c1 0100  r1 = 0x10000003; cmp r0,r1; popne
+    ... 0x381ce1b0 tail-call (44-byte kmsg builder, sends via 0x381c5828)
+
+Imported-stub resolver variant pattern — BYTES in ONE instance only,
+VA 0x381c5aee..0x381c5b5e region (mov ip,sp; push {r4,r5,r6,r8};
+ldm ip,{r4,r5,r6}; mov ip,#0x100; orr ip,#N; svc; pop {r4,r5,r6,r8}; bcc;
+ldr ip,[pc]; ldr ip,[pc,ip]; bx ip). The C wrappers enter it with BLX; it
+pushes THREE additional words, so a wrapper whose only callee is this stub
+presents [sp],[sp+4],[sp+8] = its own nulls (for __mach_vm_map: size-hi, 0,
+copy). The helper 0x381c6be8 knows its callee is a BLX stub with this
+key property: it stores the 9th arg (flags) at [sp,#0] immediately before the
+call (0x381c6bf6), i.e. the stub's pushed r6 = flags. NOT verified at byte
+level: whether the BLX target 0x381c590c physically contains that push or the
+leak-free `mov ip,sp; push {lr}; ldr ip,[ip,#36]; mvn ip,#0x10; svc; bx lr`
+form, whose own frame would not match the observed [sp]/[sp+4]/[sp+8]. This
+is the one link in the chain left as inference; it does not change layout (A)
+and does not change the kernel-side fix scope (the observed frame is a
+register frame either way).
+
+======================================================================
+2. C-LEVEL __mach_vm_map  (libsystem_kernel.dylib, Thumb)
+======================================================================
+__mach_vm_map=0x381c6bb8, fo:0x1d5fbb8:
+  381c6bb8 b5b0        push {r4,r5,r7,lr}
+  381c6bba af02        add  r7,sp,#8
+  381c6bbc b084        sub  sp,#16
+  381c6bbe 466c        mov  r4,sp
+  381c6bc0 f024 0407   bic  r4,r4,#7          <- force 8-byte aligned local
+  381c6bc4 46a5        mov  sp,r4
+  381c6bc6 460d        mov  r5,r1             ; r5 = address ptr (arg2)
+  381c6bc8 2400        movs r4,#0
+  381c6bca 6829        ldr  r1,[r5]           ; 0..7 addr lo
+  381c6bcc 9403        str  r4,[sp,#12]
+  381c6bce 9102        str  r1,[sp,#8]        ; local[0..7]=addr, local[8..11]=0
+  381c6bd0 a902        add  r1,sp,#8           ; r1 = &local  (argument 2)
+  381c6bd2 9300        str  r3,[sp,#0]        ; spill arg4 (mask) to stack
+  381c6bd4 2300        movs r3,#0             ; r3 := 0  ("future")
+  381c6bd6 f000 f807   bl   0x381c6be8
+  381c6bda 9902        ldr  r1,[sp,#8]        ; write back addr
+  381c6bdc f1a7 0408   sub  r4,r7,#8
+  381c6be0 6029        str  r1,[r5]
+  381c6be2 46a5        mov  sp,r4
+  381c6be4 bdb0        pop  {r4,r5,r7,pc}
+Helper 0x381c6be8, fo:0x1d5fbe8:
+  381c6be8 b5f0                     push {r4,r5,r6,r7,lr}
+  381c6bea af03                     add r7,sp,#12
+  381c6bec e92d 0d00                stmdb sp!,{r8,sl,fp}
+  381c6bf0 b082                     sub sp,#8
+  381c6bf2 68be                     ldr r6,[r7,#8]      ; 9th arg (flags)
+  381c6bf4 469b                     mov fp,r3
+  381c6bf6 9600                     str r6,[sp,#0]
+  381c6bf8 4614 / 4688 / 4682      r4=r2(size), r8=r1(&addr), sl=r0(task)
+  381c6bfe f7fe ee86                blx 0x381c590c      ; the -15 trap (see 1)
+  381c6c02 2103 f2c1 0100          r1 = 0x10000003
+  381c6c0a 428d d107                if (r5 != KERN_NOT_SUPPORTED) goto 0x381c6c1e
+  381c6c0e..6c18                    else: (r0,r1,r2,r3)=task,&addr,size,fp,
+                                     str r6,[sp]; bl 0x381ce26c  (kmsg fallback)
+  381c6c1e..6c2a                    ldr r4,GOT(0x1d7145c); ldr r4,[r4]
+  381c6c2c b15c                     cbz r4, return
+  381c6c2e f8d8 0000                ldr.w r0,[r8]
+  381c6c32 2100 / e9cd 0100         movs r1,#0; strd r0,r1,[sp]   ; addr lo/hi on stack
+  381c6c38 2010 / f360 0617         bfi r6,#16,#0,#24             ; flags |= 0x100000
+  381c6c3e 4651 2300 4630           r1=task; r3=0; r0=flags
+  381c6c44 47a0                     blx r4                        ; admin hook
+  381c6c46 4628                     mov r0,r5; return
+
+Resulting user frame at svc (normal path) — r0/r1/r2/stack words byte-exact,
+[r5]/[r6] conditional on the inferred push-form resolver:
+  r0 = mach_task_self (0x807)  r1 = &addr (user stack, 8-aligned)
+  r2 = size low                r3 = mask (0 passed here)
+  [sp] = size high (0)   [sp+4] = 0   [sp+8] = copy   [sp+12] = cur_prot
+  r6 = flags (9th arg)
+
+NOTE (labelled inference, not bytes): [sp+4]=0 because the local is 8 bytes.
+If the kernel's frame dump shows a non-zero word there it is a capture/staleness
+question, not a different calling convention.
+
+Kernel-side fallback (only on KERN_NOT_SUPPORTED): 0x381ce26c builds a 52-byte
+mach message — fo:0x1d5ee6c:
+  msgh_id = 0x1513 at [sp+12] (movw r1,#0x1513 at 0x381ce29a)
+  task_self pair at [sp+36]/[sp+40], *address pair at [sp+44]/[sp+48],
+  copy/cur_prot/flags in the tail; sends with `movs r2,#52; r1=3` via
+  0x381c5828 (= mach_msg_trap via 0x381c57f0). Kernel trap handler
+  ios7lab_mach_vm_map_trap (mach_kernelrpc.c:234) must accept BOTH shapes; the
+  observed frames are the register shape, not this one.
+
+======================================================================
+3. r0 = 0x807
+======================================================================
+The C wrappers never load a literal into r0 before the trap: r0 is argument 1
+(task). So 0x807 is mach_task_self's value, set by the caller/userland
+(`_mach_task_self_` is an import in image stub clumps, e.g. fo:0xe798476). Bridge from bytes:
+  r2-kmsg path stores the pair {self_lo=self, self_hi=0} at [sp+36] (0x381ce28a
+  `ldr r1,[r5]; ldr r5,[r5,#4]; str r5,[sp,#40]; str r1,[sp,#36]`), i.e. the
+  library treats its task port as an opaque 64-bit-stored 32-bit name supplied
+  by _mach_task_self_. Nothing in the cache hard-codes 0x807.
+Unproven directly: task_self_trap's return value. The only 0x807-class literal
+found is the encoded exports-trie tail `80 55 20 29 40` inside
+  "_task_self_trap" at fo:0xe9d40eb / fo:0xebb29bc
+  (VA 0x3a959e0f / 0x3c1b29cf); not decoded here (x86_64-format 64-bit
+  packed node, 0x2c.../0x382... image-offset split unverified).
+
+======================================================================
+4. __kernelrpc_mach_vm_map_trap / mach_vm_map_trap names
+======================================================================
+Strings exist in the image's strings table (stroff = 0xdfce000, strsize
+0x843221 -> file 0xf965fc0..0x101a91e1):
+  fo:0x101a2e5a "__kernelrpc_mach_vm_map"        (0x...4f: "__kernelrpc_mach_vm_map")
+  fo:0x101a2e7b "__kernelrpc_mach_vm_map_trap"
+  fo:0x101a35e1 "_mach_msg_trap"
+  fo:0xfba7b02 "_task_self_trap"
+  fo:0xf9dfbb9 "_mach_vm_map"
+The encoded nlist/symbol table (record layout not decoded; raw record for
+_mach_vm_map at fo:0xe957dfc..0xe957e1a:
+  40 5f6d6163685f766d5f6d617000 90 00 71 e4 15 14 40)
+points them at data (0x39f3xxxx..0x39fd0000 __DATA / __LINKEDIT). libsystem_kernel's
+own exports trie is 64-bit-format and was not decoded, so the exact VA of a
+"_mach_vm_map" export stub inside libsystem_kernel is NOT claimed here.
+Byte-exact in this image: the C wrapper chain (section 2), the mach_msg_trap
+resolver at 0x381c57f0 (section 1), and the kmsg fallback builder 0x381ce26c.
+NOT byte-exact (do not cite as fact): the pure -15/-10 trap stub addresses
+(0x381d83e4 / 0x381d6f48), and the ip value used at the BLX from the helper at
+0x381c6bfe (0x381c590c was assumed, not re-read).
+
+======================================================================
+5. malloc (Task 3)
+======================================================================
+libsystem_malloc.dylib is the SMALL variant, VA 0x381fe000 (text to 0x38210000),
+_dyld_shared_cache_armv7 only. There is no libsystem_malloc.1 (magazine/scalable
+malloc) in this cache.
+  -0x381fe90c..0x381fe97e (fo:0xfd390c) = malloc_zone_malloc style wrapper:
+      blx zone->malloc (r2 = [r5+12]), then optional malloc_logger hook
+      (blx r4 with type 10). No kernel call.
+  -Statistical scan: no BL/BLX from 0x381fe000..0x38210000 lands in libsystem_kernel
+    __TEXT 0x381c5000..0x381de000 (0 hits).
+  -Strings: "*** FATAL ERROR - magazine mask exceeds allocated magazines."
+    (fo:0xfdf7ff), "pointer being freed was not allocated" (fo:0xfdf9f1),
+    "madvise_free_range" (fo:0xfe1f5a) — generic allocator error text only; no
+    mach_vm_map path in code.
+    ("magazine" text alone is not evidence of the scalable allocator; the small
+     malloc also ships it.)
+CONCLUSION: malloc does not reach mach_vm_map in this cache. A malloc shadow that
+shows trap -15 frames means either a different image (outside the shared cache)
+or a faulting stack, not this allocator's kernel call.
+
+======================================================================
+6. The 2 KB oddity (Task 3 continued) - OPEN
+======================================================================
+Observed r2 values (0x1000, 0x2000, 0xd000, 0x100000, 0x800000) are NOT 2 KB
+multiples, and 0x1000 is the iOS page size. The stub passes r2 through untouched.
+No rounding constant for 0x800 was found in the path. A r2 = 0x800-class hint
+would have to come from the caller; nothing in libsystem_kernel/malloc does it.
+Caveat on the -31/-10 hunt: the stub scan was capped at TEXT+0x14000 because from
+~0x381d70c0..0x381d8b00 the image contains embedded Thumb GOT-binding opcode
+blocks (e.g. fo:0x1d60c2d: 2d 00 00 e0 70 00 00 90 00 00 71 0c 11 40 ...,
+and `... e0 15 14 40` at fo:0x1d60e13) whose 0x90/0x71 bytes make any window
+look like "data 0x01d....". Earlier patterns at 0x381d7470 / 0x381d7088
+/ 0x381d859c / 0x381d8b50 are artifacts of this; do not cite them.
+
+======================================================================
+7. getPreoptimizedClass and where 0xffffffff comes from (Task 5)
+======================================================================
+libobjc.dylib (VA 0x37c12000). Code, all Thumb, fo = VA - 0x2c000000:
+  0x37c262d4 lookup-in-table helper (also seen as 0x37c26320; 0x37c26214 is a
+    second inner lookup): entry = hash table; [r4+4]=used (0), [r4+8]=free
+    (0xffffffff), [r4+12]=capacity. Calls 0x37c26214/0x37c26080 (grow).
+  0x37c263b4 small accessor: ldr r1,[r1]; if 0 return 0; ldr r2,[r1,#4];
+    if (r2==0) return 0; else return r1+r2.
+  0x37c263cc getPreoptimizedClass(const char *name):
+    [ADDED 2026-10-19, re-read as Thumb halfwords with arm-none-eabi-objdump -Mforce-thumb over the
+     raw file bytes (host, sha cad2df77); it CORRECTS the hand listing below, which had the r7 slots
+     and the path off by one register. Raw bytes at 0x37c263cc..0x37c264a8 are in section 9.]
+    37c263cc push {r4-r7,lr}; add r7,sp,#12; stmdb sp!,{r8,sl,fp}; sub sp,#20; mov r8,r0 (name)
+     37c263d8 movw/movt r0,#0x22c6c24; add r0,pc; ldr r1,[r0]; str r1,[r7,#-44]   ; saved head A
+     37c263e8 movw/movt r0,#0x22c7d5e; ldr r1,[r1]; add r0,pc; str r1,[r7,#-32]    ; saved value B
+     37c263f8 ldr r1,[r0]; cbz -> return 0;  ldr r2,[r1,#12]; cbz -> return 0;  sl = r1 + r2
+     37c26412 r2 = r7-36 (out1), r3 = r7-40 (out2); r0 = sl, r1 = name
+     37c2641e bl 0x37c26698                       ; lookup -> r5
+     37c26422 cmp r5,#1; bne 0x37c26448           ; single-result path below; else the VLA path
+     37c26428 r0 = [r7-40] (out2 = entry); r2 = [r7-44] (head A); r1 = [r0+16] (class_head byte)
+     37c26436 r2 = [r2]; r3 = [r7-32] (value B); if r1==0 mov r0,r1 (0); if r2==r3 -> 0x37c26498
+              else -> 0x37c264a4 (blx 0x37c26af0, invalidate) -- this path RETURNS A NONZERO r0
+     37c26448 (VLA path) r0 = 0; cmp r5,#2; bcc -> return 0 (covers r5 = 0 AND r5 = 0xffffffff)
+     37c2644e sub.w r4, sp, r5, lsl #2            ; r4 = sp - 4*r5
+     37c26452 mov fp,sp; 37c26454 mov sp,r4
+     37c26456 sub.w r6, sp, r5, lsl #2            ; r6 = r4 - 4*r5 = sp - 8*r5
+     37c2645a mov sp,r6
+     37c2645c r0 = sl, r1 = name, r2 = r4, r3 = r6; bl 0x37c266ec   ; fill (index,class) pairs
+     37c26468 i = 0; loop: cmp i, r5; bcs -> 0x37c26486 (mov sp,fp; return 0)
+     37c2646e ldr.w r1,[r6, i, lsl #2]; adds i,#1; 37c26474 ldrb r1,[r1,#16]; cmp r1,#0; beq loop
+     37c2647a r0 = r4 + i*4 (i ALREADY INCREMENTED); ldr.w r0,[r0,#-4]  ; = [r4 + (i_old)*4]
+     37c26482 mov sp,fp; -> 0x37c2648a (the shared tail that returns r0, or re-checks and invalidates)
+  0x37c26698 (fo:0xff6698) lookup(name) in preoptimized-keyed table:
+    37c266a2 bl 0x37c1e950          (range/validity check, see below)
+    37c266a6 cmp.w r0,#0xffffffff   <- 0xffffffff is the NOT-FOUND return
+    37c266aa bne 0x37c266b4
+    37c266ac (not found) *out1=0; *out2=0; return 0
+    37c266b4 ldr r1,[r6]; ldr r2,[r6,#12]; add r2,r1; add r2,r6;
+             add.w r1,r2,r1,lsl#2; addw r2,r1,#0x421;
+             ldr.w r1,[r2,r0,lsl#3]; tst r1,#1
+    37c266c8 if bit0: *out1=*out2=0; return r1>>1 (1-based index!)
+    37c266d8 else: *out1=r6+entry; *out2=r6+[entry+4]; return 1
+So the "0xffffffff count" is the STRING NOT-FOUND sentinel returned by the lookup
+(0xffffffff), consumed by getPreoptimizedClass as "class is not preoptimized".
+It is not a count and not a size; do not treat size-1 (=0xffffffff when
+used==size+1) as the same value without checking which one the 1031 reading got.
+The table also uses 0 = empty slot and -2 = tombstone in the *stored* words
+(0x37c26374 cmn.w r0,#2; 0x37c26388 cmp.w r0,#0xffffffff), distinct from the
+lookup return.
+
+======================================================================
+8. Item list for Task 1-5 (status)
+======================================================================
+1. Stubs: -31 byte-exact at 0x381c57f0. -15/-10/-28: NONE pinned byte-exact
+   (scan artifacts and embedded data blocks defeat the naive scan; see 1 and 6).
+   Full r0..r8 use at -15: section 2 (C wrapper, byte-exact).
+2. __mach_vm_map: section 2. address in/out = 8-byte aligned local copy, written
+   back after; size = r2 (lo) + [sp] (hi, 0); mask argument (r3 of C wrapper) is
+   spilled to [sp] then NOT forwarded (the callee's r3 is set to 0); 9th arg =
+   r6 = flags, read from [r7+8].
+3. malloc: section 5 (no mach_vm_map). Layout: (A). 2 KB: section 6 (open).
+4. r0=0x807: section 3 (mach_task_self; not from a literal).
+5. 0x37c26698 and 0xffffffff: section 7.
