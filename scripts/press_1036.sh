@@ -23,7 +23,7 @@ cd "$(dirname "$0")/.."
 # refused every run; this refusal says "a fastboot partition-write command" instead, and the check below
 # is the guard's own grep run over this body, so the body is proven not to match itself.
 _BODY=$(grep -v '^[[:space:]]*#' "$0")
-if grep -qE '(^|[[:space:]])fastboot([[:space:]]+-[A-Za-z-]+)*[[:space:]]+flash([[:space:]]|$)' <<<"$_BODY"; then
+if grep -qE '(^|[[:space:]])fastboot([[:space:]]+-[[:alnum:][:space:]-]+)*[[:space:]]+flash([[:space:]]|$)' <<<"$_BODY"; then
   echo "REFUSING: press_1036's body names a fastboot partition-write command - this script is fastboot boot ONLY"; exit 1; fi
 
 LIVE=out/stage90

@@ -22,7 +22,7 @@ cd "$(dirname "$0")/.."
 # SAFETY, BY VALUE: this script boots, it never writes a partition.  The only line in the body that
 # names the flash verb is this refusal, which fires if any line of the body (comments, echoes, traps)
 # contains it: refuse the WHOLE script rather than run a press one edit away from a flash.
-if grep -v '^[[:space:]]*#' "$0" | grep -qE '(^|[[:space:]])fastboot([[:space:]]+-[A-Za-z-]+)*[[:space:]]+flash([[:space:]]|$)'; then
+if grep -v '^[[:space:]]*#' "$0" | grep -qE '(^|[[:space:]])fastboot([[:space:]]+-[[:alnum:][:space:]-]+)*[[:space:]]+flash([[:space:]]|$)'; then
   echo "REFUSING: this script's body names the flash verb in a fastboot command - press_1035 is fastboot boot ONLY"; exit 1; fi
 
 LIVE=out/stage90
