@@ -36,7 +36,7 @@ months off), and NEITHER boot of this rung returned -- Android's appearance mean
 power.  Pre-registration above was committed at 878b7df, before the press.
 
 ====================================================================================================
-3. THE FRAME ROWS CHANGE WITH EVERY RUN, AND THE LOG IS SHORT -- A RECTIFIER DROPPING THE TAIL
+3. THE PC MOVES BETWEEN RUNS AND ITS NEIGHBOURHOOD DOES NOT -- AND THE LOG HAS A BOUNDED TAIL
 ====================================================================================================
   EVERY near slot is IDENTICAL to 1035's (near0..near5 all equal; evf slot10 differs, 0x3a166ae0 vs
   0x388f7ae0), and xor_lr = 0x00711504, the same number.  near0..near4 are pc-relative words at ONE pc
@@ -60,8 +60,8 @@ power.  Pre-registration above was committed at 878b7df, before the press.
   not a pad -- so for THIS run the edge is not where the log stops; it does NOT follow that the rows are
   a complete account of the run (the frame anomaly above stands).
   Keep the hazard for 1037 all the same: a row printed after a large dump is unreadable by construction.
-  => 1035 P1's "xor_lr != 0 => lr is not a file VA plus any slide" HAS A SECOND EXPLANATION: the xor
-     compared the device's word with the file's word at the WRONG address.  Not a prompt to retract P1
+  => 1035 P1's "xor_lr != 0 => lr is not a file VA plus any slide" HAS A SECOND EXPLANATION: either the xor
+     compared the device's word with the file's word at the wrong address, or the lr still has no slide.  Not a prompt to retract P1
      (pc and near0..near4 agreed under 0x50C000); a prompt not to build on the lr conclusion.
      AND -- after THIS run -- not to build on near0..near4 either without the pc in the same block (5).
 
@@ -116,8 +116,10 @@ power.  Pre-registration above was committed at 878b7df, before the press.
 ====================================================================================================
   a) Slide literals: 0x00577000 printed by both patchers (1035's own record says 0x50C000). One
      expression, printed with the pc.
-  b) The pcc/pcc2 frames are not the trap frame (3): 1037 reads the trap entry's own saved sp/far/ctx.
-  c) The log is trimmed / the tail is not trustworthy (3). 1037 must prove its rows were flushed.
+  b) The pcc/pcc2 frames are not established as the trap frame (3): 1037 reads the trap entry's own
+     saved sp/far/ctx AND prints pc in the same block.
+  c) The log has a bounded tail (debug_putc drops silently).  1037 prints its rows EARLY and, if it can,
+     the offset `debug_buf_ptr - debug_buf` as a row, so a row's presence is not a race with the buffer.
   d) C1's conjuncts are not decisive (4); do not pre-register a cell that a well-formed decode of the
      wrong word can satisfy.
 
