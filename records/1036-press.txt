@@ -1,0 +1,27 @@
+1036 PRESS LOG (fastboot boot of armed-d13-67782da0, image sha db96705f..., 9359360 bytes)
+boot at 2026-10-19 07:18:57 UTC (press_1036.sh); press script rc=0.
+boot epoch (the reading's anchor): 1792394337 = 2026-10-19 07:18:57 UTC, taken from the PRESS LOG's own
+start of section 3 - this run's /proc/last_kmsg carries NO in-log timestamp (see 2), so the boot epoch is
+a host clock reading of THE PRESS ITSELF, not a reading of the capture.
+
+Preflight: ALL by-value gates PASS (arm record, GLOBAL-FIX 3 kernel_pmap sites, trap.c sha
+140d73d6..., pcc2 rows in trap.o AND the linked image, pcc + parent publishers, 1036/1035/1033 checker
+selftests, card 10-byte guard + differs-from-rootfs==10 + --check).
+
+Before the press (2a): the previous capture recovered-...-20261019-055250 (1035's boot 1792378199) was
+confirmed recovered, but a SECOND recovery at 07:16:57 produced an IDENTICAL file (byte-identical,
+md5 bca3df37...) because Android was STILL UP (uptime 3:54) -- the /proc/last_kmsg that was read is the
+slot as Android's own boot left it, NOT 1035's console.  So 2a could not root the 1035 console on the
+host, and the press ran with STAGE90_1036_OVERWRITE_PREV=1.  Consequence: 1035's console is (most
+likely) still the one 055250 holds; this press overwrote the single-slot record.
+
+fastboot boot -> Booting OKAY; bytes sent == the gate's sha (unchanged across the send).
+RUN = NON-RETURN (runner exit 2; the bounded 180 s wait expired: no adb, no new enumeration;
+the host log's 10->9 count is the dmesg ring rotating, not a reading).  USB console: zero bytes,
+reader exit 143.
+
+NEXT: operator power press; then scripts/recover_last_kmsg.sh --read-only while Android is up;
+then python3 -I tools/check_1036_capture.py <capture> and adjudicate C1/C2/C3 (records/1036-read.txt 2).
+STALENESS FOR THE NEXT READ, by content and BEFORE recovery:
+  adb shell 'grep -c "^xnu_live_pcc2_seq=" /proc/last_kmsg'   # must be >= 1; 0 => this run's slot is gone
+  adb shell 'uptime -s'                                        # the Android boot a live slot belongs to
