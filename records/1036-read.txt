@@ -91,8 +91,10 @@ power.  Pre-registration above was committed at 878b7df, before the press.
   this run's fault.  Positions:
     * if pc is right and the slide is 0x50C000, the pc is the walk and lr is in libobjc -- but then
       the near rows are stale and 1035's "P1" rests on them;
-    * if the slide is 0x577000, the near rows are this run's and pc 0x3942a474 is a different,
-      non-libobjc page.
+    * if the slide is 0x577000 (the literal), the near rows (0xebad46a5 at pc-0x20 etc.) would have to
+      be this run's -- and the file at 0x3942a474-4/+4 holds 0x000002d8/0x000007c8, not near1/near3.
+  Checked this hour: the file's word 0x00f042f9 at 0x37C26464 is the one 1035-read 0 reconciled near0
+  to, and it is the file's word only at 0x37C26474 -- i.e. under 0x50C000, not 0x577000.
   THE RUNG'S DUTY IS TO NAME THIS, NOT TO CHOOSE.  1037 must print the slide as an EXPRESSION and must
   print pc, near[0..4] and the trap frame in ONE block so they cannot come from two runs.
 
