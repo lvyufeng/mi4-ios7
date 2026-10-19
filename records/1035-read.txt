@@ -17,11 +17,14 @@ mismatch that this reading forced.
   xnu_live_pcc_slide=0x00577000
   => P1: THE DEVICE RAN THE WALK AT FILE VA 0x37C26474 (`09 7c 00 29` = ldrb r1,[r1,#0x10]).
      The page is the host file's own two pages: pc-0x08 and pc+0x08 and pc+0x20 are the file's words
-     at 0x37C2646C / 0x37C2647C / 0x37C26494, and pc-0x20 is 0xebad46a5 = `bl 0x37c266ec` at
-     0x37C26464 (`f000 f942`, verified by re-read of the cache this hour). The pc's true slide is
+     at 0x37C2646C / 0x37C2647C / 0x37C26494, and pc-0x20 is 0xebad46a5 = the file's word at
+     0x37C26464 (`00 f0 42 f9` at the file, re-read this hour): the device's page is the file's page
+     MODULATED (`bl` 0xf000f942 in the file vs 0xebad46a5 on the device; the other four words are exact,
+     and pc itself may be a partially-applied relocation -- either way the walk's code at pc is the file's). The pc's true slide is
      0x38132474 - 0x37C26474 = 0x50C000, NOT the 0x577000 the pid-1 geometry rows print (0x6B000
      apart). Abort frame (evf): pc 0x38132474 far 0x10 dfsr 7, r1 = 0.
-  xor_lr != 0: the host word at lr-0x500000 is 0x2871fff6 and the device's is 0x2800eaf2. The
+  xor_lr != 0: the device's word at lr is 0x2800eaf2 and the byte string 28 00 ea f2 occurs NOWHERE in
+the 316 MB cache (whole-file search), so lr is not a file VA plus any 0x1000 slide. The
   assumption "lr's file VA = lr - slide" stays UNSETTLED (the 1034 E12 caveat, now measured).
 
 ====================================================================================================
