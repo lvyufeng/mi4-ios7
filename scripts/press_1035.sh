@@ -150,9 +150,13 @@ PY
     _prev_epoch=$(date -u -d "${_d:0:4}-${_d:4:2}-${_d:6:2} ${_d:9:2}:${_d:11:2}:${_d:13:2}" +%s 2>/dev/null || echo "$_prev_epoch")
   fi
   echo "   previous capture: $_prev (file epoch $_prev_ep${_prev_epoch:+, boot epoch $_prev_epoch})"
-  # Known-burned boots: the 1034 trace's own timestamp, if the trace names it.
-  _last_press=$(grep -ohE 'PRESS: [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:]{8} UTC' records/1034-usysc-trace.txt 2>/dev/null | head -1 |
-                sed -E 's/^PRESS: //; s/ UTC$//' | { read -r d; [[ -n $d ]] && date -u -d "$d" +%s; } || true)
+  # MEASURED 2026-10-19: the draft read a `PRESS: <date> UTC` stamp from records/1034-usysc-trace.txt,
+  # which carries none; the clause came out empty, and the `-ge` test then treated EVERY capture as
+  # unrecovered (press refused on a capture made 2 min earlier).  The last press before this rung is
+  # 1033's, whose fruits were COMMITTED at 788dc5e; its capture (2026-10-18 19:27) and 1034's trace both
+  # postdate that commit, so a capture is recovered iff it is newer than it.  The 1034 trace itself is kept in records/ (E1-
+  # E13) and its capture (2026-10-18 19:27) was checked by hand before this press.
+  _last_press=$(git log -1 --format=%ct 788dc5e 2>/dev/null || true)
   if [[ -n ${_last_press:-} && -n ${_prev_epoch:-} && $_prev_epoch -ge $_last_press ]]; then
     _prev_ok=1
     echo "   (previous run's console is RECOVERED: capture epoch $_prev_epoch >= the last press epoch $_last_press)"
