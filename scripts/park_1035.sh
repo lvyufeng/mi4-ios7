@@ -73,12 +73,12 @@ echo "   BY VALUE(1-a7): the staged trap.c carries the pcc block (x1 gate, x1 #e
 # (b) THE OBJECTS AND THE LINKED IMAGE -- the press boots the ELF, which links the objects.
 [[ -f $_trap_obj && -f $_exec_obj ]] || { echo "REFUSING: the pool objects are absent"; exit 1; }
 for _k in '^xnu_live_pcc_seq=' '^xnu_live_pcc_pc=' '^xnu_live_pcc_lr=' '^xnu_live_pcc_r1=' '^xnu_live_pcc_r5=' \
-          '^xnu_live_pcc_r2=' '^xnu_live_pcc_r7=' '^xnu_live_pcc_near\[2\]=' '^xnu_live_pcc_near_ok\[2\]=' \
-          '^xnu_live_pcc_dev_xor_f0=' '^xnu_live_pcc_dev_xor_f1='; do
+          '^xnu_live_pcc_r2=' '^xnu_live_pcc_r7=' '^xnu_live_pcc_near2=' '^xnu_live_pcc_near2_ok=' \
+          '^xnu_live_pcc_xor_walk=' '^xnu_live_pcc_xor_table='; do
   grep -qa "$_k" <(strings "$_trap_obj") || { echo "REFUSING: $_trap_obj carries NO $_k row - the pool was not recompiled with $NEW=1, or the edit is partial. The cell reads the pc word's XOR against BOTH host candidates TOGETHER"; exit 1; }
   grep -qa "$_k" <(strings "$ELF") || { echo "REFUSING: the LINKED $ELF carries NO $_k string - the object was not linked into the image the press boots"; exit 1; }
 done
-echo "   BY VALUE(1): trap.o AND the linked image carry the pcc rows (seq/pc/lr/r1/r5/r2/r7/near[2]/near_ok[2]/xor_f0/xor_f1)"
+echo "   BY VALUE(1): trap.o AND the linked image carry the pcc rows (seq/pc/lr/r1/r5/r2/r7/near2/near2_ok/xor_walk/xor_table - the names tools/patch_d13_pc_carrier.py prints)"
 
 # (1b) THE INHERITED PARENTS SURVIVE THE REBUILD.
 for _k in '^xnu_live_evf_pc=' '^xnu_live_evf_far_raw=' '^xnu_live_abt_lookup_far=' '^xnu_live_rdr_far=' '^xnu_live_wrp_r4=' \
@@ -131,7 +131,7 @@ cp -p "$CHECKER" "$PARK/check_1035_capture.py"
 CARD_SHA=$(sha256sum "$CARD" | awk '{print $1}')
 
 # THE FROZEN RE-READ: the rung's own claims on the PARKED bytes.
-for _k in '^xnu_live_pcc_pc=' '^xnu_live_pcc_dev_xor_f0=' '^xnu_live_pcc_dev_xor_f1=' '^xnu_live_evf_pc=' \
+for _k in '^xnu_live_pcc_pc=' '^xnu_live_pcc_xor_walk=' '^xnu_live_pcc_xor_table=' '^xnu_live_evf_pc=' \
           '^xnu_live_cal_region_end=' '^xnu_live_wrp_r4=' '^xnu_live_abt_lookup_far='; do
   grep -qa "$_k" <(strings "$PARK/xnu_arm_entry.elf") || { echo "REFUSING: the FROZEN $PARK/xnu_arm_entry.elf lost $_k - the copy is not the certified bytes; remove $PARK and re-run"; exit 1; }
 done
