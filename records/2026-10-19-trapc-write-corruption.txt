@@ -1,0 +1,114 @@
+2026-10-19 -- external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c IS BEING REWRITTEN, twice per minute, by an
+unidentified writer. NOTHING IS BUILT, PARKED OR PRESSED FROM THIS TREE UNTIL IT IS EXPLAINED.
+
+WHAT WAS SEEN (all times UTC)
+
+  15:09  trap.c 112876 B: 1039 block present (bit5 spelling), tail ...\nvoid zz1(void){}\nvoid zz2(void){}\n
+  15:12  trap.c 112836 B: content SHA transposed -- the "finished" 1039 block becomes a TRUNCATED block
+         (ends mid-comment at offset 92954 = exactly the size of the /tmp/wlBtmp/hz victim file, 91788 B +
+         1028?), zz1/zz2 lands mid-file, and the 1038 chunk region appears TWICE.
+  15:16:00.25  same 112836 B / 7d-file hash, after a cp of the 100535 B staged file at 15:15.
+  15:17:14 / 15:17:21 / 15:18:26 / 15:19 / 15:21 / 15:22 / 15:24  that same 112836 B / 3ad1e4a6... every
+         time a "stable" copy was made; each write landed 1-3 s after an md5sum/cp command in this session.
+  When the same commands ran with the SESSION not touching the file, it held:
+  15:22:55 file = 36df4793 (the staged pre-1038 text) -- unchanged across several commands, BUILDABLE.
+  15:23    file = 100609 B, two lines MUTATED BY THE SESSION ITSELF: the seam's `#include "watch_le_hook.inc"`
+     line gained 5 spaces (my "rewrite indentation" splice hit the 1038 seam include instead of a slot
+     include), and a spurious `\t#endif /* STAGE90_XNU_USTACK_PROBE */` followed 1037's close. Both were my
+     edits and both BROKE watch_le --verify-off (seam: 0 matches). Corrected at 15:22:58 (36df4793).
+  15:24:02 the 112836 B victim file is back ON DISK with its 15:24:02 mtime.
+
+WHAT /tmp/wlBtmp/hz/osfmk/arm/trap.c (15:08, 112806 B) IS
+
+  Probably what the real build compiles for TRAP: the 1037 tree + the 1038 chunk appendix of probe1038
+  (91788 B = the pre-1038 base file written 15:11 as base2.c) + verbatim leftovers of an OLD 1039 draft
+  (bit5 spelling, a literal "\n" as the C newline in its clock lines, no #if FRAME_CARRIER head/tail) whose
+  head sits at line 1805 BEFORE 1025's close, with three dangling `#endif /* STAGE90_XNU_USTACK_PROBE */`
+  and no FRAME_CARRIER `#if` for them to close. dbg.err at 15:18: 6 errors.
+
+WHAT WAS LEARNED ABOUT THE STAGING (and what is wrong with build_1039.sh step 2)
+
+  The real tree's seam already carries the 1038 hook chunk (hook_block = include line + `#if WATCH_LE` ...
+  `#endif`, 1440 B) ON TOP of a slot-a/slot-b include spelling (watch_le_slot_a.inc / _b.inc) that this
+  restructured tree does NOT have. watch_le.py's current --apply REFUSES that text as "a partial splice"
+  (it expects the spliced chunk, not the hook_block), and --verify-off's OFF test only strips the
+  hook_block, so the slot includes survive OFF -> "removing the two edits leaves no ... include line of
+  ours: False". CONCLUSION: watch_le --apply must NOT be re-run on this tree. Staging 1039 = trap_frame
+  --restage + frame_carrier --apply ONLY, on a tree whose seam is already valid -- i.e. the 15:22:55
+  snapshot (36df4793cd00a0adbb0ea5f2584a72c875ab69612af7a795b058fa559cce7b95) which passed frame_carrier
+  --verify-off AND trap_frame --verify-off.
+
+16:00-16:50 -- WHAT WAS ACTUALLY WRITING IT: trap_frame --restage's first close, not an outside actor
+
+  At 16:05 the file held 36df4793 for >60 s across two reads with no process running (pgrep: none) and
+  was restored from /tmp/good-36df.c.  build_1039.sh step 2 calls trap_frame --restage on every run;
+  restage took `e = t.find("#endif /* TRAP_FRAME */", s)` -- the FIRST close after the head.  1037's
+  staged text opens the switch TWICE (rites/save, the parent line) and closes it ONCE, so `e` landed on
+  1037's inner close before code (h2=323 B), and the "restaged" block (10635 B) was written WITHOUT it:
+  every build run therefore rewrote trap.c into a 175709-179480 B file whose block is short 133/145 B
+  by value, the 1039 nest unwound (FRAME_CARRIER's tail no longer inside 1025's block), and a second
+  run (1039's opener now before 1037's close) put `j` past the close: the file lost 1037's close and
+  gained a duplicated header (75016 -> 177690 B, `cm@icloud.com>` mid-file).  Each run's own
+  --verify-off reported the damage; nothing built from it.  The 15:09-15:24 writes remain unexplained
+  (a source-size-sized truncation could not be reproduced by this function), but the 16:xx churn is
+  explained and fixed: restage now takes the LAST column-0 close after the FIRST column-0 opener and
+  REFUSES when the body carries inner closes its own text does not write.  Selftest 23/23.
+
+THE STAGED TEXT THAT EXISTS (temp root /tmp/xnuC, 100535 B, 58cc59c1...) WAS REJECTED
+
+  15:16: the watch_le --apply -> trap_frame --restage -> frame_carrier --apply chain ran clean on the
+  rebuilt base, but hook_block() and the slot includes carry ABSOLUTE PATHS bound to the TREE ARGUMENT:
+  staged in /tmp/xnuC they point at /tmp/xnuC; my first attempt to re-point ONE seam include duplicated
+  the hook (two `#if WATCH_LE` heads) and I "fixed" that with further edits that mutated the wrong lines.
+  The chain must be run ON THE REAL TREE (or with an absolute XNU tree path equal to the real one), and
+  every splice must be checked by re-reading the file and counting (`grep -c`), never by trusting a write.
+
+RECIPE THAT WAS VALIDATED (do this once the writer is explained)
+
+  1. Restore the 15:22:55 snapshot into external/.../osfmk/arm/trap.c
+     (sha256 36df4793cd00a0adbb0ea5f2584a72c875ab69612af7a795b058fa559cce7b95); re-read it and check the
+     hash before and after each subsequent step.
+  2. export STAGE90_XNU_TRAP_FRAME=1 STAGE90_XNU_FRAME_CARRIER=1 (NOT WATCH_LE: its --apply refuses and
+     its --verify-off cannot fold the slot spelling).
+  3. python3 -I tools/patch_d13_trap_frame.py <REAL xnu> --restage
+  4. python3 -I tools/patch_d13_frame_carrier.py <REAL xnu> --apply
+  5. --verify-off with frame_carrier and trap_frame; then build_1039.sh with step 2 (WATCH_LE --apply)
+     replaced by nothing, and step 3's 1038 verify-off heredoc removed.
+  6. Only after the file has held ONE hash for >= 60 s across two reads.
+
+UNEXPLAINED (do not guess): who writes the file. No build, clang, or python was running (ps at 15:25).
+Candidates not excluded: another Claude/agent session attached to this repo (scheduled tasks dir exists),
+the harness's own file-state machinery replaying a stale Write, or a filesystem-level actor on
+/mnt/data. Do NOT press the device or run build_1039.sh from this tree until the file holds still.
+================================================================================
+18:00-18:32 -- SECOND ONSET: the writer is active NOW, at a cadence of ~2 writes/minute
+================================================================================
+
+  Observed 18:10-18:32 (UTC), all on external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c unless named:
+  - a Write of mine at :16 (94388 B, sha e054...) read back intact and was found replaced by 18:17.
+  - :30:00 watch_le_hook.inc set to 0 BYTES (I never write that file; only watch_le's write_chunks does).
+  - :30:47 trap.c = 94718 B / 1839 lines: content = 1038's ROW chunk (rows from wlBtmp/NEW1038/alt),
+    the two hook stubs `void wl_nf(void) { TK1 = 1; }`, TWO `#endif /* STAGE90_XNU_USTACK_PROBE */`
+    and NO sleh_abort tail at all -- an OLD staged state, not a truncation of mine.
+  - A write of mine at :33 (good-36df, sha 36df4793...) also did not survive to the next read.
+  - 18:36-18:37: NOTHING new was found under external/xnu-hd2-darwin13/xnu, out/stage90,
+    out/xnu_kernel_obj_d13, tools or scripts (find -newermt '-6 minutes', trap.c itself untouched by
+    that window) -- the churn stopped or moved off these paths; UNCONFIRMED either way.
+
+  WHO, as far as can be told WITHOUT guessing: five other `claude --dangerously-skip-permissions`
+  processes are attached (pts/3,4,5,8,10; started Sep26-Oct12) besides this session. Only THIS
+  session's transcript (c273ed57, pts/?) has been written since 10-16. The 15:25 note's candidates
+  stand; no scheduled task file was found under ~/.claude.
+
+  CONSEQUENCES. Every check that reads the tree's 1039 text ("the staged block is a SUPERSEDED body")
+  is judging bytes this session did not write: /tmp/trap.c.pre-build1039 (14:57, sha 9e5397b8...) is
+  one such snapshot; it carries the PC-mismatch carrier body under a 1037 that lacks its own `#if`
+  head -- neither a pre-1039 base nor a threaded tree. It is NOT evidence about the patchers.
+  The only fully threaded snapshot in hand is /tmp/good-36df.c (15:25, sha 36df4793...; watch_le
+  --verify-off would FAIL on it only because watch_le now folds the slot-b spelling while its tree is
+  slot-a + the box1038 include -- its chunk writer was never run on that tree), plus /tmp/trap.c.good1039
+  (15:16, 112854 B) whose carrier body was DERIVED (same text as 36df's, lines 1468-1569, re-spelled
+  to the patcher's current indentation).
+
+  RULE (unchanged, now first-class): do NOT build, park or press from a tree whose hash has not held
+  still for >= 60 s across two reads. No device action so far; none taken from these trees.
