@@ -1152,6 +1152,18 @@ DEFINES=(
 # trap.o (build_1033.sh and park_1033.sh refuse on its absence).
 [[ ${STAGE90_XNU_EVAL_FRAME:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_EVAL_FRAME=1)
 
+# ---------------------------------------------------------------------------------------------------
+# 1035: STAGE90_XNU_PC_CARRIER -- read the DEVICE's page content at the faulting pc (records/1035-
+# carrier-by-pc-read.txt).  INSTRUMENT ONLY.  1033's pc 0x3819d474 and far 0x10 are the CPU's own
+# registers; what is open is WHICH bytes the device executed there (the host's file at pc-0x577000
+# is the libobjc walk, at pc itself the SAME bytes then decode as a small-integer table --
+# records/1034-design-errata.txt E12).  The switch adds a trap.c block (owned by
+# tools/patch_d13_pc_carrier.py) that copyin's the words around pc from the task map and prints
+# their XOR against the host's file words for BOTH candidates: a zero XOR is the whole reading.
+# Same GLOBAL ARRAY channel as every probe above (one argv for every pool object).  OFF compiles the
+# tree's bytes; the by-value reading is the format string `xnu_live_pcc_pc=` in trap.o.
+[[ ${STAGE90_XNU_PC_CARRIER:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_PC_CARRIER=1)
+
 # 1028: STAGE90_XNU_H2_STACK_HEADROOM -- the H2 FIX (docs/1028-design.md).  1027 read H2 (off-the-end):
 # the user-stack region's exclusive top IS p->user_stack, and the initial argv/env block's top is ALSO
 # p->user_stack, so the word at the top is unowned and userspace's touch faults.  This switch makes the

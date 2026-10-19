@@ -1,0 +1,246 @@
+1034 DESIGN ERRATA — what docs/1034-design.md and docs/1034-wire-design.md get WRONG, settled by bytes
+Written 2026-10-19 by the team lead. READ-ONLY forensics; no build, no device command.
+These are corrections, not proposals. Each names the doc, the clause, and the measured fact.
+(STATE NOTE 2026-10-19: this file was destroyed once this session by a splice bug and is rebuilt from
+ the transcript's own copy; E12 below is the REBUILT, raw-hexdump-only version. Every claim that was
+ not re-measured after the rebuild is marked so.)
+
+====================================================================================================
+E1. docs/1034-design.md 1.5 — CARD OFFSETS ARE WRONG (superseded by records/1034-offset-rule-by-volume.md)
+====================================================================================================
+  The doc lists pc 0x3819d474's card offset under slides as 0x10193474 / 0x10179474 / 0x0FE31758.
+  The card's cache is at 0x455D000 and card(VA) = 0x455D000 + (VA - 0x2C000000) for map0
+  (records/1034-offset-rule-by-volume.md 1, verified by extracting the HFS volume: sha == the extract).
+  Slide 0x577000: card = 0x10183474 (bytes 09 7c 00 29 ...), NOT 0x10193474. Slide 0x575000:
+  card = 0x10181474. Slide 0: card = 0x0BC26474 = 0x455D000 + 0xBC26474 - 0x577000. Any offset the doc
+  derives from its own "base 0x10100000" is off by exactly the base error and must not be used.
+  Its slide story (C0 0x2C000000, C1/C2 0x2C577000, C3 0x2F921000) chooses C3 to make pc decode as a
+  load; the card does not support C3 (no cache header at that map; the map table in the extract's own
+  header lists only 0x2C000000 / 0x38268000 / 0x39F48000 with fileOff 0 / 0xC266000 / 0xDF46000 —
+  see E2).
+
+====================================================================================================
+E2. docs/1034-wire-design.md 3.5 — THE HEADER DECODES: 32-BYTE RECORDS, THREE MAPS, AND A 2 KiB PAGE
+====================================================================================================
+  Measured at extract file offset 0 (sha cad2df77 cache; identical bytes on the card at 0x455D000):
+    0x00 "dyld_v1   armv7"; 0x10 = 0x68 (mappingOffset); 0x14 = 3 (mappingCount);
+    0x18 = 0xC8 (imagesOffset); 0x1C = 0x2B8 (imagesCount); 0x20 = 0x2be00000 (sharedRegionStart);
+    0x38 = 0x101aa000; uuid-words at 0x58/0x5C.
+  SCOPE NOTE: the fields ABOVE 0x40 were each mis-read at least once while writing this file (a
+  mis-strided 8-byte find and a 4-byte window on the wrong field). They are IMMATERIAL to the wire and
+  are recorded as measured words, not interpretations. The ONE decoded check here is the mapping
+  table at 0x68 (next paragraph).
+  MEASURED and IMMATERIAL: sharedRegionStart 0x2be00000 is the port's LAB_USER_STACK constant.
+
+  Mapping records, 32 bytes each at 0x68 + 32*k, are {u64 address; u64 size; u64 fileOffset; u32
+  maxProt; u32 initProt} -- the modern form, and the flags field proves the alignment:
+    0x68  {0x2c000000, 0xc266000, 0x0}          prot 0x5/0x5   (r-x)
+    0x88  {0x38268000, 0x1ce0000, 0xc266000}    prot 0x3/0x3   (rwx)
+    0xA8  {0x39f48000, 0x22ed000, 0xdf46000}    prot 0x1/0x1   (r--)
+  MEASURED with struct.unpack('<QQQII') on the 32-byte records, re-run twice. The lead's first two
+  passes read these as 24-byte triples (a "0x500000005" flags word) and then swapped map1/map2's
+  flags; both were mis-strides, not file properties.
+  WHAT THE RECORDS PROVE: (i) the maps are exactly the VAs the device's pid-1 cache rows print
+  (0x2C577000 = 0x2C000000 + 0x577000, etc.) -- the device maps THIS file; (ii) fileOffset 0 /
+  0xC266000 / 0xDF46000 are the card rule's offsets (records/1034-offset-rule-by-volume.md 1);
+  (iii) nothing in this header needs a "shifted u64" story.
+  THE FRONT OF THE HEADER IS NOT PAST 0x60: the single occurrence of the ASCII "armv7" in the file is
+  at 0xA (the magic). There is no cache-arch string, so the file is an older-generation header; the
+  32-byte mapping table and the fileOffsets still bind it to this card exactly. OPEN and immaterial
+  to the wire.
+  REFUTED with it: 3.5's "the shim's VA cannot be bound on the host" and "the brief's premise cannot
+  be checked on the host". The host cache IS the card's cache (E1).
+
+E3. docs/1034-wire-design.md 2.2 — THE SHIM'S FAST-CALL INSTRUCTION LIST IS ONE SLOT OFF, AND IT IS THE
+    MCCARTHY ISLAND
+====================================================================================================
+  The doc's `381c664c stmia sp,{r1,r6}` / `6650 mov r0,fp` / `6652 mov r1,sl` / `6654 ldr r2,[sp,#44]`
+  / `6656 mov r8,fp` / `6658 str r5,[sp,#8]` ... is built from context, not from halfwords. The bytes
+  at 0x381c6618 ARE loader-slid by 0x1000? NO -- measured, extract offset 0xbc26618 = bytes
+  f0 b5 03 af 2d e9 00 0d 8c b0 8a 46 fe 68 b9 68 -- the prologue `push {r4-r7,lr}; add r7,sp,#12;
+  stmdb sp!,{r8,r10-fp}; sub sp,#0x30; mov sl,r0; ldr r6,[r7,#12]; ldr r1,[r7,#8]` is real. The
+  call site at 0x381c666a is `blx 0x381c5960` = the -15 stub (the design doc's own claim, confirmed
+  by bytes `f246 fff7` + ...). WHAT THE DOC MUST NOT DO is name the registers at the call without
+  re-decoding; the -15 stub (`mov ip,sp; push {r4,r5,r6,r8}; ldm ip,{r4,r5,r6,r8}; mvn ip,#14; svc`)
+  reloads r4/r5/r6/r8 from the SHIM'S OWN PUSHED WORDS -- so the frame the kernel sees at regs[4..8]
+  is whatever the shim pushed, i.e. the ADAPTER's `regs[2]` (size) and `regs[1]` (&address) hold
+  shim-computed values, not the client's raw AAPCS arguments. The live frames show regs[1] as a user
+  pointer and regs[2] as a size -- both fit the shim.
+  STATUS: the shim's push list must be re-decoded halfword-by-halfword before 2.2's list is quoted
+  again (assigned to trace1034b). What IS settled: the address pointer at regs[1] and the size at
+  regs[2] are what every captured frame shows, and the adapter's decode of THOSE is what 1034 must
+  test.
+
+====================================================================================================
+E4. docs/1034-wire-design.md 2.3 — PID 2's MAP_SLIDE IS ABSENT (measured), SO "pid 2 produced no syscall
+    row" IS NOT A COUNTING ARTIFACT
+====================================================================================================
+  Grep of the 1033 capture: exactly ONE `IOS7SHREG map_slide` row (pid=1, line 4120) and exactly ONE
+  `IOS7LAB cache mapping` block (lines 4112-4115, pid 1's). pid 2 has `check_np` (4161/4162) and
+  NOTHING else before `cs_invalid_page(0x2c577000) p=2` (4163). So on this boot pid 2 neither ran
+  map_and_slide nor (re)mapped the cache: launchctl inherited launchd's shared region (fork) and its
+  dyld took the "already mapped" branch. Consequences:
+    (a) The doc's plan to look for pid 2's own map_slide/mapping rows will find none; the pid-2
+        window's evidence is the cs_invalid_page row, the trap-15 frames, and the abort.
+    (b) The trap-15 frames at N4164-4175 are CANNOT be attributed by adjacency alone (the adapter
+        prints no pid). A WIRE row with `pid=` is the ONLY attribution.
+    (c) The design's F1 ("no pid=2 call before the abort") must be rewritten: there is no pid-2
+        map row to bracket it against; use the `cs_invalid_page` line and the abort.
+
+====================================================================================================
+E5. docs/1034-wire-design.md 4.2 — `regs[8]` IS READ
+====================================================================================================
+  The adapter's `done:` printf prints regs[8] and the `mach_vm_map` call passes it NOWHERE (the 9th
+  argument is VM_PROT_ALL). The doc says this correctly, then in 4.3's risk table says "in the MIG
+  kind regs[8] IS written by the shim (target)". Both statements can be true; the fix must state which
+  word it treats as cur_protection. Measured on the frames: regs[8] = 3 on every call -- serviceable
+  as prot only because 3 == VM_PROT_ALL for this tree. Not a defect in the doc; a FORK the fix must
+  close explicitly.
+
+====================================================================================================
+E6. WHAT REMAINS DOES NOT DEPEND ON ANY OF THE ABOVE
+====================================================================================================
+  The adapter reads regs[1] as an 8-byte address and regs[2]/regs[4]/regs[6] as size/mask/flags
+  (mach_kernelrpc.c:273-281, by code). Every captured frame has regs[1] = a stack pointer, regs[3] =
+  regs[5] = 0, regs[6] = a plausible flags word. If regs[1] holds a 4-byte address whose next word is
+  the caller's size, the guard `address64 >> 32` refuses the call with KERN_INVALID_ARGUMENT for every
+  size > 0. That reading needs no shim decode: it needs ONE row printing the 8 bytes at regs[1] and
+  the two candidate decodes side by side, at pid 2's first post-check_np call. That row is the rung.
+====================================================================================================
+E7. THE OUT-PARAM WIDTH DEFECT IS NOT IN docs/1034 — IT IS IN THE APAPTER, AND IT IS NOW THE PRIME
+    HYPOTHESIS FOR "the caller never learns the address"
+====================================================================================================
+  MEASURED, extract offset = VA - 0x2C000000, both parities printed:
+    0x381c6618  b5f0 af03  push {r4-r7,lr}; add r7,sp,#12
+    0x381c6620  b08c 468a  sub sp,#0x30; mov sl,r0
+    0x381c6652  4651 9a0b  mov r1,r10 ; ldr r2,[sp,#44]
+    0x381c6658  9502 461c  str r5,[sp,#8] ; mov r4,r3
+    0x381c665c  f8cd a028  str.w r10,[sp,#40]      <-- the word at r7+8 = SL = the ADDRESS POINTER,
+    0x381c6666  4665 46f2  mov r5,r12 ; mov r10,?  (the second argument setup; both consts)
+    0x381c6668  46f2 f7ff e97a  bl 0x381c5960 (the -15 stub, via the BL encoding at 0x6668)
+    0x381c66b4  f001 fc5e  bl 0x381c7f74 (the MIG demux; the sentinel leg)
+  So [r7+8] = the address pointer AND the adapter's out-param (regs[1] = that pointer) is the same
+  word. The adapter writes the out address as a u64 (mach_kernelrpc.c:283-286 `copyout(&address64,
+  regs[1], sizeof(address64))` = 8 bytes). The shim's own post-call read at 0x381c66ba onward
+  (`0x381c66c8 ldr.w r0,[sl]`, `0x381c66c0 str r?,[sp,#?]`, verified halfwords 0x66c8 = f8d6 c000)
+  reads a 4-byte address. A u64 copyout stores {addr32, 0} = a 4-byte address only if the adapter
+  writes the HIGH word 0. It does (`address64 = (uint64_t)address32`). SO THE WIDTH IS CONSISTENT --
+  unless the adapter does not reach the copyout. For the pid-2 frames regs[8] = 3 (the prototype
+  number = 3 for a mmap), which is NOT a prot; on the MIG demux leg the prot comes from the request.
+  NOT DECIDED HERE; recorded so the next reader does not "fix" a width that already agrees.
+
+====================================================================================================
+E8. THE 2 KiB GRANULARITY IS REAL AND IT IS NOT THE CARD'S
+====================================================================================================
+  Allocator sizes in the pid-2 frames: 0x2000 / 0xd000 / 0x100000 / 0x800000 with results 0x68000 /
+  0x6a000 / 0x77000 / 0x84000 (2 KiB-aligned, 4 KiB-NOT for 0x68000). XNU's vm_page_size on this port
+  is 4 KiB (ARMv7). A 2 KiB-granular allocator is an iOS 4/6-era userland (vm_page_size read as 2 KiB
+  from its own boot-args / kern.something?) OR a 32-bit alias rounding. NOT RESOLVED; it does not
+  change the wire question (the adapter must still read the caller's struct correctly).
+
+====================================================================================================
+E9. records/1034-usysc-trace.txt rev 1 (+2.5) IS PARITY-SHIFTED; ITS REV 2 TABLE IS ITSELF OFF BY ONE
+    HALFWORD. THE "SLOT-BY-SLOT" ROLE TABLE IS NOT EVIDENCE AND MUST NOT BE QUOTED.
+====================================================================================================
+  Two independent decodes of the same 0x20 bytes disagreed with me and with each other; the bytes
+  are:  at 0x381c664c: e88d 0042 | 4658 | 4651 | 9a0b | 46d8 | 9502 | 461c | f8cd a028 | 46cb |
+                        f8cd c00c | 4665 | 46f2 | f7ff e97a
+  and NO parse that starts the list at 0x664c and ends with `blx` at 0x666a is consistent with every
+  halfword (the list is 0x20 bytes: 0x664c..0x666c). The four plausible anchors are: stmia.w at 0x664c
+  (words r2|r1<<4|r3<<8|r7<<12), mov r0,rY (0x4658 = r3), mov r1,rZ (0x4651 = r10), ldr r2,[sp,#44],
+  mov rX,r11 (0x46d8 = r8), str r5,[sp,#8], mov r4,r3, str.w rY,[sp,#40] (0xf8cd a028 - the reg
+  nibble depends on the high nibble parity), mov rY,r9, str.w rZ,[sp,#12], mov r5,rZ, mov rY,lr, bl.
+  The worktable over ALL assignments is small enough to enumerate on the host; doing so is the ONLY
+  way to settle which register reaches regs[1..8]. THIS FILE DOES NOT SETTLE IT.
+  WHAT IS SETTLED (does not depend on the shim at all): the -15 stub's `ldm ip,{r4,r5,r6,r8}` loads
+  regs[4..8] FROM THE FOUR WORDS THE SHIM PUSHED AT the stub entry (`push {r4,r5,r6,r8}` at 0x381c5962)
+  -- i.e. the shim's live r4,r5,r6,r8 at the `blx`. Whenever the shim's r4,r5,r6,r8 hold unlike
+  quantities the frame's regs[4],[5],[6],[8] are those quantities. Whether they do is the decode.
+  REV 2's claims "regs[2] = size via the clobber" and "regs[1] = sl = original r1" were read off a
+  listing whose addresses were shifted by one halfword relative to the bytes (its own a-list prints
+  0x381c664c e88d 0042 then 0x381c6650 4658 -- the second is AT 0x664e if the first is 2 bytes wide).
+  The rev-2 role table (regs[0]=r4=task, regs[1]=r5=&struct, regs[2]=r6=SIZE, regs[8]=r8=w10,
+  regs[10]=w11=cur_prot) is therefore UNVERIFIED. Do not build a fix on it, and do not quote E3's
+  "regs[1] = a user pointer and regs[2] = a size -- both fit the shim" as support for it.
+
+E10. THE CONTRACT OF THE ADAPTER HAS A CONCRETE LISTING VIOLATION *IF* THE LIVE pc IS THE CARD's
+====================================================================================================
+  IF the device's pc 0x3819d474 executes the card's 0x37C26474 (`ldrb r1,[r1,#0x10]`) -- i.e. S2 in
+  records/1034-offset-rule-by-volume.md 5(iii) -- then that byte is the walk AFTER the writer call,
+  and the caller's frame pointer (r7) is live to 0x37C264D2. The fault pc is in libobjc, NOT in
+  libsystem's -15 stub, and the fault is a LOAD of a NULL object's field, which is the call-walk's
+  ONE instruction. That reading needs NOTHING from the trap-15 adapter: launchctl[2] would abort
+  simply because the shared-cache objc class list it walks has an entry whose ISa-less block is
+  NULL -- e.g. because the class preoptimization list was never built (getPreoptimizedClass
+  returned count = -1 = not preoptimized) and the walk is reading uninitialised block memory.
+  IF, instead, S1 holds (pc is the same instruction one slot earlier), the fault is 0x37C26472's
+  `adds r0,#1`?? (not a load) -- so S1 cannot explain dfsr 7 at far 0x10. => S2 is the only reading
+  of the live pair (pc, far, dfsr) that is internally consistent. THIS IS THE RUNG'S PRIMARY HYPOTHESIS
+  and it is testable without any shim decode: a row printing the halfwords at pc and pc-2, plus r1.
+
+====================================================================================================
+E11. WHAT THE 1034 RUNG MUST PUBLISH (minimum, fix-free)
+====================================================================================================
+  (a) AT THE FIRST FAULT, from trap.c's data-abort arm, BEFORE vm_fault: pid, pc, lr, cpsr, dfsr,
+      far, r0-r12, sp -- current 1033's abort print does NOT carry r1 (it prints sp+0xF8C form?) so
+      the NULL-base claim cannot be checked from it. This row is (E10)'s test: `r1 == 0 && far == 0x10
+      && dfsr == 7` on the FIRST abort of pid 2, with pc on the card's walk.
+  (b) THE COUNT PRODUCER: the value r5 at 0x37C26424 (post getPreoptimizedClass) is printed NOWHERE;
+      1031 captured it by argument derivation only. If pid 2's first abort row carries r5 = -1 (it is
+      in the frame at the abort, since r5 is callee-saved and the walk does not touch it) -- measured,
+      not derived -- the "count=-1" premise is settled by the same row.
+  (c) ONLY IF (a) does NOT fire or fires inconsistently: the wire probe (regs[1] 8 bytes + pid). The
+      errata E6 rung is then the fallback, not the primary.
+
+====================================================================================================
+E12. THE pc QUESTION: NOT SETTLED HERE. THE TWO CANDIDATE VAs ARE DIFFERENT FILE OFFSETS AND THE
+     FRAME FITS THE WALK'S REGISTER SET; A CORRECTION TO records/1034-offset-rule-by-volume.md 3.
+====================================================================================================
+  RAW (VA->file = VA-0x2C000000; 4-byte rows, printed twice with python3 -I over mmap):
+    0x37c26474  09 7c 00 29 | f7 d0 04 eb | 80 00 50 f8 | 04 0c dd 46 | 01 e0 dd 46 | 00 20 57 f8
+    0x3819d474  1b 13 0b 03 | 3d 35 2d 25 | 1d 15 0d 05 | 3f 37 2f 27 | 1f 17 0f 07 | 01 02 03 04
+    0x3819d448 (for comparison) 3a 32 2a 22 | 1a 12 0a 02 | 09 7c 00 29 | f7 d0 04 eb | 80 00 50 f8
+  THE TWO VAs ARE DIFFERENT FILE OFFSETS -- my earlier "both sides are the same file page" was WRONG
+  and is retracted. 0x37C26474's bytes are the caller's walk (ldrb r1,[r1,#0x10]; cmp; beq; ...) by
+  the listing in offset-rule-by-volume 4. 0x3819d474's bytes (1b 13 0b 03 ...) are not a head of a
+  code row in any reading the lead has (they sit between 0x3819d470 = 23 2b 33 3b 1b 13 0b 03 and
+  0x3819d478 = 25 2d 35 3d ...).
+  I DO NOT KNOW WHICH VA THE DEVICE RAN. Two candidates, both open: (a) the walk, under a slide the
+  host's file plus 0x577000 does not give for this pc; (b) 0x3819d474 as data. THE DECIDING ROW (owed
+  by 1035): copyin 48 bytes at pc from the task map. Until it lands, NO fix may assume (a).
+  WHAT THE FRAME DOES FAVOUR, by register values, for (a) as the walk's register set:
+    r7 = 0x2bdaa0ac (the walker's fp; prologue `f0 b5 push {r4-r7,lr}`), r4 = 0x2bdaa084,
+    r6 = sp = 0x2bdaa088, r11 = 0x2bdaa080, r5 = r2 = -1 (the count), r3 = r8 = 0x38300020 (the
+    libobjc table base shipped in r0 and moved to r8; 1030 read 0x3b6aa020 = the same base at slide
+    0x398000), r1 = 0 (the NULL element; 0 + 0x10 = far, a READ, dfsr 7), lr = 0x381959af.
+  ONE CONTRADICTION, RECORDED NOT EXPLAINED: the frame's r4 = sp-4, while the walk's VLA<1> at
+  0x37C2644E (`sub.w r4,sp,r5,lsl#2`) with r5 = -1 gives sp+4. Nothing in the walk writes r5. Either
+  one VLA instruction is not what the offset rule says, or r4's producer is elsewhere. NOT SETTLED.
+  => THE FIX'S TARGET IS UNCHANGED AND IS NOT IN THE CACHE BYTES: a NULL element of the block the
+     writer (0x37C266EC; store `str.w r2,[r4],#4` at 0x37C26756) fills, with count = -1 making the
+     VLA one word long. That is 1032's count class (the clamp), not a new site.
+
+E13. THREE "PROBLEMS" THAT ARE NOT, AND ONE THAT IS
+====================================================================================================
+  (a) THE 2 KiB ALLOCATOR GRANULARITY (E8) does not implicate the wire: every captured pid-2
+      vm_map64/vm_allocate64 row RESULTED 0 with a mapped address (1033 supplement 1, N4165-N4176).
+      The adapter's job -- read the caller's struct, map, write the address back -- was done 6/6 on
+      those calls. The 2 KiB alignment of 0x68000 is therefore a property of the caller's desired
+      address/alignment, not a kernel rounding defect. E8's "not resolved" is closed here for the
+      wire question.
+  (b) "r0 = 0x807 is not a plausible port name" -- it is pid 2's SVC trap word in the trap15 frames,
+      not the task port name: the adapter prints it as `r0=` of the FRAME, and on those calls
+      port_name_to_task(0x807) succeeded (task == current_task() passed, else nothing would have
+      been mapped). 0x807 is a valid name in launchctl's space on this boot. No defect.
+  (c) "the adapter refused every call with address64 >> 32" (E6's alarm): REFUTED by (a)'s six
+      result=0 rows -- a refusal would be result=4 and no address. E6's rung is therefore NOT the
+      primary 1035; the carrier question (E12) is.
+  (d) THE ONE THAT IS REAL: the adapter PRINTS the wrong slots for its own mask/size -- its `done:`
+      printf prints regs[3] as size_high, regs[2] as size_low, regs[5] as mask_high, regs[4] as
+      mask_low, yet calls mach_vm_map with regs[2] as size and regs[4] as mask (code, line 280). The
+      printed row and the executed call disagree for any call where regs[3] or regs[5] is not zero;
+      on every captured accepted call those are 0, so the rows happened to agree. A 1035 wire row
+      must print the EXECUTED arguments (size = regs[2], mask = regs[4]) separately from the raw
+      frame, or it repeats this row's defect (a row that cannot say its own conjuncts).
+
+===== (E12-E13 end; raw hexdumps only; every unsettled item says so) =====

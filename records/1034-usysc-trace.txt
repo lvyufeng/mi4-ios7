@@ -1,0 +1,133 @@
+1034 USER-SYSCALL -> TRAP-15 TRACE  (read-only: no build, no device, no edit outside this file)
+2026-10-19 (rev 2: records/1034-carrier-static.txt adopted; fast path re-decoded halfword by halfword;
+1034 capture re-read).  Cache bytes: /tmp/dyld-extract/dyld_shared_cache_armv7,
+sha256 cad2df77...c0d2c.
+
+HOW THE EXTRACT ADDRESSES BYTES (replaces "file offset = VA - 0x2C000000"):
+  dyld_v1 header at 0 (old format): magic "dyld_v1  armv7", mappingOffset = u32@0x10 = 0x68,
+  mappingCount = u32@0x14 = 3, records of 24 bytes {u32 address; u32 size; u64 fileOffset}:
+    @0x68  (0x2c000000, 0x0c266000, 0)
+    @0x80  (0x38268000, 0x01ce0000, 0x0c266000)
+    @0x98  (0x39f48000, 0x022ed000, 0x0df46000)
+  For every VA this trace uses (0x381cxxxx, 0x3812xxxx) the answer is mapping 0, so
+  file = VA - 0x2c000000 BY CONSTRUCTION of this extract.  Card image: card =
+  0x455D000 + (VA - 0x2c000000) (out/stage90/xnu_card_hfs.img).
+  The capture's "cache mapping 3 ... offset=12bda000" rows (e.g. 1034 capture 4115) are NOT a header
+  mapping; 0x12bda000 sits in the header's slide-info area.  Do not derive file offsets from it.
+
+=====================================================================================
+VERDICT
+=====================================================================================
+No UNIX syscall and no in-kernel re-dispatch shim sits on the path.  `_mach_vm_map` issues a NEGATIVE
+trap (`mvn ip,#14` => -15 => mach_trap_table[15]); `traps_lo.s swi_mach` indexes the table and `bx`es
+row 15 with `r0 = r8` = the USER SAVED REGISTER FRAME (user r0..r12, sp, lr).  The adapter's
+`regs[n]` = user `r<n>` - the frame is the user's own registers, unmodified; "the wire reading is
+wrong" is FALSE as a register-identity claim.  The by-value finding is about what the shim PUTS in
+those registers: on the FAST leg
+  regs[0]=r4=task, regs[1]=r5=&{address,size}, regs[2]=r6=SIZE, regs[4]=r7=w9, regs[5]=r8=w10,
+  regs[6]=r9(SB)=w3=EFFECTIVE FLAGS, regs[10]=r11(FP)=w11=cur_prot.
+The adapter reads flags from regs[6] (it is w3: works), mask_hi from regs[5] (it is w10: wrong),
+cur_prot from regs[8] (it is w10: wrong).  On the live FAST frames regs[4] (=w9) was 0 in the
+result=0 rows and non-zero (VM_TRU32 / 0xffff) in the result=4 rows, where the `regs[3] || regs[4]
+|| regs[5]` test rejected it before the call.  On the SLOW leg the task/&struct/size land in
+regs[4]/[5]/[6], so the adapter's regs[0] is not the task at all.
+
+=====================================================================================
+1. SYSCALL NUMBER: NONE
+=====================================================================================
+  * mach stubs are negative-number stubs (ARM, decoded): 0x381c5944 mov ip,sp; push {r4,r5,r6,r8};
+    ldm ip,{r4,r5,r6}; mvn ip,#13 (=-14=10); svc.  0x381c5960 mov ip,sp; push {r4,r5,r6,r8};
+    ldm ip,{r4,r5,r6,r8}; mvn ip,#14 (=-15=15); svc.  :597c mvn ip,#15 (=-16).  0x381c57e4 mvn ip,#2
+    (=-3, timebase; == live usvc_num 0xfffffffd).
+  * UNIX table (external/xnu-hd2-darwin13/xnu/bsd/kern/syscalls.master): no compat/ios7lab arm, no
+    mach entry; line 41 `0 { int nosys(void); } { indirect syscall }` = POSIX syscall(); 198
+    `{ __syscall }`; line 73 `31 getpeername` (unrelated to mach 31).  unix_syscall
+    (bsd/dev/arm/unix_syscalls.c:322/:337/:353-365) never calls a trap adapter.
+  * Capture: usvc values -3, -28/-27/-26 and small positive; never -15 or -31
+    (records/1020-trap-dispatch.txt §4(b)).
+
+=====================================================================================
+2. CHAIN AND FRAME (re-decoded)   [headline section; full detail in §2-full]
+=====================================================================================
+Facts (bytes: 8d e8 42 00 | 58 46 | 51 46 | 0b 9a | d8 46 | 02 95 | 1c 46 | cd f8 28 a0 | cb 46 |
+cd f8 0c c0 | 65 46 | f2 46 | ff f7 7a e9, at 0x381c664c..0x381c666c):
+  push {r4,r5,r6,r7,lr}; add r7,sp,#12; stmdb sp!,{r8,sl,fp}; sub sp,#48   (0x381c6618-20)
+  mov sl,r1; ldr r6,[r7,#12]; ldr r1,[r7,#8]; mov fp,r0; ldr.w r9,[r7,#44]; ldr.w lr,[r7,#40];
+  ldr.w ip,[r7,#36]; ldr r5,[r7,#16]; ldr r0,[r7,#20]; str r2,[sp,#44]      (0x381c6622-3a)
+  guard: cmp r0,#0 / beq; cmp.w lr,#7 / it eq / cmpeq.w r9,#1 / beq      (0x381c663c-4a)
+  FAST: stmia.w sp,{r1,r6}; mov r0,fp; mov r1,sl; ldr r2,[sp,#44]; mov r8,fp; str r5,[sp,#8];
+        mov r4,r3; str.w sl,[sp,#40]; mov fp,r9; str.w ip,[sp,#12]; mov r5,ip; mov sl,lr;
+        blx 0x381c5960                                                    (0x381c664c-6a)
+  stub 0x381c5960: mov ip,sp; push {r4,r5,r6,r8}; ldm ip,{r4,r5,r6,r8}  (list 0x170: NO r7);
+        mvn ip,#14; svc #0x80.  The ldm base is ip = the OLD sp (the 4 pushed words), and
+        r4..r8 are pushed BEFORE; nothing before the svc writes r0.
+Kernel: fleh_swi (traps_lo.s:122-130) saves user r0-lr into the frame; :194 `rsbs r5,r11,#0`;
+  :197-214 swi_mach -> mach_trap_table + 15*12, `mov r0,r8`, `bx fn`; syscall_sw.c:127 row.
+  On __arm__ MACH_TRAP drops arg_count/munges (syscall_sw.h:91-97); no reordering.
+Frame at the svc (stub rX -> user slot regs[X]):
+  regs[0]=r4=task · regs[1]=r5=&{addr,size}=user r1 · regs[2]=r6=SIZE=user r2 · regs[3]=r3 entry ·
+  regs[4]=r7=user r7 (frame ptr) · regs[5]=r8=user r8 (w10) · regs[6]=r9 SB=user r9 (= w3, the
+  EFFECTIVE FLAGS) · regs[7]=user r7 · regs[8]=user r8 (w10) · regs[9]=SB (w3) ·
+  regs[10]=SL=w11 (cur_prot) · regs[11]=FP=user r11 · regs[12]=ip=-15.
+FILE OFFSETS: FAST at the blx {r4,r5,r6,r8} = {task, &struct, size, task}.
+=> regs[2] (size) IS the shim's r6, which the clobber MOVED to r8 (ldm) - NOT [sp,#44] as the draft
+   said.  regs[1] (&address) = sl = the original r1.  BOTH answers are YES.
+By-value proof (1034 capture lines 4122-4134 pid 1 r0=0x103, 4164-4176 pid 2 r0=0x807):
+  flags row: r3=0 r4=0 r5=0 r6=0x49000001 r8=3 -> effective r3=0, r4=w9=0, r5=r6=0x49000001, r6=w3=3
+  result=0.  mask row: r4=0x000fffff (=w9) r6=0x07000001 (=0x07000000|w3=1) row prints result=4 with
+  no address (the `regs[3]||regs[4]||regs[5]` test fired on regs[4]=r7=w9): that IS the refusal
+  shape.  vm_map64 prints "flags=7000001" - the adapter's "flags" slot reads w3, not the flags arg.
+
+=====================================================================================
+4. ADDRESS POINTER (Q4)
+=====================================================================================
+  r1 is the FIRST argument register (AAPCS) and the shim passes it through twice: `mov sl,r1` (kept)
+  and `mov r1,sl` before the stub; the stub loads r5 from [sp,#0] = caller w2, and w2 was loaded as
+  r1 at :626 (`ldr r1,[r7,#8]`).  Both legs therefore put the 8-byte {vm_address_t address;
+  vm_size_t size;} POINTER in regs[1] - the slot the adapter copyins/copyouts (mach_kernelrpc.c:273/
+  /285).  Live: r1=0x2bdaa108/0x2bdaa0b8/0x2bdaa018 (pid 2) = plausible stack pointers; adapter
+  copyin'd them and wrote back addresses 0x67000/0x68000/... -> the struct IS there, 12 bytes.
+  The 1034 frame (r0=1, r1=0, r2=0xffffffff, r12=0x4000, pc 0x3819d474) is NOT a trap-15 frame of
+  this shim (r12 is the shim's -15; it is 0x4000; pc is not the stub's svc); do not merge it.
+
+=====================================================================================
+5. KERNEL CALLERS OF mach_vm_map() (Q5)
+=====================================================================================
+  On a trap path: only mach_kernelrpc.c:280.  Not on it: vm_user.c:984/:1017 (vm_map_64/vm_map),
+  vm32_user.c:269 (vm_map_32 - MIG user-message server, second user route), kext_alloc.c:172,
+  bsd/kern/mach_loader.c:1022, bsd/kern/pthread_synch.c:248/:1092, bsd/kern/sysv_shm.c:458,
+  bsd/dev/dtrace/dtrace_ptss.c:173.  No other mach_trap_table row calls mach_vm_map.
+
+=====================================================================================
+6. OWED
+=====================================================================================
+  * One live SLOW-leg frame (regs[0..8] printout) - none in any capture: every trap15 frame is FAST.
+  * The shim's {r4..r8} at the blx on a SLOW-path caller is DEAD at the stub (regs[0..3] = stack
+    copy) -> the adapter sees task only because nothing reloads them; a reading of the SLOW leg must
+    show regs[0]=&struct, confirming the adapter's SLOW behaviour (MACH_SEND_INVALID_DEST), or the
+    absence of SLOW traps.
+  * A symbol for 0x381c6618 (stripped cache); identity rests on the guard shape + blx 0x381c5960.
+
+=====================================================================================
+7. WHAT CHANGED FROM REV 1 (each was WRONG in rev 1)
+=====================================================================================
+  a. "file offset = VA - 0x2C000000" -> derived from the header's mapping 0 (above).
+  b. FAST-path decode, halfword by halfword (what I printed and checked this session; the clobbers
+     are the same at every offset):
+       0x381c664c e88d 0042  stmia.w sp,{r1,r6}      0x381c6650 4658  mov r0,fp
+       0x381c6652 4651       mov r1,sl               0x381c6654 9a0b  ldr r2,[sp,#44]
+       0x381c6656 46d8       mov r8,fp               0x381c6658 9502  str r5,[sp,#8]
+       0x381c665a 461c       mov r4,r3               0x381c665c f8cd a028 str.w sl,[sp,#40]
+       0x381c6660 46cb       mov fp,r9               0x381c6662 f8cd c00c str.w ip,[sp,#12]
+       0x381c6666 4665       mov r5,ip               0x381c6668 46f2  mov sl,lr
+       0x381c666a f7ff e97a  blx 0x381c5960
+     Register numbers were hand-decoded from the halfwords and cross-checked by the `od` listing of
+     the same bytes.  Rev 1's role table needed two fixes: regs[2] (size) = r6 via the clobber,
+     NOT [sp,#44]; and regs[3] = stub r4 = the caller's r3 entry (`mov r4,r3`), not w9.
+     Rev 1's claim that slot 6 is w3 = flags is confirmed by the live result=0 rows.
+  c. "regs[6]=w3 is flags" is confirmed; "regs[5]=w10=7 -> REFUSED for every call" is replaced: the
+     observed FAST frames carry r8=0 and map with result=0; the refusals seen are regs[4] / regs[3]
+     shapes (copyin(refused pointer) rows print result=4).
+  d. The 1034 live frame (r0=1, r1=0) is NOT the same call as the 1022 r0=0x807 frame AND is not a
+     trap-15 frame at all (r12=0x4000, pc not the stub).  pid 2's 0x807 frames are real trap-15 FAST
+     frames - 0x807 IS a task name on pid 2.

@@ -1,0 +1,73 @@
+1035 — THE pc QUESTION, ANSWERED BY READING THE FAULTING INSTRUCTION'S OWN PAGE CONTENT FROM THE
+DEVICE (not from the host's cache file)
+Written 2026-10-19 by the team lead. READ-ONLY design: no build, no press. Plan only; the rows below
+are owed and no row of this kind exists in any capture.
+
+====================================================================================================
+1. WHY THIS ROW AND NOTHING ELSE FIRST
+====================================================================================================
+  records/1033-reading.txt leaves two candidates for launchctl[2]'s faulting instruction and both
+  are still open after 1034's forensics (records/1034-design-errata.txt E12):
+    (a) the device's pc 0x3819d474 executed the file's VA 0x37C26474 (the caller's walk,
+        `09 7c 00 29` = ldrb r1,[r1,#0x10] at le) -- i.e. the image did NOT run at the slide the
+        host's file plus 0x577000 gives;
+    (b) the device's pc is a data word in the image as the host holds it.
+  The frame's registers fit (a) for the walk's register set and the adapter's rows prove the trap
+  path mapped six regions with result=0 (records/1034-design-errata.txt E13(a)). The ONE thing not
+  yet read that separates (a) from (b) is THE CONTENT AT THE pc IN THE DEVICE'S OWN TASK MAP. That
+  content is readable from the kernel without copyin at all:
+    the abort's `map` and the 64-bit page table entry the walk-through (AT) would find for the pc
+    page, the entry's PA, and a privilege read of the PA.
+  A privilege read of a shared-cache page's PA is the "measurement can be wrong" class: if the
+  content at PA equals the host file's bytes for one candidate and not the other, that candidate's
+  file VA is the one the device took to that PA, because the shared cache's fileOff -> PA mapping
+  preserves the file's low 12 bits only if the slide is page-multiple (it is, 0x577000) and the
+  page offset is equal -- true for BOTH candidates (both at ..474). So the page OFFSET does not
+  distinguish them; the PAGE_CONTENT does.
+
+====================================================================================================
+2. THE ROW (STAGE90_XNU_PC_CARRIER = 1; trap.c, 1025's failure arm, after 1033's evf block)
+====================================================================================================
+  xnu_live_pcc_seq=            first 4 only (own counter)
+  xnu_live_pcc_pid=
+  xnu_live_pcc_pc= / _lr= / _r1= / _r5= / _r2= / _r7=
+  xnu_live_pcc_near[i]=        <= 6 x u32, `copyin` through task map, at pc-0x20, pc-0x08, pc,
+                               pc+0x08, pc+0x20, and lr
+  xnu_live_pcc_near_ok[i]=     1 iff that copyin succeeded (a read that cannot say its conjunct is
+                               not a reading)
+  xnu_live_pcc_dev_xor_f0=     near_pc[pc] ^ 0x29007c09   (0 iff the device's pc word IS the walk's)
+  xnu_live_pcc_dev_xor_f1=     near_pc[pc] ^ 0x030b131b   (0 iff it IS the arm64e-table word)
+  xnu_live_pcc_dev_xor_lr=     near[lr] ^ host u32 at (lr - 0x577000 - 0x2C000000) = 0x2871fff6
+  xnu_live_pcc_dev_xor_m08=    near[pc-0x08] ^ host 0x37C2646C (0xf856d20b = ldr.w r1,[r6,r0,lsl#2] + adds)
+  xnu_live_pcc_dev_xor_p08=    near[pc+0x08] ^ host 0x37C2647C (0xf8500080 = add.w r0,r4,r0,lsl#2)
+  xnu_live_pcc_dev_xor_p20=    near[pc+0x20] ^ host 0x37C26494 (0xd1054291 = cmp r1,r2/bne of the caller's join)
+  xnu_live_pcc_host_slide=     0x577000 (the slide every pid-1 row in this capture reports)
+  THE HOST WORDS ARE BAKED IN AT BUILD TIME from /tmp/dyld-extract (sha cad2df77, == the card, E1) and
+  a build assertion re-reads them; the row prints the XOR so "0" is the whole test, and a non-zero
+  XOR prints both operands via two more rows (_dev, _host).
+  COST: 6 guarded copyins on the first 4 user faults of pid 2 only; nothing else. The 1033 idiom
+  (vm_map_lookup_entry gate, _ok rows) is used unchanged.
+
+====================================================================================================
+3. WHAT EACH OUTCOME MEANS (pre-registered; do not re-interpret afterwards)
+====================================================================================================
+  P1  dev_xor_f0 == 0 on the first fault -> the device ran (a): pc is the walk. FIX: 1032's count
+      class (the clamp is right in kind; the next rung makes count >= 0 before the VLA).
+  P2  dev_xor_f1 == 0 -> the device ran (b): pc is data; the fault is not an instruction fetch gone
+      wrong but the CPU reading a word as code. FIX: none of the cache bytes; the frontier is WHY
+      the pc points there (a branch into the wrong page -- read lr's target next).
+  P3  both non-zero -> NEITHER host candidate is the device's page; the device served a DIFFERENT
+      CACHE than the card's. That is the card-identity question of 1033-reading's CAVEAT, now
+      actionable: dump the device's cache header at 0x2c577000 and its page for pc via the same row.
+  P4  near_ok == 0 -> the pc page is not readable in the task map (then the abort's own translation
+      fault is at the PC PAGE, not at 0x10, and the read is refused); the row says so with _ok=0.
+  NO outcome licenses a fix without the row.
+
+====================================================================================================
+4. WHAT THIS RUNG DOES NOT DO
+====================================================================================================
+  * It does not touch the cache, the clamp, or any count. It is an instrument.
+  * It does not test the trap-15 wire (E13(c) closed that: 6/6 result=0, so the adapter works on
+    every call launchctl actually made before the abort).
+  * It does not read `/proc` or the user's dyld. (pid 2's `dyld_all_image_info_addr` 0x2be76c8c IS
+    present -- an argument to launchctl from launchd[1] -- but it is not needed for this row.)
