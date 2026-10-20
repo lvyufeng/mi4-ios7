@@ -1,0 +1,8 @@
+1038 WINDOW GAP (found by --emitter-missing while the selftest was being fixed):
+  check_1038_capture.py --emitter-missing tools/patch_d13_watch_le.py prints
+  s3 s3_ok bp0..bp3 (+_ok)  -> exit 1.  Cause: WIN_TEXT (_wl_sv[2], _wl_bw[k]) was appended to B_STACK's
+  tdfar row when the B_X rows were consolidated there; the A's-word text no longer emits them.
+  B_X (the function boundary: bp0 = saved r11, fp = bp0; the 32 bytes of s3) was NOT written:
+  the arms never populate _wl_bw/_wl_bo, so printing them would emit 0x00000000 for every row --
+  a stand-in the right size and the wrong value, bound as a REQUIRED row.  Suspect 1039 (the frame
+  carrier) carries that read.  No device action; nothing staged.
