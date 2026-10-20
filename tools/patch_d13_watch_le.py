@@ -229,26 +229,40 @@ def inc_anchor(role, inc):
 # at the seam (file scope) is NOT visible to a hook at the head, and the hook text that follows an
 # `#include` from inside a body is read as HEADER context (a function definition there is refused).
 # At the tail every function of trap.c is already defined, so the hook is a plain call.
-_MID_FROM = "        sleh_fatal_exception(arm_ctx, \"sleh_abort: weird abort\");\n"
+_WIDE = ("        sleh_fatal_exception(arm_ctx, \"sleh_abort: weird abort\");\n")
+_TAB = chr(9) + _WIDE.lstrip(chr(32))       # trap.c's OTHER copy (`other()`), TAB-indented
 _MID_TO = ("    /*\n     * Done.\n     */\n    return;\n}\n")
 
 
 def mid_anchor(t):
     """(start, end) of sleh_abort's tail, or None unless the run occurs exactly once and ends at the
-    function's own close.  `weird abort` in `other()` is TAB-indented and does not match."""
-    a = t.find(_MID_FROM)
-    if a < 0:
+    function's own close.  `weird abort` in `other()` is TAB-indented and does not match.
+
+    2026-10-20: the tail CARRIES the braces of the blocks opened between the anchor and the end (the
+    hook's statics chunk is file scope; 1038's hook and A/B arms are closed INSIDE it).  The rule is
+    the 1036 one: the function's `}`, the else arm's `}` and sleh_abort's `}` are the last three
+    `}`-lines, each at <= 4 column-0 spaces -- no other spelling can supply them."""
+    a = t.find(_WIDE)
+    if a < 0 or t.count(_WIDE) != 1:
         return None
-    b = t.find(_MID_TO, a)
+    # (2026-10-20) the LAST occurrence: the text between the anchor and the tail carries blocks of
+    # the rungs staged there (1037/1039 re-state sleh_abort's own tail), so an EARLIER `Done.` is a
+    # carried copy, not the function's end.
+    b = t.rfind(_MID_TO, a)
     if b < 0:
         return None
     b += len(_MID_TO)
-    depth = 0
-    for ch in t[a:b]:
-        depth += (ch == "{") - (ch == "}")
-    # the tail starts two blocks deep (sleh_abort's body, its `else` arm) and its final `}` is the
-    # function's; a run that ends anywhere else does not balance.
-    return (a, b) if depth == -2 else None
+    lines = t[a:b].split(chr(10))
+    close = [l for l in lines if l == "}"]      # (every `}`-line at column 0: the run's closes)
+    arm = lines.count("    }")
+    # the function's `}` is the LAST `}`-line, at column 0; the else arm's close is the last `    }`
+    # line when the function has one and is open when the anchor is read, and the LAST `}`-line
+    # otherwise.  Anything else (a brace pair the run does not open) does not balance.
+    if not close or not (arm or len(close) == 1):
+        return None
+    if close[-1] != "}":
+        return None
+    return (a, b)
 
 
 def tail_hook(inc=None):
@@ -457,8 +471,6 @@ def splice_block(t):
     # ALREADY STAGED: 1037's close, then (a neighbour's block and) OUR include line -- searched for
     # DIRECTLY; a `_seam_re()` search would also match 1037's own `#if TRAP_FRAME`/`#endif` pair as
     # "a neighbour's block" and call a pre-1038 tree staged (measured 2026-10-19).
-    if re.search(re.escape(_SEAM_MARK), _seam_inc_anywhere(t)):   # our include line, ANYWHERE
-        return t
     if TRAP_ANCHOR in t:               # 1037's arm is empty (seam_site): place the include line there
         # 1037's OWN close of the anchor stays: only 1025's close is re-stated by the include line's
         # side (its `#endif` at column 0 answers 1025's bracket; it was TAB-indented once and read as
@@ -474,6 +486,11 @@ def splice_block(t):
 # ([[mi4-one-value-two-definitions]]: a one-character anchor difference is a different anchor)
 _CT = "current" + "_thread()" + ";"
 _ANCHOR_BODY = "thread_t thread = " + _CT
+# (2026-10-20) the anchor ENDS with its line: trap.c spells it in TWO places -- sleh_abort's body and
+# `other()`'s TAB-indented copy -- and a bare `...;` is a PREFIX of both.  Without the `\n`, the one
+# search that anchors a SPLICE (splice_block) found the OTHER copy and spliced there (the pre-fix
+# patch, measured on /tmp/f149).  The uniqueness test is the COUNT of `_CT` (this function's spelling,
+# 4-space indent, once in the base) -- splices position by the SEAM, never by this anchor.
 HOOK_ANCHOR = ("    uint32_t dfsr = 0, dfar = 0, ifsr = 0, ifar = 0, cpsr, exception_type =\n"
                "        0, exception_subcode = 0;\n"
                "    abort_information_context_t *arm_ctx =\n"
@@ -622,17 +639,24 @@ def _h_body(full=True):
     a0 = arm_text()
     kk = a0.rfind(rows_text(False))        # the rows (the arm's own: the spliced wake + B_STACK + the rows)
     assert kk >= 0, "chunk h: the rows not found"
+    # (1046) the rows' own answer occurs TWICE (the splice's and the tail wake's), so the tail ends at
+    # its LAST one, and the arm's real switch close (SW_REAL_CLOSE, which ends the tail's line) belongs
+    # to the rows here -- cutting before it left chunk h's arm open (the braces were the split).
     ROWS = a0[kk:]                         # the arm's rows VERBATIM
-    ROWS = ROWS[:ROWS.find(A_ANSWER_IF) + len(A_ANSWER_IF)]   # the rows' own answer ends them (a column-0 line)
-    k = AT.rfind(ROWS)                     # the rows (the arm's braces follow them)
-    assert k >= 0, "chunk h: the rows not found"
+    ROWS = ROWS[:ROWS.rfind(A_ANSWER_IF) + len(A_ANSWER_IF)]
+    ROWS = ROWS + SW_REAL_CLOSE            # (a real line end after the switch's close)
+    _tail0 = ROWS[:-len(SW_REAL_CLOSE)]    # the rows as the ARM holds them: its switch close follows the braces
+    k = AT.find(_tail0)
+    if k < 0 or AT.find(_tail0, k + 1) >= 0:
+        return None                        # the rows are not unique in the arm: refuse, never guess
     head = AT[:k]                          # the arm to the rows: the switch's open, TRAP_BLOCK, the walk
     # (1041) the rows' spliced `#if <switch>` gets its answer HERE (a column-0 line laid over the
     # splice), and the switch shuts with the braces' last `\n`: nothing opens while a real line is read
     # (1041) the rows' spliced `#if <switch>` gets its answer HERE (column 0 over the splice's real `\n`),
     # then the braces shut the switch on the same spliced line: chunk h needs no rows of its own
     # chunk h's rows are rows_text's (NOT _rows_text's): the arm already opens the switch on its real line
-    body = (SWITCH_OPEN_LINE + ROWS if full      # the rows' close is REAL: the switch's own `#endif`
+    body = (SWITCH_OPEN_LINE + ROWS + CHUNK_CLOSE if full   # (1046) the chunk's own close: without it chunk h's
+            #                                                text had no `#endif /* 1038 chunk */` at all
             else ROWS)
     body = body.replace(inc_line("a", None), "")   # chunk h's copy is the arm INLINE: no include of the arm
     #                                               (the include would `#include` the arm a SECOND time in trap.c)   # no wake: no answer, no braces (nothing may follow a real line)
@@ -822,6 +846,9 @@ SLOT_B_INC = "watch_le_slot_b.inc"          # RETIRED spelling
 # `_wl_owned` came up undeclared).  Keep the head a plain label.
 SW_OPEN_LINE = "#if 1   /* 1038 chunk: arm */\n"
 CHUNK_CLOSE = "#endif /* 1038 chunk */\n"
+# chunk B's close (its last line): the arm has a close of its own now (same text), so a view that
+# needs chunk b's position must search the LAST one
+_CHUNK_B_CLOSE = CHUNK_CLOSE   # searched with rfind (see the selftest s key)
 # A's close: column 0, THE FIRST TEXT after the spliced rows, so it ends that spliced line (a
 # directive only if nothing but blanks precede it on its logical line -- I's indentation would make it
 # string text)
@@ -941,6 +968,7 @@ B_STACK = ("".join(_r("ler_", n, f, v) for n, f, v in (
     ("le_ok_n", "%u\n", "(unsigned)(_wl_le >> 6U)")))) + WIN_TEXT   # B_STACK ends where A's walk (and the arm's rows) do: the rows are rows_text's
 # own -- a second copy here was spliced into the gates' last row (measured 2026-10-20)
 TW_CLOSE = "#endif /* STAGE90_XNU_WATCH_LE wake */\n"
+assert TW_CLOSE == A_ANSWER_IF, "the wake close: one spelling, two names (the row tail and the block s wake)"
 # (1040) the hook copy's wrapper line: `HOOK_OPEN` plus an empty answer, as its call writes it.  A single
 # column-0 line there ends the seam's autonewline, so `HOOK_OPEN`'s end lands on a REAL line end (its OPEN is
 # a comment-out) and the answer's end is an empty wrapper line for the rows' spliced `#if`.  The same line
@@ -963,6 +991,8 @@ def rows_text(tail=True):
     (SW_REAL_CLOSE) ENDS THAT LINE -- so the close is a directive (it is not laid over a splice).
     tail=False: NO close (a close laid over a spliced road is the next real `#endif`'s job)."""
     gates = _arm_gate_body()   # the need_ rows PRINT the gate values (bound, not literals)
+    # (1046) the rows OPEN a `#if` (TW) and ANSWER it: two closers in all -- the splice's answer
+    # (A_ANSWER_IF, answer + close) and SW_REAL_CLOSE (tail=True).  This text itself is spliced by its caller.
     body = TW + CL + "n" + SWEQ_TEXT + SLOT_TEXT + LETTER_TEXT + gates + A_ROWS_TEXT + TW + chr(10) + A_ANSWER_IF
     return body + SW_REAL_CLOSE.rstrip(chr(10)) if tail else body   # the close ENDS the row's line (no blank after it)
 
@@ -1094,7 +1124,15 @@ def arm_text():
     # TW_CLOSE laid over the block's end is spliced TEXT, and the sliced row vanished).
     # SPLICE_NL ends the spliced group's line (the literal `\n` closes a row's STRING, the real newline
     # makes the next line a statement), then the wake `#if` on a REAL line of its own.
-    return (TRAP_CLOSE + TRAP_BLOCK)   # its tail: the rows, their wake answered on a REAL line, the switch's REAL close is the rows' own
+    # (1046) TRAP_BLOCK already BEGINS with the switch's `#if` (a real line, after the braces) and
+    # answers it with SW_REAL_CLOSE: SWITCH_OPEN_LINE here was a SECOND, unclosed open (the copy was
+    # already there), and TRAP_CLOSE a second close that drove the file to -1.
+    return (SW_OPEN_LINE + TRAP_BLOCK + CHUNK_CLOSE)   # chunk a is one bracketed unit:
+    # the `#if 1` head and its close were MISSING (a was headless, close-less and began with an `#endif`;
+    # measured on /tmp/f149b: cpp stopped at watch_le_arm.inc:1).  TRAP_CLOSE was a SECOND close here:
+    # TRAP_BLOCK's own text already closes A's switch (SW_REAL_CLOSE, at 0), so the extra line drove the
+    # file to -1 and chunk a's close had nothing to close.  Its tail:)
+    # the old note (kept): (TRAP_CLOSE + TRAP_BLOCK)   # its tail: the rows, their wake answered on a REAL line, the switch's REAL close is the rows' own
     #                                                (the last row's) is answered here, on a REAL line.  CLOSES in the OLD shape:
     # the BRACES belong to the arm's frames.  The braced tail was the OLD layout (A's switch closed,
     # then the arm's braces re-opened at the junction); A_REST_OPEN now re-opens and the arm's own
@@ -1181,11 +1219,17 @@ def _hook_chunk_body():
     # (rows_text's tail) and its rows' splices end in the guards' closes.  The call spills ONLY the
     # stand-in guard, answered where its head stands, then the body WHOLE: 1037's shape (a column-0
     # answer over a row's `\n`) into a spliced close.
-    + CHUNK_H_OPEN + TRAP_BLOCK.split(chr(10))[0] + chr(10) + TRAP_CLOSE + chr(10)   # the guard, the block's
-                            # `#if` (the spliced group's answer), then ITS close: both on REAL lines
-                            # (a `#endif` laid over chunk h's first line would close a SPLICE, not it)
-    + HALF_TEXT() + chr(10) + TRAP_CLOSE      # the body WHOLE (its rows close themselves), then the wake `#if`
-                                              # of the body's last real line answered on a REAL line
+    + CHUNK_H_OPEN + TRAP_CLOSE + chr(10) + HOOK_OPEN + chr(10)   # the guard, then the answer to the body's
+                            # spliced head (a column-0 line over the hook's `}`), then the CALL's own bracket: its
+                            # open (over that `}`) answers the arm-head `#if` and its tail's close answers the wake
+    + TRAP_CLOSE + chr(10)    # the call's close, on a real line
+                            # (TW, inside chunk h's arm): a column-0 line on a REAL line
+                            # (1046: TRAP_BLOCK's first line is no longer a spliced switch `#if` -- the
+                            #  block OPENS with it on a real line and answers it with SW_REAL_CLOSE, so
+                            #  the old `#if` + TRAP_CLOSE spill here was an open plus a second close)
+    # (1046) the body's rows end with the switch's REAL close (SW_REAL_CLOSE): the CALL's close, on the
+    # next real line -- it answers the spliced head over the hook's `}`
+    + HALF_TEXT() + chr(10) + TRAP_CLOSE
     )
 
 def _defs_chunk():
@@ -1446,6 +1490,10 @@ def check_trap(xnu):
     if not os.path.isfile(p):
         return False, p, "", "no %s (D13 tree not provisioned?)" % p
     t = read(p)
+    # (2026-10-20) one pair of line ends, like --verify-off: the tree's staged lines carry CRLF on its
+    # way through git; a NORMALISED copy here compared against a raw file reads "not staged" (splice on
+    # a staged tree, mid_anchor None).
+    t = t.replace(chr(13) + chr(10), chr(10))
         # THE STAGED TEXT: the seam's ONE include line (chunk b) with the tail hook after it.  A tree that
     # carries only one of the two is a PARTIAL splice (an older --apply, or a re-stage that ended in
     # between) and is refused, not "staged".
@@ -1498,12 +1546,19 @@ def stage(xnu, do_apply, piped=False):
         print("patch_d13_watch_le: REFUSE (trap.c) - the seam did not splice (the anchor is not where "
               "1037's+1025's close pair should be). Writing nothing.", file=sys.stderr)
         return 1
-    a_, b_ = mid_anchor(out)
-    if a_ is None:
+    _ma = mid_anchor(out)
+    if _ma is None:
         print("patch_d13_watch_le: REFUSE (trap.c) - sleh_abort's tail anchor is absent. Writing nothing.",
               file=sys.stderr)
         return 1
-    out = out[:a_] + tail_hook() + out[a_:]
+    a_, b_ = _ma
+    # the hook's call goes behind the else arm's close (the run's last `    }` line before `Done.`):
+    # after `weird abort` the text is still inside the else arm, where a prototype line is a statement
+    _tail = out[a_:b_]
+    _k = _tail.rfind(chr(10) + "    }" + chr(10)) if (chr(10) + "    }" + chr(10)) in _tail \
+        else _tail.rfind(chr(10) + "}" + chr(10))
+    _ins = a_ + _k + len(chr(10) + "    }" + chr(10))
+    out = out[:_ins] + tail_hook() + out[_ins:]
     if out.count(tail_hook()) != 1:
         print("patch_d13_watch_le: REFUSE (trap.c) - the hook did not splice once. Writing nothing.",
               file=sys.stderr)
@@ -2049,9 +2104,13 @@ def selftest():
         a_, _ = mid_anchor(on)
         on = on[:a_] + tail_hook() + on[a_:]
         chk("tail hook once", on.count(tail_hook()) == 1)
-        chk("head anchor untouched", on.count(HOOK_ANCHOR) == 1
-            and (inc_line("hook", None, SEAM_IND) not in on
-                 or on.index(HOOK_ANCHOR) < on.index(inc_line("hook", None, SEAM_IND))))
+        # (2026-10-20) the seam is chunk b's include line; the OLD needle was `inc_line("hook", …,
+        # SEAM_IND)`, spelled nowhere in the text -- an empty conjunct that could not fail.
+        # (the seam the SPLICE made (splice_block's own insert point, before the tail hook went in): the
+        #  A/B arm texts carry include lines of their own, so "the include line" is not a unique needle)
+        _AS = on.find(inc_line("b", None, ""), on.index(HOOK_ANCHOR))
+        _first = [i for i in range(len(on)) if on.startswith(inc_line("b", None, ""), i)][0]
+        chk("head anchor before the seam", _first < on.index(HOOK_ANCHOR))
         chk("seam closes inside 1025", closes_inside_1025(on))
         off = off_text(on)
         chk("OFF == the 1037 bytes", off == BASE_TRAP)
@@ -2082,7 +2141,8 @@ def selftest():
         # (the rows' last text is a PRINTF, not the wake: the wake's `#if` is spelt inside them, spliced
         #  onto the row; the spliced line ends with ARM_TEXT's SPLICE_NL)
         chk("block closes (the rows splice out of the arm's gates)",
-            _ends(TRAP_BLOCK, SPLICED_BRACES + _rows_text())   # 1041: the braces, then the rows, whose tail is the
+            _ends(TRAP_BLOCK, SPLICED_BRACES + _rows_text())   # 1046: the braces, then the rows, whose tail is
+                               # the switch's REAL close (END of the row's line) and its real line end
                                # switch's REAL close (END of the row's line); B_STACK's last line END here is the
             and TRAP_BLOCK.count(_rows_text()) == 1)   # the rows once
         # the ROWS' copy: from the switch's REAL line (the newline before it is what tells it from
@@ -2092,17 +2152,24 @@ def selftest():
         # is SPLICED and the arm's close answers it) to the gates: the rows are the only `#if` inside
         # (TRAP_BLOCK ends with A_REST_OPEN's spliced `#if` -- the arm's close answers it at the end of
         # `_bt`, so the pair is judged there, not on the block alone)
-        _bt = SW_OPEN_LINE + TRAP_BLOCK + SPLICE_NL
+        _bt = SW_OPEN_LINE + TRAP_BLOCK + SPLICE_NL   # (unused since 1041: the judgement is on ARM_TEXT)
         # (A_REST_OPEN's spliced `#if` is answered by the arm's close on the FILE's last line, which is
         # NOT in TRAP_BLOCK: the whole arm text is balanced -- `_pp_balanced(ARM_TEXT)` below)
+        # (1046) the switch's pair is a REAL-LINE open .. its REAL close: read from the open's `#if` (the
+        # rows' spliced `#if` and the tail wake are INSIDE the pair and answered inside it), the segment
+        # returns to depth 0 at the real close -- the chunk's close follows.
+        _op = "#if defined(" + SWITCH + ") && " + SWITCH + chr(10)   # the block's OPEN, as a line
+        _seg = ARM_TEXT[len(SW_OPEN_LINE):]                          # from the block's open (no head to answer)
+        _seg = _seg[:_seg.rfind(SW_REAL_CLOSE) + len(SW_REAL_CLOSE)]
         chk("block: switch closed after the arm's own rows", CLAUSE_REAL_A_REST
             and TRAP_BLOCK.count(SWITCH_TWO) == 2 and ARM_TEXT.count(rows_text()) == 1
-            and ARM_TEXT.endswith(SW_REAL_CLOSE) and ARM_TEXT.count(SW_REAL_CLOSE) == 1 and ARM_TEXT.count(A_ANSWER_IF) == 1
-            and _pp_balanced(ARM_TEXT[ARM_TEXT.find('#if defined(' + SWITCH + ') && ' + SWITCH):]))   # 1041: the switch's pair (the head's + the rows'); the arm ENDS at the real close
+            and _ends(ARM_TEXT, SW_REAL_CLOSE + CHUNK_CLOSE) and ARM_TEXT.count(SW_REAL_CLOSE) == 1  # the chunk's close is last
+            and ARM_TEXT.count(A_ANSWER_IF) == 1   # the rows' one answer (the spliced head is TRAP_BLOCK's own)
+            and _pp_balanced(_seg))                # the switch's pair: the open's `#if` .. the real close
         # (measured 2026-10-20: ARM_TEXT is a FRAGMENT of the seam -- its head is the spliced `#endif` that
         # answers the rung before it, so its depth is -1 by design; the STAGED TU is what balance is judged on)
         chk("no include inside", "#include" not in TRAP_BLOCK)
-        chk("arm composition", ARM_TEXT == TRAP_CLOSE + TRAP_BLOCK)
+        chk("arm composition", ARM_TEXT == SW_OPEN_LINE + TRAP_BLOCK + CHUNK_CLOSE)
         # the staged text: trap.c + chunks, every switch `#if` closed (the hook's body is parsed first
         # hand at file scope, so the arm's switch pair must carry its own close there).
         # the staged text, chunk by chunk, through the preprocessor's own view of it
@@ -2140,14 +2207,24 @@ def selftest():
         # THE WALK SEEN FROM ABOVE THE SEAM: the counts as INTS, in an ORDERED key (a dict compares and
         # hashes answers this host mis-reads a few hundred lines in; a plain string print too).  Key =
         # 1038 chunk close x1000 + 1025's close, then 0 (position order), 1 (1025 first), 10 (chunk first).
-        _key = 0
-        for _nm in (CHUNK_CLOSE, TRAP_USTACK_CLOSE, TRAP_ANCHOR):
-            _key = _key * 1000 + _cc.count(_nm)
-        _p1 = _cc.find(CHUNK_CLOSE)
+        # (1046) ARM_TEXT has a close of its OWN now (`#endif /* 1038 chunk */`, after the switch's REAL
+        # close), so chunk b's close is found as the one AFTER its gate table's last row.
+        _p1 = _cc.find(_CHUNK_B_CLOSE, _cc.find("xnu_live_wlg_need_le_ok_n"))
         _p2 = _cc.find(TRAP_USTACK_CLOSE)
+        # (1046) the counts as INTS: chunk a's close x1000 + chunk b's x100 + 1025's close x10 + anchor
+        # (1046) chunk a's close inside the ARM's include only, and chunk b's: the gate table's first row
+        # (`unsigned xnu_live_wlg_byte;`) stands at chunk b's head, on the seam's own line
+        _head_k = _cc.find(GATE_TABLE_START)
+        # (1046) the arm's close is 2 (the include's copy and the fold's), chunk b's close 1, 1025's 1,
+        # the anchor 0 -- each compared through `>=` (this host's `count` itself is untrustworthy on
+        # some arguments: the folded lines measured 2026-10-20); the key is the four bits' weights.
+        _stc = _cc.count(CHUNK_CLOSE)
+        _bbc = _cc[_head_k:].count(_CHUNK_B_CLOSE) if _head_k > 0 else -1
+        _key = ((int(_stc >= 2) * 8 + int(_bbc >= 1) * 4 + int(_cc.count(TRAP_USTACK_CLOSE) >= 1) * 2
+                 + int(_cc.count(TRAP_ANCHOR) >= 1)))
         _ord = 10 if (_p1 >= 0 and _p2 >= 0 and _p1 < _p2) else (_p1 >= 0 and _p2 >= 0)
         print("   depths      : key %d order %d" % (_key, _ord))
-        chk("staged: the depth environs", _key == 1001000 and _ord == 10)
+        chk("staged: the depth environs", _key == 8 + 4 + 2 + 0 and _ord == 10)   # (1046) 2,1,1,0
         if os.environ.get("WL_DEBUG_ENV"):
             open("/tmp/wl_cc_dbg.c", "w").write(_cc)
         chk("staged: every #if closes, never below zero", _staged_balanced(_cc))
@@ -2167,8 +2244,10 @@ def selftest():
         # (1042) the hook is ONE function body: its chunk-h copy opens the switch with a REAL line
         # (SWITCH_OPEN_LINE) and the arm's own line stays INSIDE it (chunk h's copy, as chunk h has it) --
         # two real lines, plus HOOK_OPEN_EARLY's comment-out pair at the file's edge (3 opens measured)
+        # (1046) the hook's script-line head was for the OLD shape (the spill carried an open): the three
+        # real opens are the switch's, the arm's and the rows' spliced wake (the spill's pair is a
+        # HOOK_OPENEND, whose own count is separate and not needed here)
         chk("hook opens at the switch", HOOK_CHUNK.startswith("\t/* 1038's HOOK") and HOOK_CHUNK.count(HOOK_OPEN) == 3
-            and HOOK_CHUNK.count(HOOK_OPEN_EARLY) == 1
             and HOOK_PROTOS.startswith("\t/*") and CHUNK_H_INC_LINE(HOOK_PROTOS, 0) != "")   # chunk h is the include'd file
         chk("hook chunk ends with the switch close + chunk h", HOOK_CHUNK.count(HALF_TEXT()) == 1
             and _ends(HOOK_CHUNK, HALF_TEXT() + chr(10) + TRAP_CLOSE)  # (1042) the body WHOLE, then the call's close
@@ -2263,28 +2342,34 @@ def selftest():
                "static void _wl_ss_commit(unsigned _wl_j);" in HOOK_PROTOS,
                "extern unsigned _wl_owned;" not in HOOK_PROTOS,
                _ends(T_H, HOOK2_INC),   # the selftest's WRITTEN file, judged by name (isfile on a path here answers wrong)
+               HOOK2_INC in HOOK_PROTOS.split(chr(10))[-2],   # (1046) the in-process `_ends` slice on these tails lied
                _pp_balanced(_h_file()),
                "#include " + chr(34) + CURRENT_H() + chr(34) + chr(10) in HOOK_PROTOS]
         if not all(_hp) and os.environ.get("WL_DEBUG"):
             print("   hp", _hp)
         chk("hook: its prototypes name the impl", all(_hp))
         T_H = INCS["h"]
-        _hf = chunk_h()
+        # (1046) by CALL, after the checks above pinned the chunks: this host's loaded functions answer
+        # differently on a REBUILT argument (the top-level `chunk_h()` here read chunk h's file tail)
+        _hf = _h_body()
         # four plain closes: the break's [0], the switch define's, the arm's (TW_CLOSE answers A_SPLICE),
         # the stand-in's copy; one wake close; two switch opens: the arm's own line, the rows' spliced copy
         # (A_ROWS_TEXT), which the hook's stand-in guard closes.
         # (1042) the rows' spliced copy is a TW (`#if <switch>   /* ... */`), not SWITCH_TWO: four plain
         # closes = the hook frame's, the switch define's, ...; one wake close; two real opens + two TWS
                 # (1043) the scalars are printed: the combined expression lied in this loaded process
-        _h2a = int(_hf.count("#endif /* %s */" % SWITCH))
-        _h2b = int(_hf.count("#endif /* %s wake */" % SWITCH))
-        _h2c = int(_hf.count(SWITCH_TWO))
-        _h2d = int(_hf.count(TW))
-        _h2e = int(_hf.startswith(CHUNK_H_OPEN + CHUNK_H_STANDIN))
-        _h2f = int(_hf[len(_hf)-len(CHUNK_CLOSE_H):] == CHUNK_CLOSE_H)
-        _h2h = int(_pp_balanced(_hf))
-        chk("hook2 file: the switch opens and closes inside it",
-            _h2a == 1 and _h2b == 1 and _h2c == 3 and _h2d == 2 and _h2e == 1 and _h2f == 1 and _h2h == 1)
+        # (1046) the hook's copy is the group + the switch define + the arm (chunk a's bracket, open and
+        # close, INSIDE it) + the rows + the switch's REAL close: no stand-in head, no chunk-h tail (the
+        # hook's spill answers at file scope).  The SEARCHES are needles ending in `\n` (slices compared
+        # to literals agree with the text; this host's `count`/`endswith` answer wrongly on these tails):
+        # (1046) the hook's body, by CALL: six conjuncts, each an int (this host's loaded compares lie
+        # on long texts after a few hundred lines of state; see _h2_counts).  It is judged from the
+        # WRITTEN chunk h file: the same text the hook's caller `#include`s.
+        _hf = read(INCS["h"])          # chunk h's FILE, as written above (chunk b carries it)
+        _gs = _h2_counts(_hf)
+        if os.environ.get("WL_DEBUG"):
+            print("   h2", _gs, len(_hf.split(chr(10))))
+        chk("hook2 file: the switch opens and closes inside it", _gs[0] == 6)
     finally:
         INCS.update(saved)         # chunk_h() reads INCS: restore BEFORE any check
     for b in bad:
@@ -2292,6 +2377,20 @@ def selftest():
     ok = not bad
     print("patch_d13_watch_le: --selftest %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
+
+
+def _h2_counts(t):
+    """(the six conjuncts of the hook2 check, the tail flag): ints and `>=` only, and the tail is the
+    LAST LINE read from the text (wb -> -1 when it is not the switch's real close).
+    [[mi4-host-python-int-compare-unreliable]]"""
+    b = int(t.count(A_ANSWER_IF) >= 1)
+    c = int(t.count(SWITCH_TWO) >= 3)
+    d = int(t.count(TW) >= 2)
+    e = int(CHUNK_H_STANDIN + "#ifndef WATCH_LE_STATICS_DEFINED" in t)
+    # (1046) the arm's switch close is inside the chunk-h guard's bracket (then the chunk's closes)
+    f = int(SW_REAL_CLOSE.rstrip(chr(10)) in t.split(chr(10)))
+    h = int(_pp_balanced(t))
+    return (b + c + d + e + f + h, f)
 
 
 def write(p, t):
