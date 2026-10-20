@@ -1,0 +1,43 @@
+1039 TREE FORENSICS (2026-10-20, before any write; no device action)
+The staged trap.c (external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c, mtime Oct 19 20:21, 128428 bytes)
+does NOT satisfy 1039's own preconditions.  Three defects, all found by the build's step-0 gate
+(scripts/build_1039.sh refuses: "already carries 1038's block end but it does not verify").
+
+(a) WHERE THE SLOT STANDS.  The file's closures are
+      1437  #if defined(STAGE90_XNU_USTACK_PROBE)          (1025's arm: reopened here, empty)
+      1438  #endif /* STAGE90_XNU_PC_CARRIER_CALLER */     (1036's close -- but 1025's arm is open!)
+      1439  #if defined(STAGE90_XNU_TRAP_FRAME)            (1037 + 1039's carrier)
+      1698  #endif /* STAGE90_XNU_TRAP_FRAME */
+      1699  #endif /* STAGE90_XNU_USTACK_PROBE */
+      1700  int ZQ1;  int ZQ2;                              (1037's unit: a gap in sleh_abort's body)
+      1702  #if 1 /* 1038 chunk: arm */  ... 1783  #endif /* 1038 chunk */   (the statics + gate)
+      1784  #if 1 /* 1038 chunk: arm */  ... 2067  #endif /* 1038 chunk */   (the arm + the rows)
+      2068  #endif /* 1038 BLOCK END */
+      2069  #endif /* STAGE90_XNU_USTACK_PROBE */            (1025's arm, closed a second time)
+    1038's slot is OUTSIDE 1037's block (disabled whenever TRAP_FRAME is on), outside its own switch
+    (the `#if defined(STAGE90_XNU_WATCH_LE)` at 1785 is INSIDE `#if 1`: no OFF), and -- by preprocessor
+    parity, actions taken -- the 1025 closure at 1438 closes the 1437 reopen, so 1037's and 1039's
+    blocks and 1038's slot sit at FILE SCOPE in trap.c (the 1039 block dereferences thread/map: an
+    undeclared-identifier build error at file scope).  The file is also not 1039's pre-1039 tree
+    (1039 is already staged in it).
+
+(b) THE DIRECTION IS BACKWARDS.  The rowside patcher's rowside.py `reform` (the one that should write
+    1038's slot behind 1037's head) splits at the STRAY `#define STAGE90_XNU_WATCH_LE 1`, which the
+    tree does not carry (0 of its 4 markers present: stray, "1037 prologue", the statics' `#ifndef`
+    shape).  It refuses on this tree.  And the rowside patcher itself derives its slot from 1037's
+    prologue standing INSIDE 1039's block (a `R18` host) -- the direction build_1039 documents as the
+    REVERSE of what it needs ("measured 2026-10-19: the reverse order leaves ...").
+
+(c) 1037's BODY WAS NOT RE-STAGED.  Lines 1404-1437 print xnu_live_fb_uss_* / fb_ctx_diff /
+    fb_ldrh -- the 1037 run's DEFECTIVE body (ctx_diff compared arm_ctx with itself; the
+    `(VA & 3) < 2` ldrh select) -- although 8a04521 says the re-staged body is in
+    tools/patch_d13_trap_frame.py.  The tree carries the old one.
+
+WHAT THIS MEANS.  scripts/build_1039.sh cannot build this tree, and the 1038 WATCH_LE arm as the
+tree carries it would compile into the kernel with the switch OFF (the arm is behind `#if 1`, and the
+statics group is NOT behind `#if defined(STAGE90_XNU_WATCH_LE)` -- the archive claim in the rowside
+docstring does not hold for the text on disk).  NEXT (the plan): 1038's watch_le patcher re-stages
+from --include-off (it rewrites its own hook block, the include line and the statics scope);
+frame_carrier's --restage repairs 1037's unit (the `#endif /* TRAP_FRAME */` at 1439 with its close
+at 1698, both column 0, is that broken pair); the rowside re-form must then run on the
+post-watch_le tree.  Nothing is written until the trees' preconditions are read again.
