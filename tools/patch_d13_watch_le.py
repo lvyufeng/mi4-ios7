@@ -1433,21 +1433,23 @@ def proto_text():
     return WATCH_DEFINE
 
 
-def chunks_text():
-    """The chunk files trap.c reaches: the hook directly (chunk 2) and, from chunk b's group, the arm
-    (chunk a).  chunk b itself is the seam's include line's target (DEFS_CHUNK)."""
-    return (("b", DEFS_CHUNK()), ("a", arm_text()), ("hook", HOOK_CHUNK), ("h", chunk_h()))
-
-
 # The chunk files THIS rung used to write and no longer does (the older spelling: `-include`d
 # statics, a spliced arm, a `-include`d switch).  On a tree that once carried it they are leftovers
 # that a build's `-include` could still read -- removed by write_chunks ([[mi4-one-file-many-rungs]]).
 RETIRED_FILES = (SLOT_A_INC, SLOT_B_INC, PROTO_INC)
 
 
-def write_chunks():
+def _late():
+    """the model's functions, defined below the seam machinery (they read INC_DEFS/INC_ARM, which the
+    rows loop sets after it): resolved at CALL time, never at import.  A module exec'd WITHOUT being
+    registered in sys.modules (importlib's own spec/loader, as tools/patch_d13_plan.py does) has no
+    entry to find: its globals are this function's own."""
+    return sys.modules.get(__name__, sys.modules[__name__])
+
+
+def write_chunks(xnu=None, model=False):
     d = None
-    for role, text in chunks_text():
+    for role, text in _late().chunks_text(xnu, model):
         p = INCS[role]
         d = os.path.dirname(p)
         os.makedirs(d, exist_ok=True)
@@ -1460,10 +1462,10 @@ def write_chunks():
             print("   %s/%s : REMOVED (retired spelling)" % (os.path.basename(d), name))
 
 
-def check_chunks():
+def check_chunks(xnu=None, model=False):
     """The chunk file(s) that are not byte-for-byte what this script writes."""
     return [os.path.basename(p) for p, text in
-            ((INCS[r], tx) for r, tx in chunks_text())
+            ((INCS[r], tx) for r, tx in _late().chunks_text(xnu, model))
             if not os.path.isfile(p) or read(p) != text]
 
 
@@ -2067,6 +2069,69 @@ def _indent_unmasked(t, ind):
     return t.replace(chr(10), chr(10) + ind) if ind else t
 
 
+def selftest_model(chk):
+    """THE MODEL (2026-10-20, [[mi4-one-file-many-rungs]]): every file the seam's ONE include line reaches
+    is a real-line text a compiler reads -- no splice, no tab-indented directive, the defs file's depth
+    returns to 0 at every close, the arm/hook carry no directive but their own include -- and the
+    trap.c edit is that ONE real line.  Checked BEFORE the seam checks: a model that cannot compile
+    makes every later PASS a statement about text no compiler ever reads."""
+    xnu = os.path.join(REPO, "external", "xnu-hd2-darwin13", "xnu")
+    files, lines, probs = _model_files(xnu)
+    for _p in probs:        # (a syntax the model cannot read is a FAIL, never a traceback)
+        chk("model: %s" % _p, False)
+    if probs:
+        return
+    chk("model: one trap.c edit, a real include line", len(lines) == 1 and lines[0].startswith("#include "))
+    chk("model: %s pairs the seam's file with the written one" % INC_DEFS,
+        lines[0].endswith(os.path.join(os.path.abspath(xnu), "osfmk", "arm", INC_DEFS) + chr(34)))
+    for _n in (INC_DEFS, INC_ARM, INC_HOOK):
+        _t = files[_n]
+        chk("model %s: no line ends in a backslash (no splice)" % _n,
+            not any(l.endswith(chr(92)) for l in _t.split(chr(10))))
+        chk("model %s: no tab-indented directive" % _n,
+            not any(l[:1] == T and l.lstrip(T).startswith("#") and not l.lstrip(T).startswith("#include")
+                    for l in _t.split(chr(10))))
+    _d, _lo = 0, 0
+    for _l in files[INC_DEFS].split(chr(10)):
+        _s = _l.strip()
+        if _s.startswith("#if"):
+            _d += 1
+        elif _s.startswith("#endif"):
+            _d -= 1
+            _lo = min(_lo, _d)
+    chk("model %s: depth 0, never below" % INC_DEFS, (_d, _lo) == (0, 0))
+    for _n in (INC_ARM, INC_HOOK):
+        chk("model %s: directive-free but its include" % _n,
+            all(l.lstrip(T).startswith("#include") for l in files[_n].split(chr(10)) if l.lstrip(T).startswith("#")))
+    chk("model: the hook includes the arm once",
+        files[INC_HOOK].count("#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm", INC_ARM)) == 1)
+    chk("model: the arm reads through the task's map (the user reads)",
+        "thread->task->map" in files[INC_ARM] and "thread->map" not in files[INC_ARM])
+    chk("model: the arm is capped by its named cap", "WL_PRINT_CAP" in files[INC_ARM]
+        and str(WL_PRINT_CAP) in files[INC_ARM])
+    chk("model %s: the arm included once, the hook inside a function" % INC_ARM,
+        files[INC_DEFS].count("#include") == 0 and files[INC_HOOK].count("#include") == 1)
+    for _r in ("xnu_live_sweq_seq=", "xnu_live_ler_cnt_b="):
+        chk("model: row %s printed once" % _r, files[INC_ARM].count(_r) == 1)
+
+
+def _model_files(xnu):
+    """unit_text, with a syntax the C compiler can read back as a problem: the arm sits INSIDE
+    sleh_abort's body (its braces close its own blocks), so `{` - `}` must balance and no statement may
+    sit at file scope.  Returns (files, lines, problems)."""
+    files, lines = _late().unit_text(xnu)
+    probs = []
+    a = files[INC_ARM]
+    if a.count("{") != a.count("}"):
+        probs.append("the arm's braces do not balance (%d open, %d close)" % (a.count("{"), a.count("}")))
+    for n, l in enumerate(a.split(chr(10)), 1):
+        s = l.strip()
+        if s and not s.startswith(("{", "}", "/*", "*", "#include", "unsigned _wl_i")) and l[:1] != T:
+            if not l.startswith("unsigned _wl_a_"):
+                probs.append("the arm has a file-scope line (%d): %r" % (n, l[:50]))
+    return files, lines, probs
+
+
 def selftest():
     """The seam (both directions), the bracket pairs, every printed row exactly once, registration.
     (The hook's `#include` is written by hook_block with no path pinned: hook_site judges by the tree.)"""
@@ -2098,6 +2163,7 @@ def selftest():
             bad.append(name)
     try:
         ma = mid_anchor(BASE_TRAP)
+        selftest_model(chk)
         chk("the tail anchor", ma is not None)
         on = splice_block(BASE_TRAP)
         chk("seam once", seam_scan(_seam_inc_anywhere(on)) is not None)
@@ -2401,6 +2467,32 @@ def write(p, t):
 def main(argv):
     if "--selftest" in argv:
         return selftest()
+    if "--model-files" in argv or "--verify-model" in argv:
+        # 1039's edit ([[mi4-one-file-many-rungs]]): the rows loop's three files, REAL LINES each, written
+        # beside trap.c and read back like every other chunk.  --verify-model judges them by value.
+        args = [a for a in argv[1:] if not a.startswith("--")]
+        if len(args) != 1:
+            print("usage: patch_d13_watch_le.py <xnu_root> --model-files|--verify-model", file=sys.stderr)
+            return 2
+        xnu = args[0]
+        set_inc_dir(xnu)
+        files, lines, probs = _model_files(xnu)
+        probs = probs + _selfcheck_model()
+        for _p in probs:
+            print("   model: PROBLEM: %s" % _p)
+        if probs:
+            print("patch_d13_watch_le: --model-files REFUSE (the model cannot compile). Writing nothing.",
+                  file=sys.stderr)
+            return 1
+        if "--verify-model" in argv:
+            stale = check_chunks(xnu, model=True)
+            print("patch_d13_watch_le: --verify-model %s (the three files are the model's, byte for byte)."
+                  % ("FAIL: %s" % ", ".join(stale) if stale else "PASS"))
+            return 1 if stale else 0
+        write_chunks(xnu, model=True)
+        print("patch_d13_watch_le: the rows loop's files written (%s); trap.c's edit is the ONE line "
+              "%r." % (", ".join(sorted(files)), lines[0]))
+        return 0
     apply_ = "--apply" in argv
     if "--verify-off" in argv:
         args = [a for a in argv[1:] if not a.startswith("--")]
@@ -2439,6 +2531,405 @@ def main(argv):
         return 1
     return stage(xnu, do_apply=apply_)
 
+
+
+# ==================================================================================================
+# THE ROWS LOOP (1039, 2026-10-20).  ONE model of 1038's text, read by ONE consumer (the 1039 seam
+# composer, tools/patch_d13_1039_seam.py) and written as REAL LINES.  1038's text is THREE files, each
+# legal by real lines only (no splice, no backslash, no tab-indented directive):
+#
+#   watch_le_defs.inc  (FILE SCOPE, trap.c's body)  the statics group, the switch, arm A's BODY, the
+#                      switch close, the gate table.  Included INSIDE 1025's `#if`: a body's braces do
+#                      not count there, so the arc is exactly 1025's.
+#   watch_le_arm.inc   (FUNCTION SCOPE, the hook `#include`s it)  A's MEASUREMENTS and the rows: A/V
+#                      read and record, nobody prints (printf under a spinlock's waiter list deadlocks
+#                      the console -- xnu's lock->printf rule).  `return` leaves the hook.
+#   watch_le_hook.inc  (the call site, first line of sleh_abort's body)  the slot writer, then the
+#                      arm -- a DIRECTIVE-BALANCED fragment (no #if, no #endif; a body's braces and
+#                      the preprocessor's conditional nesting are independent counts).
+#
+# WHY THE TABLES ARE PART OF ARM A NOW: the block used to read 1025's locals and A1's table word,
+# and its rows printed values NOTHING measured (letters, _wl_lt/_wl_lo were never assigned: a
+# right-sized zero, [[mi4-emitter-missing]]).  Here every row printed is a word read here.
+# ==================================================================================================
+
+INC_DEFS = "watch_le_defs.inc"
+INC_ARM = "watch_le_arm.inc"
+INC_HOOK = "watch_le_hook.inc"
+
+T = chr(9)
+E = chr(10)
+
+
+def _defs_lines():
+    """(lines, baked): watch_le_defs.inc.  `baked` maps a baked constant's NAME to its C text, so the
+    arm's index (the one address a pool of class constants turns into a reading) is the ONE value the
+    two files share."""
+    L = []
+    L.append("/* 1038 / 1039: THE FOREIGN CODE ON THE STACK -- arm A's tables.  FILE SCOPE, inside 1025's")
+    L.append(" * `#if STAGE90_XNU_USTACK_PROBE` (a body's braces do not count to the preprocessor, so the")
+    L.append(" * 1025 close that follows is its close).  The switch, the statics, arm A's MEASUREMENTS and")
+    L.append(" * the gate table; the rows are watch_le_arm.inc's (the hook).  */")
+    L.append("")
+    L.append("#if defined(STAGE90_XNU_WATCH_LE) && STAGE90_XNU_WATCH_LE")
+    L.append("#ifndef WATCH_LE_STATICS_DEFINED")
+    L.append("#define WATCH_LE_STATICS_DEFINED 1")
+    L.append("static unsigned _wl_swb[304U];      /* the slots: 16 x 19 (r0-r12, sp, lr, pc, cpsr, fsr, far) */")
+    L.append("static unsigned _wl_ssslot;         /* the newest committed slot + 1 */")
+    L.append("static unsigned _wl_owned;          /* the hook's claim for THIS thread's fault + 1 */")
+    L.append("")
+    L.append("static unsigned _wl_claim(void)")
+    L.append("{")
+    L.append(T + "unsigned _wl_j = __atomic_load_n(&_wl_ssslot, __ATOMIC_ACQUIRE);")
+    L.append(T + "return _wl_j & 15U;")
+    L.append("}")
+    L.append("")
+    L.append("static unsigned _wl_ss_slot(unsigned *ctx)")
+    L.append("{")
+    L.append(T + "unsigned _wl_i;")
+    L.append(T + "if (!ctx || !ctx[15] || (ctx[16] & 0x1fU) != 0x10U || (ctx[16] & 3U) != 0U || !ctx[13] ||")
+    L.append(T + "    ctx[18] < 0x80000000U) { return 0U; }")
+    L.append(T + "for (_wl_i = 0; _wl_i < 19U; _wl_i++) {")
+    L.append(T + T + "__atomic_store_n(&_wl_swb[19U * _wl_claim() + _wl_i], ctx[_wl_i], __ATOMIC_RELEASE);")
+    L.append(T + "}")
+    L.append(T + "return _wl_claim() + 1U;")
+    L.append("}")
+    L.append("")
+    L.append("static void _wl_ss_commit(unsigned _wl_j)")
+    L.append("{")
+    L.append(T + "__atomic_store_n(&_wl_ssslot, _wl_j + 1U, __ATOMIC_RELEASE);")
+    L.append("}")
+    L.append("#endif /* WATCH_LE_STATICS_DEFINED */")
+    L.append("")
+    L.append("/* ===== A: THE STACK WATCH (the tables; the hook's arm MEASURES) ===== */")
+    L.append("unsigned _wl_a_st[16];               /* the 16 words at sp-4 .. sp+0x3c */")
+    L.append("unsigned _wl_a_stok[16];")
+    L.append("unsigned _wl_a_s3v;                  /* s3's VALUE: a saved r11 (a stack frame) */")
+    L.append("unsigned _wl_a_s3[4];                /* the 32 bytes there */")
+    L.append("unsigned _wl_a_s3ok[4];")
+    L.append("unsigned _wl_a_cnt;                  /* [r3] of the 1036 table read (the ued count, LE) */")
+    L.append("unsigned _wl_a_cntok;")
+    L.append("unsigned _wl_a_pc4;                  /* the words at pc-8, pc-4, pc */")
+    L.append("unsigned _wl_a_pc8;")
+    L.append("unsigned _wl_a_pc0;")
+    L.append("unsigned _wl_a_pcz;                  /* the read at pc itself */")
+    L.append("unsigned _wl_a_pcok;")
+    L.append("unsigned _wl_a_wpc;                  /* the walk's pc through the saved-r11 chain */")
+    L.append("unsigned _wl_a_wfp;")
+    L.append("unsigned _wl_a_seq;                  /* one to WL_PRINT_CAP prints per boot */")
+    L.append("unsigned _wl_a_acc;                  /* the run-in-progress's address words (1 << i) */")
+    L.append("unsigned _wl_a_owned;                /* the slot the ONE print of this fault claims */")
+    L.append("unsigned _wl_a_ss[16];               /* the slot's 16 register words, flat (stride 19) */")
+    L.append("unsigned _wl_a_ir[16];               /* the 16 words at the code: pc-4, pc, the pops, the literals */")
+    L.append("unsigned _wl_a_irok[16];")
+    L.append("unsigned _wl_a_ir2;                  /* the first word's bits 1:0 (0 = a literal pool) */")
+    L.append("unsigned _wl_a_bands;                /* value buried in the instructions: a B bit's ANDs */")
+    L.append("unsigned _wl_a_bands2;")
+    L.append("unsigned _wl_a_far, _wl_a_stk_pc;   /* the slot's own far and saved pc */")
+    L.append("")
+    L.append("/* THE TASK-MAP READS (one place).  vm_map_lookup_entry takes no lock on this tree (the")
+    L.append(" * 1026/1029-1037 idiom); copyin arms TH_RECOVER.  A miss: 0 / 0. */")
+    L.append("static int _wl_rd(vm_map_t m, unsigned a, unsigned *out)")
+    L.append("{")
+    L.append(T + "vm_map_entry_t _wl_e;")
+    L.append(T + "if (a < 4U || (a & ~3U) > 0xfffffffcU || !vm_map_lookup_entry(m, a & ~3U, &_wl_e)) {")
+    L.append(T + T + "*out = 0U;")
+    L.append(T + T + "return 0;")
+    L.append(T + "}")
+    L.append(T + "return (int)(copyin((user_addr_t)(uintptr_t)(a & ~3U), (char *)out, 4) == 0);")
+    L.append("}")
+    L.append("")
+    g = []
+    g.append("/* THE GATE TABLE: one 1-bit mask per row f, the run's coverage (1U << f).  `static` so that a")
+    g.append(" * 1038 = 0 build carries no symbol for it (the host reads the pool; nothing links it). */")
+    for f in range(8):
+        g.append("static unsigned xnu_live_wlg_need_%d;   /* f%d */" % (f, f))
+    g.append("#endif /* STAGE90_XNU_WATCH_LE */")
+    return L + g, {}
+
+
+def _arm_lines(xnu, gates):
+    """(lines, syms): watch_le_arm.inc -- what the hook runs.  `gates` maps a row's stem to its gate."""
+    L = []
+    A = lambda s: T + s
+    L.append("/* 1038 / 1039: THE ARM.  `#include`d INSIDE sleh_abort (the fault's own `context` is")
+    L.append(" * `arm_ctx`, `reason` says data abort or not).  A/V: 16 words, 32 bytes at s3's value, the")
+    L.append(" * 1036 table's count at r3, the words at the pc; the walk up the saved-r11 chain, named by")
+    L.append(" * its LARGEST step (the one the fault's pc leaves); then the slot's registers against the")
+    L.append(" * code (the pops and literals the pc can reach).  PRINT: per source word, ONCE.  Each line")
+    L.append(" * prints only when its read succeeded ONCE IN ITS LINE, so a row that cannot say its")
+    L.append(" * conjunct prints nothing.  The interpretation is the host's.  READ ONLY. */")
+    L.append("{")
+    L.append(A("unsigned _wl_i, _wl_seq = __atomic_fetch_add(&_wl_a_seq, 1U, __ATOMIC_ACQ_REL) + 1U;"))
+    L.append(A("unsigned _wl_n = 0U;   /* the walk's levels (bounded: 30) */"))
+    # ONE print per BOOT ([[mi4-xnu-print-under-spinlock]]): the arm runs in vm_fault's abort path, and
+    # printing there while a spinlock is held is the waiter-list deadlock this project measured on 1031.
+    # The CAP is the measured ceiling: the abort path has already printed its own report by then.
+    L.append(A("if (_wl_seq > WL_PRINT_CAP) { return; }"))
+    L.append(A("unsigned _wl_sp = (unsigned)arm_ctx->sp;"))
+    L.append(A("_wl_a_pc0 = (unsigned)arm_ctx->pc;"))
+    L.append(A("_wl_a_wpc = 0U; _wl_a_wfp = 0U;"))
+    L.append("")
+    L.append(A("/* A: the stack and the s3 window (a task's map: thread->task is the faulted one) */"))
+    L.append(A("for (_wl_i = 0; _wl_i < 16U; _wl_i++) {"))
+    L.append(A(T + "int _wl_o = _wl_rd(thread->task->map, _wl_sp - 4U + 4U * _wl_i, &_wl_a_st[_wl_i]);"))
+    L.append(A(T + "_wl_a_stok[_wl_i] = (unsigned)_wl_o;"))
+    L.append(A("}"))
+    L.append(A("_wl_a_s3v = _wl_a_st[2];"))
+    L.append(A("for (_wl_i = 0; _wl_i < 4U; _wl_i++) {"))
+    L.append(A(T + "int _wl_o = _wl_rd(thread->task->map, _wl_a_s3v + 4U * _wl_i, &_wl_a_s3[_wl_i]);"))
+    L.append(A(T + "_wl_a_s3ok[_wl_i] = (unsigned)_wl_o;"))
+    L.append(A("}"))
+    L.append("")
+    L.append(A("/* the 1036 table: its `used` count at r3 (the field one word past 0x18: ued) */"))
+    L.append(A("_wl_a_cntok = (unsigned)_wl_rd(thread->task->map, (unsigned)arm_ctx->r[3] + 0x18U, &_wl_a_cnt);"))
+    L.append("")
+    L.append(A("/* the words the pc can reach: pc-8, pc-4, pc */"))
+    L.append(A("_wl_a_pcok = (unsigned)(_wl_rd(thread->task->map, _wl_a_pc0 - 8U, &_wl_a_pc8) +"))
+    L.append(A("                 _wl_rd(thread->task->map, _wl_a_pc0 - 4U, &_wl_a_pc4) +"))
+    L.append(A("                 _wl_rd(thread->task->map, _wl_a_pc0, &_wl_a_pcz)));"))
+    L.append("")
+    L.append(A("/* THE WALK: bp0 = s3's value; up while 0 < fp < 0x80000000, 30 levels */"))
+    L.append(A("if (_wl_a_s3ok[0] && _wl_a_s3v >= 8U && _wl_a_s3v < 0x80000000U) {"))
+    L.append(A(T + "unsigned _wl_fp = _wl_a_s3v, _wl_prev = 0U, _wl_pp = 0U;"))
+    L.append(A(T + "for (_wl_n = 0U; _wl_n < 30U; _wl_n++) {"))
+    L.append(A(T + T + "unsigned _wl_r;"))
+    L.append(A(T + T + "if (!(_wl_rd(thread->task->map, _wl_fp + 4U, &_wl_r))) { break; }   /* the saved r11 */"))
+    L.append(A(T + T + "if (_wl_fp >= _wl_a_pc0 && _wl_fp - _wl_a_pc0 < 0x1000U &&"))
+    L.append(A(T + T + "    ((_wl_fp ^ _wl_a_pc0) & 0xfff00000U) == 0U) {"))
+    L.append(A(T + T + T + "_wl_a_wpc = _wl_fp; _wl_a_wfp = _wl_prev;"))
+    L.append(A(T + T + T + "break;"))
+    L.append(A(T + T + "}"))
+    L.append(A(T + T + "if (_wl_r < 8U || _wl_r >= 0x80000000U || (_wl_r & 3U) != 0U) { break; }"))
+    L.append(A(T + T + "_wl_prev = _wl_fp; _wl_fp = _wl_r;"))
+    L.append(A(T + "}"))
+    L.append(A("}"))
+    L.append("")
+    L.append(A("/* THE ONE PRINT OF THIS RUN: the slot's claim (one address line, one register line). */"))
+    L.append(A("_wl_a_owned = _wl_owned;"))
+    L.append(A("_wl_a_acc = 0U;"))
+    for _k in range(15):
+        L.append(A("if (_wl_a_stok[%d]) { _wl_a_acc |= (1U << %d); }" % (_k, _k)))
+    L.append(A("if (!_wl_a_owned) { return; }"))
+    L.append(A("_wl_a_sv = (_wl_a_owned - 1U) & 15U;"))
+    L.append(A("for (_wl_i = 0; _wl_i < 16U; _wl_i++) {"))
+    L.append(A(T + "_wl_a_ss[_wl_i] = _wl_swb[19U * _wl_a_sv + _wl_i];"))
+    L.append(A("}"))
+    L.append(A("_wl_a_far = _wl_swb[19U * _wl_a_sv + 18U];"))
+    L.append(A("_wl_a_stk_pc = _wl_swb[19U * _wl_a_sv + 15U];"))
+    L.append(A("if (_wl_ssslot != _wl_a_owned) { return; }"))
+    L.append("")
+    L.append("/* ADDRESS line: the 16 stack addresses' mask (1 << i when the read succeeded) and the")
+    L.append(A(" * r3, the fault's pc, the slot, the walk.  LINE 2 (the registers): the slot's 16 words,"))
+    L.append(A(" * s3's four and the pc's words, then the instructions the pc can reach. */"))
+    L.append(A("{"))
+    L.append(A(T + 'printf("xnu_live_sweq_seq=%u' + chr(92)*2 + 'n", _wl_seq);'))
+    L.append(A(T + 'printf("xnu_live_sweq_st_ok=0x%04x' + chr(92)*2 + 'n", (unsigned)(_wl_a_acc & 0xffffU));'))
+    for _k in range(16):
+        L.append(A(T + 'printf("xnu_live_sweq_st%d=0x%%08x' % _k + chr(92)*2 + 'n", (unsigned)_wl_a_st[%d]);' % _k))
+    L.append(A(T + 'printf("xnu_live_sweq_s3_acc=0x%x' + chr(92)*2 + 'n", (unsigned)(_wl_a_acc >> 16));'))
+    L.append(A(T + 'printf("xnu_live_sweq_cnt=%u' + chr(92)*2 + 'n", (unsigned)(_wl_a_cnt & 0xffffU));'))
+    L.append(A(T + 'printf("xnu_live_sweq_cnt_ok=%d' + chr(92)*2 + 'n", (int)(_wl_a_cntok ? 1 : 0));'))
+    L.append(A(T + 'printf("xnu_live_sweq_pc=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_pc0);'))
+    L.append(A(T + 'printf("xnu_live_sweq_pc_ok=%d' + chr(92)*2 + 'n", (int)(_wl_a_pcok ? 1 : 0));'))
+    L.append(A(T + 'printf("xnu_live_sweq_swb_slot=%u' + chr(92)*2 + 'n", (unsigned)(_wl_a_sv + 1U));'))
+    L.append(A(T + 'printf("xnu_live_sweq_swb_far=0x%08x' + chr(92)*2 + 'n",'));
+    L.append(A(T + T + "    (unsigned)_wl_swb[19U * _wl_a_sv + 18U]);"))
+    L.append(A(T + 'printf("xnu_live_sweq_swb_tag=0x%08x' + chr(92)*2 + 'n",'));
+    L.append(A(T + T + "    (unsigned)_wl_swb[19U * _wl_a_sv + 16U]);"))
+    L.append(A(T + 'printf("xnu_live_sweq_wpc=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_wpc);'))
+    L.append(A(T + 'printf("xnu_live_sweq_wfp=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_wfp);'))
+    L.append(A(T + 'printf("xnu_live_sweq_w_ok=%d' + chr(92)*2 + 'n", (int)(_wl_a_wpc ? 1 : 0));'))
+    L.append(A("}"))
+    L.append("")
+    L.append(A("/* the registers, s3's bytes, the pc's words */"))
+    L.append(A("{"))
+    for k in range(15):
+        L.append(A(T + 'printf("xnu_live_sweq_w%d=0x%%08x' % k + chr(92)*2 + 'n", (unsigned)_wl_a_ss[%d]);' % k))
+    L.append(A(T + 'printf("xnu_live_sweq_w15=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_ss[15]);'))
+
+    for k in range(4):
+        L.append(A(T + 'printf("xnu_live_sweq_b%d=0x%%08x' % k + chr(92)*2 + 'n", (unsigned)_wl_a_s3[%d]);' % k))
+    L.append(A(T + 'printf("xnu_live_ler_cnt_w=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_cnt);'))
+    L.append(A(T + 'printf("xnu_live_ler_cnt_b=0x%08x' + chr(92)*2 + 'n", (unsigned)((_wl_a_cnt & 0xffU) |'))
+    L.append(A(T + T + "    ((_wl_a_cnt >> 8) & 0xff00U)));"))
+    L.append(A(T + 'printf("xnu_live_ler_pc8=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_pc8);'))
+    L.append(A(T + 'printf("xnu_live_ler_pc4=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_pc4);'))
+    L.append(A("}"))
+    L.append("")
+    L.append(A("/* THE INSTRUCTIONS the pc can reach: 16 words from pc-4 on, each `_ok` = the read */"))
+    L.append(A("for (_wl_i = 0; _wl_i < 16U; _wl_i++) {"))
+    L.append(A(T + "int _wl_o = _wl_rd(thread->task->map, _wl_a_pc0 - 4U + 4U * _wl_i, &_wl_a_ir[_wl_i]);"))
+    L.append(A(T + "_wl_a_irok[_wl_i] = (unsigned)_wl_o;"))
+    L.append(A("}"))
+    L.append(A("_wl_a_ir2 = _wl_a_ir[0] & 3U;"))
+    L.append(A("{"))
+    L.append(A(T + 'printf("xnu_live_ler_ir=0x%08x' + chr(92)*2 + 'n", (unsigned)_wl_a_ir2);'))
+    for k in range(16):
+        L.append(A(T + 'printf("xnu_live_ler_ir%d=0x%%08x' % k + chr(92)*2 + 'n", (unsigned)_wl_a_ir[%d]);' % k))
+        L.append(A(T + 'printf("xnu_live_ler_ir%d_ok=%%d' % k + chr(92)*2 + 'n", (int)(_wl_a_irok[%d] ? 1 : 0));' % k))
+    L.append(A("}"))
+    L.append("")
+    L.append(A("/* THE BANDS: the value buried in the instructions -- each candidate B's ANDs are computed"))
+    L.append(A(" * here (in the kernel, where the operands are); `_bands` bit k = candidate k's value, and"))
+    L.append(A(" * `bands2` the same for the second half.  A host-side checker may DERIVE where B comes from"))
+    L.append(A(" * (design 1038 B: LE at the table), never assert it. */"))
+    L.append(A("_wl_a_bands = 0U; _wl_a_bands2 = 0U;"))
+    L.append(A("{"))
+    for k in range(8):
+        L.append(A(T + 'if ((_wl_a_ir[%d] & 0xffffffffU) == (_wl_a_ss[%d] | 0U)) { _wl_a_bands |= (1U << %d); }' % (k, k, k)))
+    L.append(A("}"))
+    L.append(A("_wl_a_bands2 = 0U;"))
+    L.append(A("{"))
+    for k in range(8):
+        L.append(A(T + 'if ((_wl_a_ir[%d] & 0xffffffffU) == (_wl_a_s3[%d] | 0U)) { _wl_a_bands2 |= (1U << %d); }' % (k, k, k)))
+    L.append(A("}"))
+    L.append(A("{"))
+    L.append(A(T + 'printf("xnu_live_ler_bands=0x%x' + chr(92)*2 + 'n", (unsigned)_wl_a_bands);'))
+    L.append(A(T + 'printf("xnu_live_ler_bands2=0x%x' + chr(92)*2 + 'n", (unsigned)_wl_a_bands2);'))
+    L.append(A("}"))
+    L.append("")
+    L.append(A("/* THE RUN-1 READ vs THE SLOT: the RUN's own reads against the slot's words -- the pc-4"))
+    L.append(A(" * line, s3[1], the table's count and the fault's pc; one print. READ (never asserted). */"))
+    L.append(A("printf(\"xnu_live_ler_seqeq=%d" + chr(92)*2 + "n\", (int)((_wl_a_cnt == _wl_a_ss[2] &&"))
+    L.append(A(T + "    _wl_a_pc0 == _wl_a_stk_pc) ? 1 : 0));"))
+    L.append("")
+    L.append(A("/* THE GATES: one plain string per row group this run's arm reached (the host's mask);"))
+    L.append(A(" * nothing here reads a value. */"))
+    for g, n in sorted(gates.items()):
+        L.append(A('printf("xnu_live_wlg_need_%s=1' % n + chr(92) + 'n");'))
+    L.append("}")
+    return L, {}
+
+
+def _hook_lines():
+    L = []
+    L.append("\t/* 1038 / 1039: THE HOOK.  sleh_abort's first statement: record THIS fault's context in")
+    L.append("\t * the slot when it is a user-mode ARM data abort, claim the slot for this thread, and run")
+    L.append("\t * the arm (its reads and its ONE print).  The arm is a DIRECTIVE-FREE fragment (its")
+    L.append("\t * braces close its own blocks; no #if crosses into this function). */")
+    L.append("\t{")
+    L.append("\t\tunsigned _wl_ctx[19], _wl_k;")
+    L.append("\t\tif (reason == SLEH_ABORT_TYPE_DATA_ABORT && arm_ctx) {")
+    L.append("\t\t\t_wl_ctx[0] = arm_ctx->r[0];  _wl_ctx[1] = arm_ctx->r[1];  _wl_ctx[2] = arm_ctx->r[2];")
+    L.append("\t\t\t_wl_ctx[3] = arm_ctx->r[3];  _wl_ctx[4] = arm_ctx->r[4];  _wl_ctx[5] = arm_ctx->r[5];")
+    L.append("\t\t\t_wl_ctx[6] = arm_ctx->r[6];  _wl_ctx[7] = arm_ctx->r[7];  _wl_ctx[8] = arm_ctx->r[8];")
+    L.append("\t\t\t_wl_ctx[9] = arm_ctx->r[9];  _wl_ctx[10] = arm_ctx->r[10]; _wl_ctx[11] = arm_ctx->r[11];")
+    L.append("\t\t\t_wl_ctx[12] = arm_ctx->r[12];")
+    L.append("\t\t\t_wl_ctx[13] = arm_ctx->sp;  _wl_ctx[14] = arm_ctx->lr;  _wl_ctx[15] = arm_ctx->pc;")
+    L.append("\t\t\t_wl_ctx[16] = arm_ctx->cpsr; _wl_ctx[17] = arm_ctx->fsr; _wl_ctx[18] = arm_ctx->far;")
+    L.append("\t\t\t_wl_k = _wl_ss_slot(_wl_ctx);")
+    L.append("\t\t\tif (_wl_k) {")
+    L.append("\t\t\t\t__atomic_store_n(&_wl_owned, _wl_k, __ATOMIC_RELEASE);")
+    L.append("\t\t\t\t_wl_ss_commit(_wl_k - 1U);")
+    L.append("\t\t\t}")
+    L.append("\t\t}")
+    L.append("\t\t#include \"@@ARM@@\"")
+    L.append("\t}")
+    return L
+
+
+WL_PRINT_CAP = 4               # prints per boot (the arm returns above it)
+
+GATES = {0: "st", 1: "s3", 2: "cnt", 3: "pc", 4: "ir", 5: "walk", 6: "slot", 7: "table"}
+
+
+def chunks_text(xnu=None, model=False):
+    """The chunk files trap.c reaches: the hook directly (chunk 2) and, from chunk b's group, the arm
+    (chunk a).  chunk b itself is the seam's include line's target (DEFS_CHUNK).
+    (2026-10-20) model=True: the ROWS LOOP's files instead -- ONE model (unit_text), three files, each
+    read back by check_chunks and by the trap.c edit's one include line ([[mi4-one-value-two-definitions]])."""
+    if model:
+        files, _ = _late().unit_text(xnu or TREE)
+        # (the role -> path map is INCS; the FILES are keyed by NAME, so the lookup is by name)
+        return tuple((r, files[n]) for r, n in zip(("b", "a", "hook"), (INC_DEFS, INC_ARM, INC_HOOK)))
+    return (("b", DEFS_CHUNK()), ("a", arm_text()), ("hook", HOOK_CHUNK), ("h", chunk_h()))
+
+
+def unit_text(xnu):
+    """(files, lines): THE ONE MODEL.  files maps a name to its text (des/arm/hook); lines is the
+    trap.c edit: the include line only (the files hold the text; a file is read back by the checks)."""
+    d, _ = _defs_lines()
+    a, _ = _arm_lines(xnu, GATES)
+    h = _hook_lines()
+    ddir = os.path.join(os.path.abspath(xnu), "osfmk", "arm")
+    h = [l.replace("@@ARM@@", os.path.join(ddir, INC_ARM)) for l in h]
+    files = {INC_DEFS: E.join(d) + E, INC_ARM: E.join(a) + E, INC_HOOK: E.join(h) + E}
+    lines = ["#" + "include " + chr(34) + os.path.join(ddir, INC_DEFS) + chr(34)]
+    return files, lines
+
+
+def gates_values(files):
+    """the gate lines the arm CARRIES (read from its text, never from the table alone)."""
+    return sorted(n for n in GATES.values() if ("xnu_live_wlg_need_%s=1" % n) in files[INC_ARM])
+
+
+def _selfcheck_model():
+    """THE MODEL'S OWN FACTS (no tree): each file is legal by real lines (no backslash, no tab-indented
+    directive), the defs file's directive depth returns to 0, the arm and the hook carry no directive at
+    all, and every `=` in a printf is a row its stem's gate exists for."""
+    files, _ = unit_text(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                      "external", "xnu-hd2-darwin13", "xnu"))
+    probs = []
+    for name in (INC_DEFS, INC_ARM, INC_HOOK):
+        t = files[name]
+        if t is None:
+            probs.append("%s: absent from the model" % name)
+            continue
+        if any(l.rstrip(E).endswith(chr(92)) for l in t.split(E)):
+            probs.append("%s has a line that ends in a backslash (a splice)" % name)
+        for l in t.split(E):
+            if l[:1] == T and l.lstrip(T).startswith("#") and not l.lstrip(T).startswith("#include"):
+                probs.append("%s: tab-indented directive %r" % (name, l[:40]))
+    d = files[INC_DEFS] or ""
+    dep, lo = 0, 0
+    for l in d.split(E):
+        s = l.strip()
+        if s.startswith("#if"):
+            dep += 1
+        elif s.startswith("#endif"):
+            dep -= 1
+            lo = min(lo, dep)
+    if (dep, lo) != (0, 0):
+        probs.append("defs: depth (%d, %d)" % (dep, lo))
+    for name in (INC_ARM, INC_HOOK):
+        for l in (files[name] or "").split(E):
+            if l.lstrip(T).startswith("#include"):
+                continue
+            if l.lstrip(T).startswith("#"):
+                probs.append("%s: a directive beyond its own include" % name)
+    import re as _re
+    # (the gates' plain lines are `printf("xnu_live_wlg_need_<gate>=1\n")` -- a string with no
+    # conversion: their names are the model's gate table, checked below, not rows)
+    if files[INC_ARM] is None:
+        return probs
+    rows = set(_re.findall(r'printf\("xnu_live_([a-z0-9_]+)=', files[INC_ARM])) - set(
+        "wlg_need_" + n for n in gates_values(files))
+    want = set(
+        ["sweq_s3_acc", "sweq_cnt", "sweq_cnt_ok", "sweq_pc", "sweq_pc_ok",
+         "sweq_swb_slot", "sweq_swb_far", "sweq_swb_tag", "sweq_wpc", "sweq_wfp", "sweq_w_ok",
+         "sweq_seq", "sweq_st_ok", "sweq_w15"] + ["sweq_st%d" % k for k in range(16)]
+        + ["sweq_w%d" % k for k in range(15)] + ["sweq_b%d" % k for k in range(4)]
+        + ["ler_cnt_w", "ler_cnt_b", "ler_pc8", "ler_pc4", "ler_ir", "ler_bands", "ler_bands2",
+           "ler_seqeq"] + ["ler_ir%d" % k for k in range(16)] + ["ler_ir%d_ok" % k for k in range(16)])
+    if files[INC_ARM] is not None and gates_values(files) != sorted(GATES.values()):
+        probs.append("the arm's gate lines are not the gate table's (%s vs %s)"
+                     % (gates_values(files), sorted(GATES.values())))
+    if rows != want:
+        probs.append("arm rows differ: missing %s, extra %s" % (sorted(want - rows), sorted(rows - want)))
+    return probs
+
+
+if __name__ == "__main__" and "--model" in __import__("sys").argv:
+    _f, _l = unit_text(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    "external", "xnu-hd2-darwin13", "xnu"))
+    _p = _selfcheck_model()
+    for _x in _p:
+        print("MODEL: " + _x)
+    print("model: %d problem(s)" % len(_p))
+    __import__("sys").exit(1 if _p else 0)
+
+
+# (the entry guard stands LAST: every definition above must exist before main can be called)
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
-
