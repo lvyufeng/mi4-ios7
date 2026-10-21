@@ -170,6 +170,33 @@ python3 -I tools/patch_d13_plan.py "$XNU_TREE" --verify | tail -1 \
 # and used only by the preflight's selftests, so a freshly composed tree reached the pool with no
 # `xnu_live_fb_*` rows at all and step 6 failed its "1037's own body carries 0" count. 1037 first (the
 # plan's seam carries its text), then 1038's model, which lands inside it.
+# **The seven inherited rungs run between the compose and 1037.** Their anchors are a strict chain:
+# abt_entry wants "ABT_ENTRY_PROBE/USTACK_PROBE", reader wants "READER_PROBE/USTACK_PROBE", and so on
+# down to pc_carrier_caller - each one's close must stand immediately in front of 1025's. None of them
+# was applied here, because the tree this script used to meet already carried them from an earlier
+# build. Start from a freshly composed tree and they are simply absent, so every later rung found "0
+# time(s)" and the chain stopped wherever it began. They run in dependency order, before 1037 and 1038:
+# 1038 names PC_CARRIER_CALLER as "this block's immediate predecessor", i.e. it goes last.
+python3 - "$XNU_TREE" <<'PYCHAIN' || { echo "REFUSING: the inherited rung chain did not stage in order"; exit 1; }
+import importlib.util, os, sys
+xnu = sys.argv[1]
+CHAIN = ("abt_entry_probe", "reader_probe", "writer_probe", "caller_probe",
+         "eval_frame", "pc_carrier", "pc_carrier_caller")
+for _n in CHAIN:
+    _p = os.path.join("tools", "patch_d13_%s.py" % _n)
+    _spec = importlib.util.spec_from_file_location("_c", _p)
+    _m = importlib.util.module_from_spec(_spec); sys.modules["_c"] = _m
+    _spec.loader.exec_module(_m)
+    # (main() iterates `argv[1:]`, so the programme's own name has to be argv[0] - calling
+    #  main([xnu, "--apply"]) made it read `--apply` as the path and `xnu` as an unknown flag, and
+    #  every rung exited 2 on its usage line. `stage()` is the part that does the work.)
+    _rc = _m.stage(xnu, True) if hasattr(_m, "stage") else None
+    if _rc is None:
+        print("   %s: no stage() - cannot drive it from here" % _n); sys.exit(1)
+    if _rc != 0:
+        print("   %s: REFUSED (exit %d)" % (_n, _rc)); sys.exit(1)
+    print("   %s: staged" % _n)
+PYCHAIN
 python3 -I "$TF_PATCHER" "$XNU_TREE" --apply | tail -1 \
   || { echo "REFUSING: 1037's frame body did not stage on the composed seam"; exit 1; }
 python3 -I "$LE_PATCHER" "$XNU_TREE" --apply | tail -1 \
