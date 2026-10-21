@@ -878,7 +878,27 @@ def build_harness(scratch):
 
 
 def host_model():
-    """Build the host model and run every case on both copies; PASS iff each group exits 0."""
+    """Build the host model and run every case on both copies; PASS iff each group exits 0.
+
+    **Linux only, and the reason is the arm's own code, not the tooling.** `usb_stream_prime`
+    stores the DMA buffer's address as `td[PAGE0] = (uint32_t)(uintptr_t)g_usb_stream_buf` - a device
+    PHYSICAL address, which is right on the phone - so on the host the image has to live below 4 GiB
+    for the low 32 bits to identify the object. GNU ld gives that with `-Ttext-segment`; ld64 cannot:
+    `-segaddr` places the segments but produces a binary macOS refuses to execute (`Killed: 9`, the
+    code signature no longer matches the layout), `-image_base` is dropped under PIE, and arm64
+    refuses `-no_pie`. Every combination was tried and measured. So on Darwin this reports `skipped`
+    rather than pretending: `make check` treats that as not-a-failure, and the model is still run in
+    full on the Linux build host.
+
+    Making it work on Darwin would mean changing what the model tests - either patching the arm's
+    32-bit stores (which is the thing under test) or relocating its statics at run time. Neither is
+    worth it for a check that already runs where the arm is built.
+    """
+    if sys.platform == "darwin":
+        say("  host model: skipped - the model needs an image below 4 GiB (the arm stores its DMA "
+            "addresses as 32 bits) and ld64 cannot produce one that macOS will still execute; run it "
+            "on the Linux build host")
+        return
     scratch = tempfile.mkdtemp(prefix="usbstream-hs-")
     try:
         argv = build_harness(scratch)
