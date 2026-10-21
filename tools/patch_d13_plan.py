@@ -434,9 +434,16 @@ def compose(t, xnu):
 
 
 def _char_of_line(t, n):
-    """the character offset of line n's start in t."""
+    """the character offset of line n's (0-based) start in t.
+
+    **`n` newlines, not `n + 1`.** Line 0 starts at offset 0; line n starts just past the n-th
+    newline. The extra `+ 1` put every splice ONE LINE LATE - measured on the composed tree: the seam
+    that belongs in front of 1025's `#endif` landed after it, so 1037 became a SIBLING of the 1025 arm
+    instead of a block inside it, and 1038 - whose anchor is `#endif /* TRAP_FRAME */` immediately
+    followed by `#endif /* USTACK_PROBE */` - could not find its seam at all.
+    """
     k = -1
-    for _ in range(n + 1):
+    for _ in range(n):
         k = t.find(E, k + 1)
     return k + 1
 
