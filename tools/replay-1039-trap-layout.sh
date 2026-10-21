@@ -76,10 +76,16 @@ if s is not None and _inside:
     t = first(lambda l: l.startswith("static unsigned _wl_ss_slot(unsigned *ctx)")
               and not l.rstrip().endswith(";"))
     if t is None:
-        sys.exit("stage 2 failed: _wl_ss_slot's definition not found")
-    lines[t:t] = block
-    lines.insert(t, "static unsigned _wl_claim(void);")
-    did.append("statics hoisted in front of their users")
+        # **The block carries its own `_wl_ss_slot` definition.** Deleting it and then looking for a
+        # definition to hoist in front of leaves nothing to find - so the block is put back untouched
+        # rather than dropped. (Measured: the stage used to abort here, which took the whole rung down
+        # with it on a tree where the hoist had already happened once.)
+        lines[s:s] = block
+        did.append("statics left in place (no separate definition to anchor on)")
+    else:
+        lines[t:t] = block
+        lines.insert(t, "static unsigned _wl_claim(void);")
+        did.append("statics hoisted in front of their users")
 
 # (3) THE SECOND DEFINE.
 n = len([l for l in lines if l.strip() == "#define STAGE90_XNU_WATCH_LE 1"])

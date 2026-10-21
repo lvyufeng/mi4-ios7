@@ -190,30 +190,21 @@ fi
 # build. Start from a freshly composed tree and they are simply absent, so every later rung found "0
 # time(s)" and the chain stopped wherever it began. They run in dependency order, before 1037 and 1038:
 # 1038 names PC_CARRIER_CALLER as "this block's immediate predecessor", i.e. it goes last.
-python3 - "$XNU_TREE" <<'PYCHAIN' || { echo "REFUSING: the inherited rung chain did not stage in order"; exit 1; }
-import importlib.util, os, sys
-xnu = sys.argv[1]
-CHAIN = ("abt_entry_probe", "reader_probe", "writer_probe", "caller_probe",
-         "eval_frame", "pc_carrier", "pc_carrier_caller")
-for _n in CHAIN:
-    _p = os.path.join("tools", "patch_d13_%s.py" % _n)
-    _spec = importlib.util.spec_from_file_location("_c", _p)
-    _m = importlib.util.module_from_spec(_spec); sys.modules["_c"] = _m
-    _spec.loader.exec_module(_m)
-    # (main() iterates `argv[1:]`, so the programme's own name has to be argv[0] - calling
-    #  main([xnu, "--apply"]) made it read `--apply` as the path and `xnu` as an unknown flag, and
-    #  every rung exited 2 on its usage line. `stage()` is the part that does the work.)
-    _rc = _m.stage(xnu, True) if hasattr(_m, "stage") else None
-    if _rc is None:
-        print("   %s: no stage() - cannot drive it from here" % _n); sys.exit(1)
-    if _rc != 0:
-        print("   %s: REFUSED (exit %d)" % (_n, _rc)); sys.exit(1)
-    print("   %s: staged" % _n)
-PYCHAIN
+python3 tools/stage_trap_half.py "$XNU_TREE" --chain \
+  || { echo "REFUSING: the inherited rung chain did not stage in order"; exit 1; }
 python3 -I "$TF_PATCHER" "$XNU_TREE" --apply | tail -1 \
   || { echo "REFUSING: 1037's frame body did not stage on the composed seam"; exit 1; }
 python3 -I "$LE_PATCHER" "$XNU_TREE" --apply | tail -1 \
   || { echo "REFUSING: 1038's model did not stage"; exit 1; }
+
+# 2b. THE LAYOUT THE COMPILER ACCEPTS.  The rungs leave trap.c in a shape C rejects: 1038's older
+#     inline arm (one row of literal backslash-n), its statics defined inside sleh_abort, block-scope
+#     `static` prototypes, and - when the include has gone missing - no hook at all. Each stage in
+#     tools/replay-1039-trap-layout.sh is a defect that belongs in its owner eventually; the script is
+#     the measured order, and it is idempotent, so this runs unconditionally.
+echo "-- 2b. the trap.c layout (tools/replay-1039-trap-layout.sh) --"
+bash tools/replay-1039-trap-layout.sh "$XNU_TREE" | sed 's/^/  /' \
+  || { echo "REFUSING: the trap.c layout could not be replayed"; exit 1; }
 
 # 3. THE STAGED TEXT PREPROCESSES, BY THE COMPILER.  The defect this rung fixes was structural (a
 #    close with nothing open); the guard is the real preprocessor over the seam's DIRECTIVE lines
