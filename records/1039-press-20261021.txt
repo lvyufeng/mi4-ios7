@@ -1,0 +1,38 @@
+1039 PRESSED - the frame carrier's own run, 2026-10-21
+==================================================================================================
+
+ARM      armed-d13-87845b1f
+IMAGE    out/stage90/stage90-qcdt.img      9363456 bytes  efdb4e8d45c90859...
+BOOT     fastboot boot -s 4a2fe00b         "Sending 'boot.img' (9144 KB) OKAY" / "Booting OKAY"
+CAPTURE  out/stage90/captures/recovered-unknown-arm-20261021-203423-last_kmsg.txt
+         (recovered from /proc/last_kmsg after the operator's power press; 1657412 bytes)
+
+WHAT THE HOST SAW DURING THE RUN
+  reader exit 2: NOTHING ENUMERATED as 18d1:0910 - the payload never reached the USB idle path.
+  The phone went dark and stayed dark until the operator pressed power, which is the documented
+  state for this ([[mi4-device-dark-needs-power-press]]), and the capture then came from the
+  FLASHED ROM's own last_kmsg, not from the payload's USB channel.
+
+WHAT THE CAPTURE SAYS (tools/check_1039_capture.py)
+  26 fcr rows, 25/25 required present, 7 parent rows.
+  in-log uptime 925 s; raw count 925422452306 ns.
+
+  L2 LR-ODD-ONLY          pc=0x3a5d8474 (even)  lr=0x3a5d09af (odd)   ONE user word is odd, the pc is not
+  U1 USARMCTX-AGREES      the uss AT thread->machine.uss reads the SAME pc/lr the carrier hands
+  I4 NO-CONTINUATION      thread->continuation=0 - the next switch is not a continuation entry
+  S1 SPSR                 spsr=0x00000030 (mode 0x10, T=1); pc bit5 (tbit)=1
+  E                       1038's swb rows absent - its arm is compiled out (WATCH_LE=0), as intended
+  ctrl                    PASS  seq=1 pid=2 cont_ok=1
+
+WHAT THAT MEANS
+  The instrument did its job: it captured a REAL user fault with the saved context readable by
+  address, and it says the saved pc is even while the saved lr is odd, and that a switch from this
+  thread carries no continuation. That is the reading 1039 was built to produce. It is NOT a fix
+  and it does not move the frontier by itself - this rung is the instrument.
+
+  The carrier fired exactly ONCE (seq=1) during 925 s of uptime. A single sample decides L2; it does
+  not by itself say whether that is the common case or a one-off.
+
+NOT DONE HERE
+  No partition was written. `fastboot boot` loads into RAM only. The card write in step 2b goes to
+  userdata's head through adb dd, as designed.
