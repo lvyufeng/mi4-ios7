@@ -122,7 +122,7 @@ echo "   (0-POOL) by value: pmap_flush_tlbs carries the 3rd kernel_pmap material
 _ke_src=$PWD/external/xnu-hd2-darwin13/xnu/bsd/kern/kern_exec.c
 _src_rec=out/xnu_kernel_src_d13.sha256
 [[ -f $_ke_src ]] || { echo "REFUSING: $_ke_src is absent - the staged kern_exec.c is where 1028's fix lives, and a press that cannot read it cannot certify the fix is in the pool"; exit 1; }
-[[ -f $_src_rec ]] || { echo "REFUSING: $_src_rec is absent - the pool's own source-content record is the ONLY by-value witness 1028's value-only fix has (it has no format string, so no `strings` fingerprint can exist). Without it the fix cannot be certified present. Re-run scripts/build_1028.sh"; exit 1; }
+[[ -f $_src_rec ]] || { echo "REFUSING: $_src_rec is absent - the pool's own source-content record is the ONLY by-value witness 1028's value-only fix has (it has no format string, so no \`strings\` fingerprint can exist). Without it the fix cannot be certified present. Re-run scripts/build_1028.sh"; exit 1; }
 # (i) the staged source carries the switch, the patched extent, and the patcher's marker, EXACTLY once.
 grep -q 'defined(STAGE90_XNU_H2_STACK_HEADROOM) && STAGE90_XNU_H2_STACK_HEADROOM' "$_ke_src" || {
   echo "REFUSING: $_ke_src does not carry the STAGE90_XNU_H2_STACK_HEADROOM gate - tools/patch_d13_h2_stack_headroom.py was not staged into the tree, so the pool the linker saw was built WITHOUT the fix (build_entry.sh only LINKS pool objects) and the launchctl[2] fault would recur at the same far. Re-run scripts/build_1028.sh"; exit 1; }
@@ -151,7 +151,7 @@ _exec_obj=out/xnu_kernel_obj_d13/bsd_kern_kern_exec.o
 grep -qa '^xnu_live_abt_lookup_far=' <(strings "$_trap_obj") || {
   echo "REFUSING: $_trap_obj carries NO xnu_live_abt_lookup_far= publisher - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 (the env -> global DEFINES channel of build_xnu_arm_kernel.sh) or the trap.c edit is not staged. The FIX-HOLDS/FIX-NOOP cells would have nothing to read. Re-run scripts/build_1028.sh"; exit 1; }
 grep -qa '^xnu_live_abt_proc_ustack$' <(strings "$_exec_obj") || {
-  echo "REFUSING: $_exec_obj carries NO xnu_live_abt_proc_ustack symbol - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 or the kern_exec.c edit is not staged. The `far == ustack` conjunct that names the fixed fault could not be read. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: $_exec_obj carries NO xnu_live_abt_proc_ustack symbol - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 or the kern_exec.c edit is not staged. The \`far == ustack\` conjunct that names the fixed fault could not be read. Re-run scripts/build_1028.sh"; exit 1; }
 grep -qa '^xnu_live_abt_vmfkrv=' <(strings "$_trap_obj") || {
   echo "REFUSING: $_trap_obj lost 1025's xnu_live_abt_vmfkrv= publisher in this pool rebuild - 1027's block is NESTED inside 1025's, so the discriminator would never run and the FIX-HOLDS absence could not be read ([[mi4-one-file-many-rungs]]). Re-run scripts/build_1028.sh"; exit 1; }
 grep -qa '^xnu_live_ustack_req=' <(strings "$_exec_obj") || {

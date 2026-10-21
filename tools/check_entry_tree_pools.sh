@@ -76,8 +76,14 @@ check_one() {
     # `xnu_generated` are read here too, and a re-pin of either is the same defect. The unsuffixed
     # project roots (`xnu_firehose_obj`, `stage90`) are deliberately NOT matched - they belong to no
     # tree, and their literal is correct on both.
-    local POOL_RE='\$REPO_ROOT"?/out/(xnu_(kernel|asm|platform|arm|macho)_obj|xnu_assym|xnu_generated|mach_headers|device_table|xnu_arm_manifest)'
-    if grep -qE "$POOL_RE" <<<"$L"; then
+    # **`$XNU_OBJ_SUFFIX` is the fix, not the defect.** A tree-derived root carries the suffix
+    # (`out/xnu_kernel_obj$XNU_OBJ_SUFFIX`); a pinned one does not (`out/xnu_kernel_obj`, which on
+    # D13 silently means 4570's pool). The regex matched both, so every corrected call site was
+    # reported as still-broken and this check could never be green - the "a check that cannot
+    # fail" family pointing the other way. The negative lookahead separates them, and it needs
+    # PCRE (grep -P), which the check now requires and tests for.
+    local POOL_RE='\$REPO_ROOT"?/out/(xnu_(kernel|asm|platform|arm|macho)_obj|xnu_assym|xnu_generated|mach_headers|device_table|xnu_arm_manifest)(?!\$XNU_OBJ_SUFFIX)'
+    if grep -qP "$POOL_RE" <<<"$L"; then
         note "(b) a live out-path is still pinned to a literal directory that belongs to one tree"
         grep -nE "$POOL_RE" <<<"$L" | head -3
         return 1

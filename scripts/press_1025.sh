@@ -60,7 +60,7 @@ echo "== 0. the record must be 1025's arm =="
 # (a record without it means the pool was built with the probe gated SHUT, so the run would discard
 # the discarded `vm_fault` return again and 1025 would capture NOTHING on its frontier).
 grep -q '^STAGE90_XNU_USTACK_PROBE=1$' "$REC" || {
-  echo "REFUSING: the record does not carry STAGE90_XNU_USTACK_PROBE=1 - the two publishers this rung IS are gated by THIS switch (trap.c's xnu_live_abt_vmfkrv=* + kern_exec.c's xnu_live_ustack_req=*). Its absence means the pool was built with the probe SHUT (the trap's `code` is discarded again), so the frontier would still be unreadable and this press would not be a reading of THIS rung. Build it with scripts/build_1025.sh first"; exit 1; }
+  echo "REFUSING: the record does not carry STAGE90_XNU_USTACK_PROBE=1 - the two publishers this rung IS are gated by THIS switch (trap.c's xnu_live_abt_vmfkrv=* + kern_exec.c's xnu_live_ustack_req=*). Its absence means the pool was built with the probe SHUT (the trap's \`code\` is discarded again), so the frontier would still be unreadable and this press would not be a reading of THIS rung. Build it with scripts/build_1025.sh first"; exit 1; }
 # 1024's own switch: the widened vm_param.h:63 line reads STAGE90_XNU_VM_MAX_SPLIT, and it is what keeps
 # the 1023 pthread storm away - the boot must reach launchctl for 1025 to have anything to read.
 grep -q '^STAGE90_XNU_VM_MAX_SPLIT=1$' "$REC" || {
@@ -111,9 +111,9 @@ _exec_obj=out/xnu_kernel_obj_d13/bsd_kern_kern_exec.o
 [[ -f "$_trap_obj" ]] || { echo "REFUSING: $_trap_obj is absent - trap.c is where xnu_live_abt_vmfkrv=* lives, and a press whose trap.o is missing cannot name the fault"; exit 1; }
 [[ -f "$_exec_obj" ]] || { echo "REFUSING: $_exec_obj is absent - kern_exec.c is where xnu_live_ustack_req=* lives, and a press whose kern_exec.o is missing cannot read the stack's shape"; exit 1; }
 grep -qa '^xnu_live_abt_vmfkrv=' <(strings "$_trap_obj") || {
-  echo "REFUSING: $_trap_obj carries NO xnu_live_abt_vmfkrv= publisher - the pool was NOT recompiled with STAGE90_XNU_USTACK_PROBE=1 (the env -> global DEFINES channel of build_xnu_arm_kernel.sh) or the trap.c edit is not staged. The discarded `vm_fault` return would NOT be published, so this press would capture nothing on the launchctl fault it exists to name. Re-run scripts/build_1025.sh"; exit 1; }
+  echo "REFUSING: $_trap_obj carries NO xnu_live_abt_vmfkrv= publisher - the pool was NOT recompiled with STAGE90_XNU_USTACK_PROBE=1 (the env -> global DEFINES channel of build_xnu_arm_kernel.sh) or the trap.c edit is not staged. The discarded \`vm_fault\` return would NOT be published, so this press would capture nothing on the launchctl fault it exists to name. Re-run scripts/build_1025.sh"; exit 1; }
 grep -qa '^xnu_live_ustack_req=' <(strings "$_exec_obj") || {
-  echo "REFUSING: $_exec_obj carries NO xnu_live_ustack_req= publisher - the pool was NOT recompiled with STAGE90_XNU_USTACK_PROBE=1 or the kern_exec.c edit is not staged. The stack's placement (`rc`, `final`, the guard geometry) would NOT be published, so the STACK-SHAPE co-reading is impossible. Re-run scripts/build_1025.sh"; exit 1; }
+  echo "REFUSING: $_exec_obj carries NO xnu_live_ustack_req= publisher - the pool was NOT recompiled with STAGE90_XNU_USTACK_PROBE=1 or the kern_exec.c edit is not staged. The stack's placement (\`rc\`, \`final\`, the guard geometry) would NOT be published, so the STACK-SHAPE co-reading is impossible. Re-run scripts/build_1025.sh"; exit 1; }
 echo "   (0a) by value: trap.o carries the xnu_live_abt_vmfkrv= publisher, kern_exec.o carries the xnu_live_ustack_req= publisher (the probe IS in the pool objects)"
 
 # 0a-0. the checker's OWN self-test - a checker that cannot fail is not a check
@@ -141,7 +141,7 @@ echo "   (0b) by value: the LINKED image's task_create_internal passes 0x4000000
 # checker DISCRIMINATES rather than reporting one constant in both directions.
 #
 # **NOT armed-d13-64558b47.** An earlier draft of this clause pointed at that arm calling it "the FROZEN
-# 1024 PRE-RUNG arm" - but 64558b47 IS 1024's OWN arm (its arm-extra reads `role=1024-vm-max-split` and
+# 1024 PRE-RUNG arm" - but 64558b47 IS 1024's OWN arm (its arm-extra reads \`role=1024-vm-max-split\` and
 # its record carries `STAGE90_XNU_VM_MAX_SPLIT=1`), so its ceiling already reads 0x40000000 and the
 # `--expect off` direction FAILS. A control taken on the arm the fix PRODUCED agrees with the test and
 # proves only that the checker says one thing (the mis-named-control class). The control must be a

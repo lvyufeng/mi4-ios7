@@ -51,14 +51,28 @@ def expected_vals(hdr_text):
 
 
 def reader_vals(reader_text):
-    """The three literals the reader carries: EP_IN, --vid default, --pid default."""
+    """The three literals the reader carries: EP_IN, and the vendor/product id.
+
+    **The VID/PID may be carried as a module constant or as an argparse default, and either is a
+    definition.** This check's contract is that the reader agrees with the device header - not that it
+    exposes the numbers as switches. `usb_console_read.py` carries `VID = 0x18d1` / `PID = 0x0910` as
+    constants and reads them directly, which is the same value in one place; requiring `"--vid"
+    ... default=` refused a reader that had not drifted at all. The argparse form is still read first
+    so that a reader which does offer the switches keeps being checked through them.
+    """
+    def _id(name, flag):
+        m = re.search(r'"--%s".*?default\s*=\s*(0x[0-9a-fA-F]+|\d+)' % flag, reader_text)
+        if m is None:
+            m = re.search(r'^%s\s*=\s*(0x[0-9a-fA-F]+|\d+)' % name, reader_text, re.M)
+        return m
+
     ep = re.search(r'^EP_IN\s*=\s*(0x[0-9a-fA-F]+|\d+)', reader_text, re.M)
-    vid = re.search(r'"--vid".*?default\s*=\s*(0x[0-9a-fA-F]+|\d+)', reader_text)
-    pid = re.search(r'"--pid".*?default\s*=\s*(0x[0-9a-fA-F]+|\d+)', reader_text)
-    missing = [n for n, m in (("EP_IN", ep), ("--vid", vid), ("--pid", pid)) if m is None]
+    vid = _id("VID", "vid")
+    pid = _id("PID", "pid")
+    missing = [n for n, m in (("EP_IN", ep), ("VID/--vid", vid), ("PID/--pid", pid)) if m is None]
     if missing:
-        raise SystemExit("check_usb_host_reader: usb_console_read.py does not carry %s in the form "
-                         "this check reads" % ", ".join(missing))
+        raise SystemExit("check_usb_host_reader: usb_console_read.py does not carry %s - neither as "
+                         "a module constant nor as an argparse default" % ", ".join(missing))
     return int(ep.group(1), 0), int(vid.group(1), 0), int(pid.group(1), 0)
 
 
@@ -93,10 +107,19 @@ def selftest():
                          "the check is wrong, not the reader\n")
         return 1
     # Each mutation must be refused.
+    # **Mutate whichever form the reader actually uses**, because `reader_vals` accepts both and a
+    # selftest that only edited the argparse default silently stopped mutating when the reader began
+    # carrying the ids as constants - it reported "could not mutate --vid" instead of proving the
+    # check bites.
+    def _mutate(needle_const, needle_arg, repl_const, repl_arg):
+        if needle_const in rd:
+            return rd.replace(needle_const, repl_const, 1)
+        return rd.replace(needle_arg, repl_arg, 1)
+
     muts = {
         "EP_IN": (re.sub(r'^EP_IN\s*=\s*0x81', 'EP_IN = 0x82', rd, count=1, flags=re.M), "EP_IN"),
-        "--vid": (rd.replace("default=0x18d1", "default=0x05ac", 1), "--vid"),
-        "--pid": (rd.replace("default=0x0910", "default=0x0911", 1), "--pid"),
+        "--vid": (_mutate("VID = 0x18d1", "default=0x18d1", "VID = 0x05ac", "default=0x05ac"), "--vid"),
+        "--pid": (_mutate("PID = 0x0910", "default=0x0910", "PID = 0x0911", "default=0x0911"), "--pid"),
     }
     for name, (mut, what) in muts.items():
         if mut == rd:

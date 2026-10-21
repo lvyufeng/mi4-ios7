@@ -127,7 +127,7 @@ grep -q '^STAGE90_XNU_READER_PROBE=1$' "$LIVE/xnu_arm_entry-config.txt" || {
 #      (r4 - ustack == 0x1000).  Reverting it would move the boundary and the cal frame would describe a
 #      different geometry.
 grep -q '^STAGE90_XNU_H2_STACK_HEADROOM=1$' "$LIVE/xnu_arm_entry-config.txt" || {
-  echo "REFUSING: the record does not carry STAGE90_XNU_H2_STACK_HEADROOM=1 - 1031 carries 1030's and 1028's H2 fix verbatim, and its `r4 - ustack == 0x1000` conjunct is the geometry THAT fix produced. Its absence means the fault would sit at the region top and this arm is not the one docs/1031-design.md s.2 pre-registers. Build with scripts/build_1031.sh"; exit 1; }
+  echo "REFUSING: the record does not carry STAGE90_XNU_H2_STACK_HEADROOM=1 - 1031 carries 1030's and 1028's H2 fix verbatim, and its \`r4 - ustack == 0x1000\` conjunct is the geometry THAT fix produced. Its absence means the fault would sit at the region top and this arm is not the one docs/1031-design.md s.2 pre-registers. Build with scripts/build_1031.sh"; exit 1; }
 
 # (a5) 1027'S KEY, CARRIED VERBATIM.  1031's cal rows ride the SAME failure arm as the 1026/1027
 #      discriminator (the parent cells must still fire); a record without STAGE90_XNU_ABT_ENTRY_PROBE=1
@@ -159,7 +159,7 @@ _pi_src=$PWD/external/xnu-hd2-darwin13/xnu/bsd/sys/proc_internal.h
 # Site B's accessor: the DEFINITION (`xnu_live_cal_proc_region_top(void *bsd_info)`), i.e. the line with a
 # `(`, so a bare mention in Site A's `extern` (which lives in trap.c, not here) cannot satisfy it.
 [[ $(grep -c 'xnu_live_cal_proc_region_top(void \*bsd_info)' "$_ke_src") == 1 ]] || {
-  echo "REFUSING: the staged $_ke_src does not carry EXACTLY 1 xnu_live_cal_proc_region_top(void *bsd_info) DEFINITION - Site B's accessor is not staged, so Site A's `extern` would be unresolved at the link (or two definitions would collide)"; exit 1; }
+  echo "REFUSING: the staged $_ke_src does not carry EXACTLY 1 xnu_live_cal_proc_region_top(void *bsd_info) DEFINITION - Site B's accessor is not staged, so Site A's \`extern\` would be unresolved at the link (or two definitions would collide)"; exit 1; }
 # THREE `p_live_stack_top` writes in kern_exec.c: the FIXED-success stash (a local `_cal_top`) AND the
 # ANYWHERE-fallback stash, PLUS the `_cal_top` read.  The `p->p_live_stack_top` assignment is a single
 # cite; assert the field is WRITTEN on both allocator paths (the FIXED one and the fallback one).
@@ -209,11 +209,11 @@ echo "   BY VALUE(0): tools/check_1031_capture.py --selftest PASSes (the checker
 _trap_obj=out/xnu_kernel_obj_d13/osfmk_arm_trap.o
 _exec_obj=out/xnu_kernel_obj_d13/bsd_kern_kern_exec.o
 [[ -f $_trap_obj ]] || { echo "REFUSING: $_trap_obj is absent - trap.c is where Site A's xnu_live_cal_* rows live; a park that cannot read it cannot certify the probe"; exit 1; }
-[[ -f $_exec_obj ]] || { echo "REFUSING: $_exec_obj is absent - kern_exec.c is where Site B's accessor lives; a park that cannot read it cannot certify that Site A's `extern` would resolve"; exit 1; }
+[[ -f $_exec_obj ]] || { echo "REFUSING: $_exec_obj is absent - kern_exec.c is where Site B's accessor lives; a park that cannot read it cannot certify that Site A's \`extern\` would resolve"; exit 1; }
 grep -qa '^xnu_live_cal_r3=' <(strings "$_trap_obj") || {
   echo "REFUSING: $_trap_obj carries NO xnu_live_cal_r3= publisher - the pool was NOT recompiled with STAGE90_XNU_CALLER_PROBE=1 (the env -> global DEFINES channel of build_xnu_arm_kernel.sh) or Site A's trap.c edit is not staged. Without this row the press captures NOTHING on the launchctl fault and 1031 reads CAL-MISSING for a reason that is not the device's. Re-run scripts/build_1031.sh"; exit 1; }
 grep -qa 'xnu_live_cal_proc_region_top' <(strings "$_exec_obj") || {
-  echo "REFUSING: $_exec_obj carries NO xnu_live_cal_proc_region_top symbol - Site B's accessor is not in the pool object, so the linked image would carry Site A's unresolved `extern` (or a stale object). The region-top value could not be read independently. Re-run scripts/build_1031.sh"; exit 1; }
+  echo "REFUSING: $_exec_obj carries NO xnu_live_cal_proc_region_top symbol - Site B's accessor is not in the pool object, so the linked image would carry Site A's unresolved \`extern\` (or a stale object). The region-top value could not be read independently. Re-run scripts/build_1031.sh"; exit 1; }
 # SITE A PUBLISHES THE WHOLE KEY SET, not just the first row: a partial block would print `r3` and stop
 # exactly where the cell's other conjuncts are read.
 for _k in '^xnu_live_cal_r0=' '^xnu_live_cal_r1=' '^xnu_live_cal_r2=' '^xnu_live_cal_r9=' '^xnu_live_cal_r10=' '^xnu_live_cal_r12=' '^xnu_live_cal_r7=' '^xnu_live_cal_r7_minus_sp=' '^xnu_live_cal_lr=' '^xnu_live_cal_pc=' '^xnu_live_cal_far=' '^xnu_live_cal_ustack=' '^xnu_live_cal_far_minus_ustack=' '^xnu_live_cal_region_end_hit=' '^xnu_live_cal_region_end=' '^xnu_live_cal_r3_minus_region_end='; do

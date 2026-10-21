@@ -122,7 +122,7 @@ grep -q '^STAGE90_XNU_READER_PROBE=1$' "$LIVE/xnu_arm_entry-config.txt" || {
 #      adjudicates (far_minus_ustack == 0x1000).  Reverting it would put the fault back at the region top
 #      and the READER-NAMED cell would be measuring a different arm.
 grep -q '^STAGE90_XNU_H2_STACK_HEADROOM=1$' "$LIVE/xnu_arm_entry-config.txt" || {
-  echo "REFUSING: the record does not carry STAGE90_XNU_H2_STACK_HEADROOM=1 - 1029 carries 1028's H2 fix verbatim, and its `far - ustack == 0x1000` conjunct is the geometry THAT fix produced. Its absence means the pool was built with the FIXED extent SHUT, so the fault would sit at the region top and this arm is not the one docs/1029-design.md s.4 pre-registers. Build with scripts/build_1029.sh"; exit 1; }
+  echo "REFUSING: the record does not carry STAGE90_XNU_H2_STACK_HEADROOM=1 - 1029 carries 1028's H2 fix verbatim, and its \`far - ustack == 0x1000\` conjunct is the geometry THAT fix produced. Its absence means the pool was built with the FIXED extent SHUT, so the fault would sit at the region top and this arm is not the one docs/1029-design.md s.4 pre-registers. Build with scripts/build_1029.sh"; exit 1; }
 
 # (a3) 1027'S KEY, CARRIED VERBATIM.  1029's rows are read BESIDE the 1026/1027 discriminator (FAULT-NAMED
 #      must still fire); a record without STAGE90_XNU_ABT_ENTRY_PROBE=1 would leave the parent cells (and
@@ -149,7 +149,7 @@ _ke_src=$PWD/external/xnu-hd2-darwin13/xnu/bsd/kern/kern_exec.c
 [[ $(grep -c '^#endif /\* STAGE90_XNU_READER_PROBE \*/' "$_tr_src") == 1 ]] || {
   echo "REFUSING: the staged $_tr_src does not carry EXACTLY 1 \`#endif /* STAGE90_XNU_READER_PROBE */\` marker - Site A's ON/OFF gate is not bracketed, so the OFF arm is not the 1028 tree's bytes"; exit 1; }
 [[ $(grep -c 'xnu_live_rdr_proc_argslen' "$_ke_src") -ge 1 ]] || {
-  echo "REFUSING: the staged $_ke_src carries NO xnu_live_rdr_proc_argslen - Site B's accessor is not staged, so Site A's `extern` would be unresolved at the link"; exit 1; }
+  echo "REFUSING: the staged $_ke_src carries NO xnu_live_rdr_proc_argslen - Site B's accessor is not staged, so Site A's \`extern\` would be unresolved at the link"; exit 1; }
 [[ $(grep -c '^#endif /\* STAGE90_XNU_READER_PROBE \*/' "$_ke_src") == 1 ]] || {
   echo "REFUSING: the staged $_ke_src does not carry EXACTLY 1 \`#endif /* STAGE90_XNU_READER_PROBE */\` marker - Site B's ON/OFF gate is not bracketed"; exit 1; }
 # NESTING: Site A's gate must sit INSIDE 1025's publisher and OUTSIDE 1026/1027's block.  Read the line
@@ -186,11 +186,11 @@ echo "   BY VALUE(0): tools/check_1029_capture.py --selftest PASSes (the checker
 _trap_obj=out/xnu_kernel_obj_d13/osfmk_arm_trap.o
 _exec_obj=out/xnu_kernel_obj_d13/bsd_kern_kern_exec.o
 [[ -f $_trap_obj ]] || { echo "REFUSING: $_trap_obj is absent - trap.c is where Site A's xnu_live_rdr_* rows live; a park that cannot read it cannot certify the probe"; exit 1; }
-[[ -f $_exec_obj ]] || { echo "REFUSING: $_exec_obj is absent - kern_exec.c is where Site B's accessors live; a park that cannot read it cannot certify that Site A's `extern` would resolve"; exit 1; }
+[[ -f $_exec_obj ]] || { echo "REFUSING: $_exec_obj is absent - kern_exec.c is where Site B's accessors live; a park that cannot read it cannot certify that Site A's \`extern\` would resolve"; exit 1; }
 grep -qa '^xnu_live_rdr_far=' <(strings "$_trap_obj") || {
   echo "REFUSING: $_trap_obj carries NO xnu_live_rdr_far= publisher - the pool was NOT recompiled with STAGE90_XNU_READER_PROBE=1 (the env -> global DEFINES channel of build_xnu_arm_kernel.sh) or Site A's trap.c edit is not staged. Without this row the press captures NOTHING on the launchctl fault and 1029 reads G-CTL for a reason that is not the device's. Re-run scripts/build_1029.sh"; exit 1; }
 grep -qa 'xnu_live_rdr_proc_argslen' <(strings "$_exec_obj") || {
-  echo "REFUSING: $_exec_obj carries NO xnu_live_rdr_proc_argslen symbol - Site B's accessor is not in the pool object, so the linked image would carry Site A's unresolved `extern` (or a stale object). The READER-NAMED cell's blk_bytes/blk_lo conjuncts would be unreadable. Re-run scripts/build_1029.sh"; exit 1; }
+  echo "REFUSING: $_exec_obj carries NO xnu_live_rdr_proc_argslen symbol - Site B's accessor is not in the pool object, so the linked image would carry Site A's unresolved \`extern\` (or a stale object). The READER-NAMED cell's blk_bytes/blk_lo conjuncts would be unreadable. Re-run scripts/build_1029.sh"; exit 1; }
 # SITE A PUBLISHES THE WHOLE KEY SET, not just the first row: a partial block would print `far` and stop
 # exactly where the cell's other conjuncts are read.
 for _k in '^xnu_live_rdr_ustack=' '^xnu_live_rdr_far_minus_ustack=' '^xnu_live_rdr_blk_hi=' '^xnu_live_rdr_blk_lo=' '^xnu_live_rdr_blk_bytes=' '^xnu_live_rdr_entry_at_hit=' '^xnu_live_rdr_entry_at_lo=' '^xnu_live_rdr_entry_at_hi='; do

@@ -118,7 +118,7 @@ _exec_obj=out/xnu_kernel_obj_d13/bsd_kern_kern_exec.o
 grep -qa '^xnu_live_abt_lookup_far=' <(strings "$_trap_obj") || {
   echo "REFUSING: $_trap_obj carries NO xnu_live_abt_lookup_far= publisher - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 (the env -> global DEFINES channel of build_xnu_arm_kernel.sh) or the trap.c edit is not staged. The discrimination would NOT be published, so this press would capture nothing that separates H1 from H2. Re-run scripts/build_1027.sh"; exit 1; }
 grep -qa '^xnu_live_abt_proc_ustack$' <(strings "$_exec_obj") || {
-  echo "REFUSING: $_exec_obj carries NO xnu_live_abt_proc_ustack symbol - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 or the kern_exec.c edit is not staged. H1's `ustack == far` conjunct could not be read. Re-run scripts/build_1027.sh"; exit 1; }
+  echo "REFUSING: $_exec_obj carries NO xnu_live_abt_proc_ustack symbol - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 or the kern_exec.c edit is not staged. H1's \`ustack == far\` conjunct could not be read. Re-run scripts/build_1027.sh"; exit 1; }
 grep -qa '^xnu_live_abt_vmfkrv=' <(strings "$_trap_obj") || {
   echo "REFUSING: $_trap_obj lost 1025's xnu_live_abt_vmfkrv= publisher in this pool rebuild - 1027's block is NESTED inside 1025's, so the discriminator would never run and the FAULT-NAMED co-reading would be gone ([[mi4-one-file-many-rungs]]). Re-run scripts/build_1027.sh"; exit 1; }
 grep -qa '^xnu_live_ustack_req=' <(strings "$_exec_obj") || {

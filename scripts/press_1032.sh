@@ -169,7 +169,7 @@ grep -qa '^xnu_live_wrp_r4=' <(strings "$_trap_obj") || {
 grep -qa '^xnu_live_abt_vmfkrv=' <(strings "$_trap_obj") || {
   echo "REFUSING: $_trap_obj lost 1025's xnu_live_abt_vmfkrv= publisher in this pool rebuild - 1027's block is NESTED inside 1025's, so the parent rows would never run ([[mi4-one-file-many-rungs]]). Re-run scripts/build_1032.sh"; exit 1; }
 grep -qa '^xnu_live_abt_proc_ustack$' <(strings "$_exec_obj") || {
-  echo "REFUSING: $_exec_obj carries NO xnu_live_abt_proc_ustack symbol - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 or the kern_exec.c edit is not staged. The `far == ustack` conjunct that names the known fault could not be read. Re-run scripts/build_1032.sh"; exit 1; }
+  echo "REFUSING: $_exec_obj carries NO xnu_live_abt_proc_ustack symbol - the pool was NOT recompiled with STAGE90_XNU_ABT_ENTRY_PROBE=1 or the kern_exec.c edit is not staged. The \`far == ustack\` conjunct that names the known fault could not be read. Re-run scripts/build_1032.sh"; exit 1; }
 grep -qa '^xnu_live_ustack_req=' <(strings "$_exec_obj") || {
   echo "REFUSING: $_exec_obj lost 1025's xnu_live_ustack_req= publisher in this pool rebuild - 1032 builds ON 1025/1026/1027/1028/1029/1030, not over them. Re-run scripts/build_1032.sh"; exit 1; }
 echo "   (0a-1) by value: trap.o carries the xnu_live_abt_lookup_far= discriminator AND 1029's xnu_live_rdr_far= AND 1030's xnu_live_wrp_r4=; kern_exec.o carries the xnu_live_abt_proc_ustack accessor AND 1025's xnu_live_ustack_req= (the whole parent chain is still in the pool objects)"

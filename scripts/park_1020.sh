@@ -123,12 +123,12 @@ grep -q '^STAGE90_XNU_UNDEF_RAISE=1$' "$LIVE/xnu_arm_entry-config.txt" || {
 #     falls through at 9e8 straight into the `.L.str.24` printf / `exception_triage` raise, and both its
 #     `beq` targets are FORWARD).  A predicate that reads 0 on a CORRECT arm is the copy-paste defect
 #     class - it would REFUSE the park's own arm.  There is no sound, simple object-side byte/reloc census
-#     for "a `return;` moved inside an `if`" (unlike 1015b's `kernel_pmap` materialization count), so the
+#     for "a \`return;\` moved inside an \`if\`" (unlike 1015b's `kernel_pmap` materialization count), so the
 #     object-side confidence is the STAGED-TREE check in `scripts/build_1020.sh` step 5, and the by-value
 #     proof is the LINKED image below ([[mi4-measurement-defects]]: a census that measures the wrong
 #     thing is worse than none).
 _t_obj=out/xnu_kernel_obj_d13/osfmk_arm_trap.o
-[[ -f "$_t_obj" ]] || { echo "REFUSING: $_t_obj is absent - the pool build did not produce the object 1020 edits (`trap.c` is a KERNEL-POOL file, and build_entry.sh only LINKS it)"; exit 1; }
+[[ -f "$_t_obj" ]] || { echo "REFUSING: $_t_obj is absent - the pool build did not produce the object 1020 edits (\`trap.c\` is a KERNEL-POOL file, and build_entry.sh only LINKS it)"; exit 1; }
 echo "   POOL: $_t_obj present (the pool was rebuilt; the by-value proof is the LINKED image below)"
 
 if [[ -f tools/check_d13_undef_raise.py ]]; then

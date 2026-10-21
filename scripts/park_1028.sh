@@ -175,7 +175,7 @@ grep -qa '^xnu_live_abt_proc_ustack$' <(strings "$_exec_obj") || {
 # NOT `xnu_live_abt_e2_hi=` -- and in that shape the FIX-HOLDS conjunct (`e2_hi == far + 16`) is
 # unreadable.  Certifying the arm without this row would bless a pool that CANNOT answer the fix question.
 grep -qa '^xnu_live_abt_e2_hi=' <(strings "$_trap_obj") || {
-  echo "REFUSING: $_trap_obj carries NO xnu_live_abt_e2_hi= publisher - this is a 1026 SHAPE pool (e2 bounds never printed; the FIX-HOLDS cell's `e2_hi == far + 16` conjunct would be unsatisfiable). 1028 carries 1027's amendment, so it must be here. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: $_trap_obj carries NO xnu_live_abt_e2_hi= publisher - this is a 1026 SHAPE pool (e2 bounds never printed; the FIX-HOLDS cell's \`e2_hi == far + 16\` conjunct would be unsatisfiable). 1028 carries 1027's amendment, so it must be here. Re-run scripts/build_1028.sh"; exit 1; }
 echo "   BY VALUE(1): $_trap_obj carries the xnu_live_abt_lookup_far= AND xnu_live_abt_e2_hi= publishers, $_exec_obj carries the xnu_live_abt_proc_ustack accessor (the discriminator + 1027's far-4 bounds reached the pool objects)"
 
 # 1028-1b. 1025'S PUBLISHER MUST SURVIVE THE SAME POOL REBUILD (the [[mi4-one-file-many-rungs]] check,
@@ -194,7 +194,7 @@ echo "   BY VALUE(1b): 1025's publishers survive the rebuild (trap.o has xnu_liv
 grep -qa '^xnu_live_abt_lookup_far=' <(strings "$LIVE/xnu_arm_entry.elf") || {
   echo "REFUSING: the LINKED $LIVE/xnu_arm_entry.elf carries NO xnu_live_abt_lookup_far= string - the pool object that has it was not linked, so the press would capture nothing on the launchctl fault. Re-run scripts/build_1028.sh"; exit 1; }
 grep -qa '^xnu_live_abt_e2_hi=' <(strings "$LIVE/xnu_arm_entry.elf") || {
-  echo "REFUSING: the LINKED $LIVE/xnu_arm_entry.elf carries NO xnu_live_abt_e2_hi= string - 1027's far-4 bounds did not reach the image the press boots, so the FIX-HOLDS cell's `e2_hi == far + 16` conjunct stays unsatisfiable. Re-run scripts/build_1028.sh"; exit 1; }
+  echo "REFUSING: the LINKED $LIVE/xnu_arm_entry.elf carries NO xnu_live_abt_e2_hi= string - 1027's far-4 bounds did not reach the image the press boots, so the FIX-HOLDS cell's \`e2_hi == far + 16\` conjunct stays unsatisfiable. Re-run scripts/build_1028.sh"; exit 1; }
 grep -qa '^xnu_live_abt_vmfkrv=' <(strings "$LIVE/xnu_arm_entry.elf") || {
   echo "REFUSING: the LINKED $LIVE/xnu_arm_entry.elf carries NO xnu_live_abt_vmfkrv= string - 1025's publisher was dropped from the link. Re-run scripts/build_1028.sh"; exit 1; }
 echo "   BY VALUE(2): the LINKED $LIVE/xnu_arm_entry.elf carries the 1027 discriminator (lookup_far + e2_hi) AND 1025's publisher (the read reached the image the press boots)"
