@@ -558,7 +558,12 @@ echo "   entry bin sha256=$_eb1 (twice)"
 
 # 8. THE PAYLOAD, with the arm's switches + the entry switch.
 echo "-- 8. payload (arm switches + -DSTAGE90_XNU_ENTRY=1) --"
-_arm_sw=$(tr '\n' ' ' < "$REC")
+# **`-D` each one.** The record's lines are bare `KEY=VALUE`; in an EXTRA_CFLAGS string a bare word
+# is an input file, and the payload's compile died with one "No such file or directory" per switch.
+#    (the same three keys step 7 skips: they describe the image, not the compile)
+_arm_sw=$(sed -e 's/\r$//' -e '/^[[:space:]]*$/d' -e '/^#/d' \
+              -e '/^STAGE90_XNU_ENTRY_\(SHA256\|BYTES\)=/d' -e '/^STAGE90_XNU_TREE_D13=/d' \
+              -e 's/^/-D/' "$REC" | tr '\n' ' ')
 XNU_TREE="$XNU_TREE" STAGE90_EXTRA_CFLAGS="$_arm_sw -DSTAGE90_XNU_ENTRY=1" ./scripts/build.sh || { echo "FAIL: payload build refused"; exit 1; }
 
 # 9. THE CARD (1032's guard must be the one on the device).
