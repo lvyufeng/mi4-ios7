@@ -124,6 +124,14 @@ END = f"#endif /* {SWITCH} */"
 # (`xnu_live_abt_vmfkrv_pid=` occurs once), so the block lands INSIDE 1025's `#if` block, immediately
 # before its `#endif`.  Inserting after this line and before `#endif /* STAGE90_XNU_USTACK_PROBE */`
 # is what makes 1026 a CHILD of 1025's gate (the shared fault path has ONE gate).
+# **The rung nests at the END of 1025's arm, which is where 1037's seam now stands.** This
+# anchor used to be the `xnu_live_abt_vmfkrv_pid` printf - the arm's last row at the time - so the
+# block went in right after it. Once 1037's seam was spliced at that same point, "right after that
+# printf" meant IN FRONT OF the seam, i.e. outside the arm's close pair: 1039's chain then looked for
+# "the ABT_ENTRY_PROBE/USTACK_PROBE `#endif` tail" and found the TRAP_FRAME close in between, 0 times
+# what it wanted. The anchor is now 1037's close when it is there, and the arm's last printf when it
+# is not, so the block lands between the two closes in both worlds.
+INSERT_AFTER_TRAP_FRAME_CLOSE = "#endif /* STAGE90_XNU_TRAP_FRAME */\n"
 INSERT_AFTER = (
     "                    printf(\"xnu_live_abt_vmfkrv_pid=%d\\n\", "
     "(thread->task->bsd_info ? proc_pid(thread->task->bsd_info) : -1));\n"
@@ -361,7 +369,7 @@ def stage(xnu, do_apply):
     ok1, m1 = plan_file("trap.c", t,
                         [("leo_installd_fault_result", ANCHOR_GUARD, 1),
                          ("parent_gate", ANCHOR_PARENT, 1)],
-                        INSERT_AFTER, DONE_MARK, before=False)
+                        _anchor(t), DONE_MARK, before=False)
     ok2, m2 = plan_file("kern_exec.c", e,
                         [("create_unix_stack_comment", EXEC_INSERT_BEFORE, 1)],
                         EXEC_INSERT_BEFORE, EXEC_DONE_MARK, before=True)
@@ -388,7 +396,7 @@ def stage(xnu, do_apply):
     if not do_apply:
         print("patch_d13_abt_entry_probe: plan OK (dry run; pass --apply to write).")
         return 0
-    if not apply_file("trap.c", trap, INSERT_AFTER, BLOCK, before=False,
+    if not apply_file("trap.c", trap, _anchor(trap), BLOCK, before=False,
                       note=("RE-STAGED the 1026 discriminator (amended with the 1027 e2 rows) INSIDE "
                             "1025's publisher block." if restaged else
                             "staged the 1026 discriminator INSIDE 1025's publisher block."),
@@ -446,6 +454,14 @@ def verify_off(xnu):
     print("patch_d13_abt_entry_probe: --verify-off PASS (OFF == 1025's staged bytes for BOTH files; "
           "ON carries the discriminator + the accessor).")
     return 0
+
+
+def _anchor(t):
+    """The row the block goes in after: 1037's close when the seam is present, else the arm's last
+    printf. Both end the arm's body, so the block lands inside 1025's close pair either way."""
+    if INSERT_AFTER_TRAP_FRAME_CLOSE in t:
+        return INSERT_AFTER_TRAP_FRAME_CLOSE
+    return INSERT_AFTER
 
 
 def main(argv):
