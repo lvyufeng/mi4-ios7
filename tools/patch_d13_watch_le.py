@@ -2881,8 +2881,14 @@ def unit_text(xnu):
     h = [l.replace("@@ARM@@", os.path.join(ddir, INC_ARM)) for l in h]
     swp = os.path.join(ddir, INC_SWITCH)
     h = [l.replace("@@SWITCH@@", swp) for l in h]
+    # **The switch file DEFERS to a `-D` that already set it.** It used to hold an unconditional
+    # `#define STAGE90_XNU_WATCH_LE 1`, which OVERRODE the build's own `-WATCH_LE=0`: a rung that
+    # records the arm as OFF (1039 does - "its ROW side compiles out") still had 1038's rows compiled
+    # in, and because the defs file that declares `_wl_owned` is included 600 lines below the hook,
+    # every one of them came up "use of undeclared identifier" and trap.o failed to build. With the
+    # guard, a 1038 build (no -D) still turns it on, and a rung that says 0 keeps it off.
     with open(swp, "w") as f_:
-        f_.write(WATCH_DEFINE)          # (the file @@SWITCH@@ names: the switch ON, nothing else)
+        f_.write("#ifndef %s\n" % SWITCH + WATCH_DEFINE + "#endif\n")
     files = {INC_DEFS: E.join(d) + E, INC_ARM: E.join(a) + E, INC_HOOK: E.join(h) + E}
     lines = ["#" + "include " + chr(34) + os.path.join(ddir, INC_DEFS) + chr(34)]
     return files, lines
