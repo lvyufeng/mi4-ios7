@@ -95,13 +95,23 @@ for _n in $(python3 -I "$CHECKER" --required-rows); do
 done
 
 # BY VALUE (0a-1): the parent rows the fcr rows are read BESIDE survive in the pool object and the image.
-for s in xnu_live_fb_seq= xnu_live_fb_ctx_diff= xnu_live_fb_ldrh= xnu_live_sweq_seq= xnu_live_ler_cnt_b= \
-         xnu_live_wlg_byte= xnu_live_pcc2_seq= xnu_live_pcc_pc= xnu_live_pcc_xor_walk= xnu_live_evf_pc= \
+# (`xnu_live_sweq_seq=`, `ler_cnt_b=` and `wlg_byte=` are NOT here: they are 1038's, gated on a switch
+#  this record sets to 0, and they are checked below only when it is 1.)
+for s in xnu_live_fb_seq= xnu_live_fb_ctx_diff= xnu_live_fb_ldrh= \
+         xnu_live_pcc2_seq= xnu_live_pcc_pc= xnu_live_pcc_xor_walk= xnu_live_evf_pc= \
          xnu_live_evf_far_raw= xnu_live_cal_region_end= xnu_live_wrp_r4= xnu_live_rdr_far= \
          xnu_live_abt_lookup_far= xnu_live_abt_vmfkrv=; do
   grep -qa "^$s" <(strings "$TRAP_OBJ") || { echo "REFUSING: $TRAP_OBJ lost $s in the rebuild - a parent row is gone ([[mi4-one-file-many-rungs]])"; exit 1; }
   grep -qa "^$s" <(strings "$ELF") || { echo "REFUSING: the LINKED image lost $s - the linker dropped a parent row"; exit 1; }
 done
+if grep -q '^STAGE90_XNU_WATCH_LE=1$' "$REC" 2>/dev/null; then
+  for s in xnu_live_sweq_seq= xnu_live_ler_cnt_b= xnu_live_wlg_byte=; do
+    grep -qa "^$s" <(strings "$TRAP_OBJ") || { echo "REFUSING: $TRAP_OBJ lost $s - a 1038 parent row is gone"; exit 1; }
+    grep -qa "^$s" <(strings "$ELF") || { echo "REFUSING: the LINKED image lost $s"; exit 1; }
+  done
+else
+  echo "   (1038's parent rows: STAGE90_XNU_WATCH_LE=0 - the arm compiles out, as that rung intends)"
+fi
 grep -qa '^xnu_live_abt_proc_ustack$' <(strings "$EXEC_OBJ") || { echo "REFUSING: $EXEC_OBJ carries no xnu_live_abt_proc_ustack"; exit 1; }
 echo "   (0a-1) by value: trap.o and the image keep fb (re-staged 1037), sweq/ler/wlg (1038), pcc2 (1036), pcc (1035) and the evf/cal/wrp/rdr/abt publishers"
 

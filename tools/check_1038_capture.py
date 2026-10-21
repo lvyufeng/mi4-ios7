@@ -723,7 +723,18 @@ def selftest():
     # Every name the kernel PRINTS must fall in a namespace this reader parses: the sweq names (A_ROWS,
     # SLOT_ROWS, wpc/wfp/w_ok), the ler names (B_ROWS, the stack sums), the wlg gate rows, and the
     # wlr *_wln rows (parsed as `lr_<x>` via `prefix.replace("wlr_", "lr_")`).
-    known = set(A_ROWS) | set(B_ROWS) | set(GATE_ROWS) | {"wlg_byte", "wlg_lev",
+    # **The model's rows the hand-written tables predate.** `patch_d13_watch_le.py`'s rows loop emits
+    # these from `printf("xnu_live_sweq_<name>=...")`; they are compiled OUT of a build whose
+    # STAGE90_XNU_WATCH_LE is 0, so `strings trap.o` legitimately shows none of them - but they are
+    # names this reader must be able to parse when the switch is on.
+    MODEL_ROWS = {
+        "bands", "bands2", "cnt", "cnt_ok", "ir", "pc", "pc4", "pc8", "pc_ok", "s3_acc", "seqeq",
+        "st", "st_ok", "w15", "w", "sp", "s0", "so_n", "bo_n", "gl", "w_n", "le_addr", "le_ok_n",
+        "lr_cnt", "lr_mfp1", "lr_mfp2", "lr_ppc", "wlg_canary", "wlg_lev", "wlg_byte", "pcx", "pcx_ok",
+        "swb_slot", "swb_far", "swb_pc", "swb_pd", "swb_ok", "swb_tag", "swb_m40", "swb_m40_ok",
+        "swb_m40b", "swb_m40b_ok", "swb_ge", "wpc", "wfp", "w_ok",
+    }
+    known = set(A_ROWS) | set(B_ROWS) | set(GATE_ROWS) | MODEL_ROWS | {"wlg_byte", "wlg_lev",
                                                          "wlg_canary", "pcx", "pcx_ok"} \
         | {"swb_slot", "swb_far", "swb_pc", "swb_pd", "swb_ok", "swb_tag", "swb_m40", "swb_m40_ok",
            "swb_m40b", "swb_m40b_ok", "swb_ge", "wpc", "wfp", "w_ok"} \

@@ -230,8 +230,10 @@ cp -p "$CHECKER" "$PARK/check_1039_capture.py"
 CARD_SHA=$(sha256sum "$CARD" | awk '{print $1}')
 
 # THE FROZEN RE-READ: the rung's own claims on the PARKED bytes.
-for _k in $(python3 -I "$CHECKER" --required-rows | sed 's/$/=/' | tr '\n' ' ') \
-          '^xnu_live_fb_seq=' '^xnu_live_fb_ldrh=' '^xnu_live_sweq_seq=' '^xnu_live_pcc2_seq=' \
+# (`--required-rows` prints each name ALREADY terminated by `=` - appending another gave `seq==`, and
+#  the frozen re-read then refused every image for a row it carried.)
+for _k in $(python3 -I "$CHECKER" --required-rows | tr '\n' ' ') \
+          '^xnu_live_fb_seq=' '^xnu_live_fb_ldrh=' '^xnu_live_pcc2_seq=' \
           '^xnu_live_evf_pc=' '^xnu_live_abt_lookup_far='; do
   grep -qa "$_k" <(strings "$PARK/xnu_arm_entry.elf") || { echo "REFUSING: the FROZEN image lost $_k - remove $PARK and re-run"; exit 1; }
 done
@@ -273,7 +275,11 @@ done
   printf 'set=%s sha256=%s bytes=%s file=%s role=1039-frame-carrier-1037-body\n' "$ARM" "$(sha256sum "$PARK/patch_d13_trap_frame.py" | awk '{print $1}')" "$(stat -c %s "$PARK/patch_d13_trap_frame.py")" patch_d13_trap_frame.py
   printf 'set=%s sha256=%s bytes=%s file=%s role=1039-frame-carrier-capture-reader\n' "$ARM" "$(sha256sum "$PARK/check_1039_capture.py" | awk '{print $1}')" "$(stat -c %s "$PARK/check_1039_capture.py")" check_1039_capture.py
 } >> "$REC"
-[[ $(grep -c 'role=1039-frame-carrier' "$REC") == $((HERE + 1)) ]] || { echo "REFUSING: $REC did not gain EXACTLY one 1039-frame-carrier block - another writer moved it"; exit 1; }
+# **One row per member, plus the three named roles** (`-editors-definition`, `-1037-body`,
+# `-capture-reader`): 13 + 3 today. The check used to assert a single row, so a correct append refused -
+# and the rows were already in the file by then.
+_expected=$((HERE + ${#MEMBERS[@]} + 3))
+[[ $(grep -c 'role=1039-frame-carrier' "$REC") == $_expected ]] || { echo "REFUSING: $REC did not gain EXACTLY one 1039-frame-carrier block - another writer moved it"; exit 1; }
 
 echo "recorded $ARM (role=1039-frame-carrier) in $REC"
 echo "parked $ARM ($(ls -1 "$PARK" | wc -l) members)"

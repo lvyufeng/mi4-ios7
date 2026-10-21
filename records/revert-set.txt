@@ -17409,3 +17409,38 @@ set=armed-d13-f03bc0c7 sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161d
 set=armed-d13-f03bc0c7 sha256=a0c194bf960158df76512baec2e0e36136cb095ca8a78da7eba6ab2980dac63f bytes=560 file=SHA256SUMS.txt role=1037-trap-frame;SHA256SUMS.txt
 set=armed-d13-f03bc0c7 sha256=7497a5b9f36a1588415f5ccd86ae35a784afcb67ffd805ecd6d310451bc23866 bytes=25206 file=patch_d13_trap_frame.py role=1037-trap-frame-editors-definition
 set=armed-d13-f03bc0c7 sha256=23d3da8ae0aa5bf73b2b4844216fd99020086ff39909cc25c109bcf74fbce142 bytes=15878 file=check_1037_capture.py role=1037-trap-frame-capture-reader
+
+# =================================================================================================
+# armed-d13-87845b1f  -  1039: THE FRAME CARRIER -- the saved user context vs the hardware fault, read WITHOUT
+# arm_ctx.  INSTRUMENT ONLY.
+# 1037 READ: pc=0x38492474 lr=0x3848a9af (a blx return word +1), r1=0 at the ldrb, uss_ok=0
+# (ctx_diff was a tautology).  1039 re-stages 1037 and reads thread->machine.uss BY ADDRESS,
+# thread->continuation, the entry spsr, pc/lr bit0, pc bit5 and the uptime.
+# NOT a return if the fault path runs: a resident rung.
+# NEW SWITCH: STAGE90_XNU_FRAME_CARRIER=1 (tools/patch_d13_frame_carrier.py), a TRAP block AFTER 1037-s close
+# and IN FRONT OF 1038-s slot, inside 1025-s data-abort publisher.  Rows xnu_live_fcr_*.  READS ONLY.
+# CHANNEL: the global DEFINES array (build_xnu_arm_kernel.sh, gated on the switch); a -D in EXTRA is not the channel.
+# THE POOL MOVES: TRAP is a pool object, so the entry bin (and the arm name) MOVES.
+# [[mi4-one-file-many-rungs]]: FRAME_CARRIER is in EVERY TRAP patcher-s ALLOWED_IF_IDENTIFIERS.
+# THE CARD: 1039 serves 1032-s 10 bytes (card 0x10183720 = 5010012801daf0bdc046).
+# THE READING: tools/check_1039_capture.py (pre-registered cells in records/1039-read.txt 2).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible.  fastboot boot only, NEVER flash.
+# card_sha256=0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529 card_off=0x10183720 card_new=5010012801daf0bdc046
+# =================================================================================================
+set=armed-d13-87845b1f sha256=7530c37cf1912bbe57e88c09ebb293c7bedc24be0a076b311bc914119edfa56a bytes=6343764 file=xnu_arm_entry.bin role=1039-frame-carrier;xnu_arm_entry.bin
+set=armed-d13-87845b1f sha256=bb8874d97989fe34425e7ba9a7f94848550f66eee62183d0482a39a0e084e6f4 bytes=7382208 file=xnu_arm_entry.elf role=1039-frame-carrier;xnu_arm_entry.elf
+set=armed-d13-87845b1f sha256=c10a9e5ce24f1930505e36c70123cf3611b088f655ddff45b1a23cc92183d7f2 bytes=1912 file=xnu_arm_entry.h role=1039-frame-carrier;xnu_arm_entry.h
+set=armed-d13-87845b1f sha256=0a5be388c61b110c2dc511df2af8e9776f3a51b2ddf0530207a0c87bad9b3d4b bytes=2462 file=xnu_arm_entry-config.txt role=1039-frame-carrier;xnu_arm_entry-config.txt
+set=armed-d13-87845b1f sha256=4ca2a84ba9227cd9f917dac6baddc6d28b5480c1dbaa19a9c2f7e106d2adde30 bytes=49 file=xnu_arm_entry-arm-extra.txt role=1039-frame-carrier;xnu_arm_entry-arm-extra.txt
+set=armed-d13-87845b1f sha256=9bd514b6af28eb9a8c9dde5fe2606add244f40d3971ca72a35383b48bdda2a9d bytes=3149 file=xnu_arm_entry-sources.txt role=1039-frame-carrier;xnu_arm_entry-sources.txt
+set=armed-d13-87845b1f sha256=5c06631b93738014d9648f37824e64c57d18e827298528beb20d7a8b634f52ee bytes=6839172 file=stage90.bin role=1039-frame-carrier;stage90.bin
+set=armed-d13-87845b1f sha256=92a19f0701460b6495c92bac36fed49324b026bbd614ae5e80a4464798b95b96 bytes=6901244 file=stage90.elf role=1039-frame-carrier;stage90.elf
+set=armed-d13-87845b1f sha256=6dd4f302ae2af1c2b8eae352028e9b69bc38f6cf392b63c0c34b57392824c108 bytes=6842368 file=stage90.img role=1039-frame-carrier;stage90.img
+set=armed-d13-87845b1f sha256=efdb4e8d45c9085936cb31caf4a95f188ef38e3b0c1689fe6ea336f4e6d92fba bytes=9363456 file=stage90-qcdt.img role=1039-frame-carrier;stage90-qcdt.img
+set=armed-d13-87845b1f sha256=52bc9c357068b791f777bb9abd2e879fa5b0b27364267220b01215dc5faec97b bytes=1744 file=stage90_fixture.macho role=1039-frame-carrier;stage90_fixture.macho
+set=armed-d13-87845b1f sha256=6c2b6038d3bcbe30da60084c571682100946a15f191437161dbf1ed1385b547b bytes=682 file=stage90-build-config.txt role=1039-frame-carrier;stage90-build-config.txt
+set=armed-d13-87845b1f sha256=3c3562f49acf50acff0101f30e9aa41403a51abdebe79944b9090a94a6407908 bytes=560 file=SHA256SUMS.txt role=1039-frame-carrier;SHA256SUMS.txt
+set=armed-d13-87845b1f sha256=3e55c037ed474795515f081e73db6278166ad74f25babcb7e10f4438f64308f0 bytes=77254 file=patch_d13_frame_carrier.py role=1039-frame-carrier-editors-definition
+set=armed-d13-87845b1f sha256=990bdae506d61ed06d55617bffb8da34701d9212250a4ad8f658fd4164b37c63 bytes=44289 file=patch_d13_trap_frame.py role=1039-frame-carrier-1037-body
+set=armed-d13-87845b1f sha256=33be9884837dca2fd5c9a56035b4d1a44f1baefdc0cdf307366f348c90fad168 bytes=18178 file=check_1039_capture.py role=1039-frame-carrier-capture-reader

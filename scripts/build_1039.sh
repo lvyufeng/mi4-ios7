@@ -556,6 +556,17 @@ _eb2=$(sha256sum $LIVE/xnu_arm_entry.bin | awk '{print $1}')
 [[ $_eb1 == "$_eb2" ]] || { echo "FAIL: the entry image did not reproduce ($_eb1 != $_eb2) - it is not a function of src/entry/"; exit 1; }
 echo "   entry bin sha256=$_eb1 (twice)"
 
+# 7b. THE ARM-EXTRA DROP-IN LIST.  park_1039 lists it among the image's MEMBERS and refuses a member
+#     older than 24 h; nothing in this rung wrote it (the last writer was a 1037 press on 2026-10-19).
+#     Its content is the drop-in switches the record carries, one line, so it is regenerated here from
+#     the record rather than left as a hand edit.
+if grep -q '^STAGE90_XNU_GLOBAL_FIX=' "$REC" 2>/dev/null; then
+  grep '^STAGE90_XNU_GLOBAL_FIX=' "$REC" | sed 's/$/ role=1039-frame-carrier/' > "$LIVE/xnu_arm_entry-arm-extra.txt"
+else
+  printf 'STAGE90_XNU_GLOBAL_FIX=1 role=1039-frame-carrier\n' > "$LIVE/xnu_arm_entry-arm-extra.txt"
+fi
+echo "   arm-extra: $(cat "$LIVE/xnu_arm_entry-arm-extra.txt")"
+
 # 8. THE PAYLOAD, with the arm's switches + the entry switch.
 echo "-- 8. payload (arm switches + -DSTAGE90_XNU_ENTRY=1) --"
 # **`-D` each one.** The record's lines are bare `KEY=VALUE`; in an EXTRA_CFLAGS string a bare word
