@@ -476,8 +476,30 @@ def verify_off(xnu):
     # 1039 stages its carrier between 1037's close and 1025's USTACK close, so with 1039 at 1 the
     # USTACK close after 1037's is no longer the NEXT line ([[mi4-one-file-many-rungs]]).  What is
     # checked is the same fact: this block is the last thing before 1025's close.
-    tail = re.search(r"#endif /\* %s \*/\n(?:\t?#endif /\* STAGE90_XNU_[A-Z0-9_]+ \*/\n)*\t?#endif /\* "
-                     r"STAGE90_XNU_USTACK_PROBE \*/\n" % SWITCH, t) is not None
+    # **Its close, then 1025's close, with other rungs' blocks between them - but no second opening of
+    # this block.** The old form allowed only a run of `#endif` rows in between, which stopped holding
+    # once later rungs were staged INSIDE the arm (measured on the 1039 tree: 1155 -> 1540, 385 rows
+    # apart). Allowing arbitrary text let a row ESCAPE the gate go unnoticed (the selftest's negative
+    # case), so the window is bounded: no `#if defined(SWITCH)` may stand in it.
+    _m = re.search(r"#endif /\* %s \*/\n(?s:.*?)#endif /\* STAGE90_XNU_USTACK_PROBE \*/\n" % SWITCH, t)
+    tail = False
+    if _m is not None:
+        escaped, _depth, _comment = [], 0, False
+        for _l in _m.group(0).split("\n")[1:-2]:      # (drop our close's row and 1025's)
+            _s = _l.strip()
+            if _comment:
+                if "*/" in _s:
+                    _comment = False
+                continue
+            if _s.startswith("/*"):
+                _comment = "*/" not in _s
+                continue
+            if _s.startswith("#"):
+                _depth += 1 if _s.startswith("#if") else (-1 if _s.startswith("#endif") else 0)
+                continue
+            if _s and _depth <= 0:
+                escaped.append(_l)
+        tail = not escaped
     # every emitted row is INSIDE the gated block (so OFF removes it, not just the switch name)
     s = t.find("#if defined(%s) && %s" % (SWITCH, SWITCH))
     e = t.find("#endif /* %s */" % SWITCH)
