@@ -1597,6 +1597,18 @@ def seam_site(t):
     return t, "anchors unique behind the inherited chain, switch absent"
 
 
+def _insert_frame(t):
+    """`t` with the hook frame written after the hook anchor (idempotent: a frame already there is
+    left alone)."""
+    if _staged_hook_at(t) is not None:
+        return t
+    _i = t.find(HOOK_ANCHOR)
+    if _i < 0:
+        return t
+    _i += len(HOOK_ANCHOR)
+    return t[:_i] + hook_block() + t[_i:]
+
+
 def check_trap(xnu):
     """(ok, path, text, msg): the tree must be the 1037 tree (the seam and the hook anchor unique, no
     foreign STAGE90 directive) or this rung's already-staged text.  The text returned is the NORMALISED
@@ -1617,6 +1629,12 @@ def check_trap(xnu):
     staged_hook = a_h is not None and _is_hook_frame(t, a_h)
     if staged_seam and staged_hook:
         return True, p, t, "already staged"
+    if staged_seam and not staged_hook:
+        # **The seam is in, the frame is not: finish the splice instead of refusing it.** That is
+        # the state a tree reaches when the frame is removed or replaced - this rung's edit half
+        # applied - and refusing it leaves no way forward that is not hand-editing trap.c. The frame
+        # goes exactly where the staged form puts it: after the hook anchor.
+        return True, p, _insert_frame(t), "completed the frame (the seam was already in)"
     if staged_seam or staged_hook:
         return False, p, t, ("a partial splice (the seam's include line and the tail hook are not both "
                              "present) - build from the pre-1038 base, or fold the staged edit first")
