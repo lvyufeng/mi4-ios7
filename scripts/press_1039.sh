@@ -141,7 +141,16 @@ echo "== 1. the card image (built+patched by scripts/build_1039.sh -- NOT rebuil
 echo "   $CARD  $(sha256sum "$CARD" | cut -c1-16)..."
 
 echo "== 2. hardware gate =="
-adb devices | grep -q 4a2fe00b || { echo "NO DEVICE - hold Power ~10-15s to boot it back, then re-run"; exit 1; }
+# **Either mode is a device.** `fastboot boot` is what this script does; adb is only how a PREVIOUS
+# run's RAM console is read. A phone already sitting in fastboot - which is where the press needs it -
+# was refused with "NO DEVICE - hold Power ~10-15s".
+if adb devices | grep -q 4a2fe00b; then
+  echo "   device 4a2fe00b: adb"
+elif fastboot devices | grep -q 4a2fe00b; then
+  echo "   device 4a2fe00b: fastboot (boot from here)"
+else
+  echo "NO DEVICE - connect 4a2fe00b, or hold Power ~10-15s to boot it back, then re-run"; exit 1
+fi
 fastboot devices | grep -q 33e80afe && { echo "33e80afe (the OTHER phone) is present - unplug it first (hardware gate)"; exit 1; }
 
 # ORDER: a PREVIOUS run's RAM console is recovered BEFORE this boot overwrites the slot
