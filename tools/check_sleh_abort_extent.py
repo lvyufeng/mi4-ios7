@@ -37,7 +37,23 @@ def main(argv):
     # the replay indents every earlier one (they belong to rung blocks), so after the replay this is
     # the real close. BEFORE it, this brace may belong to a rung block and the tail escapes - which
     # is exactly the `escaped` count below.
-    close = next((k for k in range(sig + 1, undef) if lines[k] == "}"), None)
+    # **Walk the braces, skipping directive rows.** A column-0 `}` that stands INSIDE an `#if` block
+    # is not the function's close: the preprocessor only ever sees it together with its block, so the
+    # brace that ends `sleh_abort` is the one where the running depth reaches zero. Counting the first
+    # column-0 `}` instead answered "inside: 0, escaped: 3" for a tree whose three `doexception(` calls
+    # are all inside the body (measured: the real close is the depth-zero row, 500 rows later).
+    close = None
+    depth, started = 0, False
+    for k in range(sig, undef):
+        row = lines[k].strip()
+        if row.startswith("#"):
+            continue
+        depth += lines[k].count("{") - lines[k].count("}")
+        if not started and "{" in lines[k]:
+            started = True
+        elif started and depth <= 0:
+            close = k
+            break
     if close is None:
         print("no column-0 `}` between sleh_abort and sleh_undef - the function never closes")
         return 1

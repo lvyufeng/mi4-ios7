@@ -955,6 +955,34 @@ def claim_d13_the_handler_gates_on_it(facts, failures, notes):
                         "mean something different from what it means on 4570")
 
 
+def _sleh_abort_body(text):
+    """`sleh_abort`'s body, delimited by DEPTH rather than by the first column-0 `}`.
+
+    A rung block's body stands inside an `#if`, so its closing brace sits at column 0 while the
+    preprocessor never sees it alone. Slicing to that brace ended the body 500 rows early and this
+    claim then reported "`sleh_abort` no longer calls `doexception()`" on a tree whose three calls are
+    all inside the function. Depth is counted over the non-directive rows - what the preprocessor
+    actually hands the compiler.
+    """
+    m = re.search(r"\bvoid\s+sleh_abort\s*\([^)]*\)\s*\{", text)
+    if not m:
+        return None
+    start = m.end()
+    depth, seen_open = 1, True
+    i = start
+    while i < len(text):
+        nl = text.find("\n", i)
+        row = text[i:] if nl < 0 else text[i:nl]
+        if not row.lstrip().startswith("#"):
+            depth += row.count("{") - row.count("}")
+            if depth <= 0:
+                return text[start:text.rfind("\n", start, i)]
+        if nl < 0:
+            break
+        i = nl + 1
+    return None
+
+
 def claim_d13_the_user_path_never_comes_back(facts, failures, notes):
     """D13-8. D13's user half has no `goto exception_return;`: a serviced user fault **returns from
     the handler** and a failed one leaves through `doexception()`.
@@ -967,12 +995,11 @@ def claim_d13_the_user_path_never_comes_back(facts, failures, notes):
     when the page-in failed - so a returned entry the wrapper sees is a serviced fault, not a panic.
     """
     text = facts["trap"]
-    body = re.search(r"\bvoid\s+sleh_abort\s*\([^)]*\)\s*\{(.*?)\n\}", text, re.S)
-    if not body:
+    body = _sleh_abort_body(text)
+    if body is None:
         failures.append("no `sleh_abort` definition in `trap.c`: the handler whose user tail this "
                         "claim is about is not in the file the image is built from")
         return
-    body = body.group(1)
 
     # The user-mode branch is the `else if (cpsr == 0x10)` half; inside it the two abort cases each
     # end a serviced fault with `ml_set_interrupts_enabled(TRUE); return;`.

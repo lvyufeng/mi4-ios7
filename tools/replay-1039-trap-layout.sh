@@ -280,11 +280,25 @@ undef = next((k for k, l in enumerate(lines) if l.startswith("void sleh_undef(")
 #     before that function's own close).
 #
 # A rung block's close is followed by the block's `#endif`; the function's is not. That is the test.
+# **Walk the braces, skipping directive rows, and take the row where the depth reaches zero.** Neither
+# the first nor the last column-0 `}` is the function's close: a rung block's whole `{ ... }` sits
+# inside an `#if`, so its closing brace is at column 0 yet the preprocessor never sees it alone -
+# taking it put the hook 500 rows early (into `irq_iokit_dispatch`, measured).
 def _is_function_close(j):
-    if lines[j] != "}":
-        return False
-    nxt = next((l.strip() for l in lines[j + 1:j + 3] if l.strip()), "")
-    return not nxt.startswith("#endif") and not nxt.startswith("#else")
+    return j == _depth_close
+
+
+_depth_close, _depth, _started = None, 0, False
+for _k in range(sig, undef):
+    _row = lines[_k].strip()
+    if _row.startswith("#"):
+        continue
+    _depth += lines[_k].count("{") - lines[_k].count("}")
+    if not _started and "{" in lines[_k]:
+        _started = True
+    elif _started and _depth <= 0:
+        _depth_close = _k
+        break
 
 
 close = next((j for j in range(sig + 1, undef) if _is_function_close(j)), None)
