@@ -40881,7 +40881,9 @@ run python3 "$REPO_ROOT/tools/check_usb_enum.py" --selftest || exit 1
 # `ENDPTCTRL` (the enum arm owns the endpoint enable), and proves the EP1-IN handover both ways - so a
 # stream that armed the endpoint itself, or an enum arm that kept priming it, is refused at build time
 # ([[mi4-one-value-two-definitions]]).
-run python3 "$REPO_ROOT/tools/check_usb_stream.py" --image "$OUT/xnu_arm_entry.elf" --verbose || exit 1
+# (`--verbose` is not one of its options: the checker takes --image/--selftest/--model, and argparse
+#  exits 2 on an unknown flag - so the run below never reached the check it was there to make.)
+run python3 "$REPO_ROOT/tools/check_usb_stream.py" --image "$OUT/xnu_arm_entry.elf" || exit 1
 run python3 "$REPO_ROOT/tools/check_usb_stream.py" --selftest || exit 1
 
 # ------------------------------------------------- 910a/910a2: the USB probes' CALL SITE is a build refusal

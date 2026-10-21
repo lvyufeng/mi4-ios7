@@ -195,13 +195,22 @@ if _keep is not None:
 _sig = first(lambda l: l.startswith("void sleh_abort(void *context"))
 if _sig is not None:
     _undef = next((k for k, l in enumerate(lines) if l.startswith("void sleh_undef(")), len(lines))
-    _closes = [k for k in range(_sig + 1, _undef) if lines[k] == "}"]
-    if len(_closes) > 1:
-        # every close but the LAST belongs to a rung block: indent them
-        for k in _closes[:-1]:
-            lines[k] = "\t" + lines[k]
-        did.append("early column-0 closes indented, so the function runs to its own tail (%d)"
-                   % (len(_closes) - 1))
+    # **Only the braces that belong to a rung block.** Their close is followed by the block's own
+    # `#endif`; the function's own close is not. Indenting the function's close as well (which the
+    # first version did, "every close but the last") left the body correct but moved the anchor: the
+    # next stage then saw no function close before sleh_undef and put the hook in
+    # `irq_iokit_dispatch` - measured as ALL failing with `reason`/`arm_ctx` undeclared.
+    def _block_close(k):
+        nxt = next((l.strip() for l in lines[k + 1:k + 3] if l.strip()), "")
+        return nxt.startswith("#endif") or nxt.startswith("#else")
+
+    _indent = [k for k in range(_sig + 1, _undef)
+               if lines[k] == "}" and _block_close(k)]
+    for k in _indent:
+        lines[k] = "\t" + lines[k]
+    if _indent:
+        did.append("rung blocks' column-0 closes indented, so the function runs to its own tail (%d)"
+                   % len(_indent))
 
 # (3) THE SECOND DEFINE.
 n = len([l for l in lines if l.strip() == "#define STAGE90_XNU_WATCH_LE 1"])
@@ -245,7 +254,24 @@ undef = next((k for k, l in enumerate(lines) if l.startswith("void sleh_undef(")
 # work here: the function's body carries preprocessor blocks whose rows open and close braces of
 # their own, so a depth count reaches zero long before the function does and the hook was judged
 # "inside sleh_abort" while it stood 500 rows below the real closing brace.
-close = next((j for j in range(sig + 1, undef) if lines[j] == "}"), None)
+# **sleh_abort ends at the first column-0 `}` that does NOT sit at the end of a rung block.**
+#
+#   - the FIRST column-0 `}` is wrong: a rung block's own closing brace is one, and taking it ends the
+#     function 500 rows early (that is stage 2f's defect, measured: three `doexception(` calls left
+#     outside the body);
+#   - the LAST is wrong too: past the function are other functions, and the hook lands in
+#     `irq_iokit_dispatch` (measured: the include immediately after `datap->handler(...)`, one row
+#     before that function's own close).
+#
+# A rung block's close is followed by the block's `#endif`; the function's is not. That is the test.
+def _is_function_close(j):
+    if lines[j] != "}":
+        return False
+    nxt = next((l.strip() for l in lines[j + 1:j + 3] if l.strip()), "")
+    return not nxt.startswith("#endif") and not nxt.startswith("#else")
+
+
+close = next((j for j in range(sig + 1, undef) if _is_function_close(j)), None)
 if close is None:
     sys.exit("stage 4 failed: sleh_abort's closing brace not found")
 if i < close:

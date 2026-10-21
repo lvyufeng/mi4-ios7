@@ -33,6 +33,10 @@ def main(argv):
     if sig is None:
         print("no `void sleh_abort(` at column 0 - the function is not in this file")
         return 1
+    # **The FIRST column-0 `}` after the signature - and it must be the function's own.** Stage 2f of
+    # the replay indents every earlier one (they belong to rung blocks), so after the replay this is
+    # the real close. BEFORE it, this brace may belong to a rung block and the tail escapes - which
+    # is exactly the `escaped` count below.
     close = next((k for k in range(sig + 1, undef) if lines[k] == "}"), None)
     if close is None:
         print("no column-0 `}` between sleh_abort and sleh_undef - the function never closes")
@@ -42,8 +46,19 @@ def main(argv):
     print("sleh_abort   at line %d" % (sig + 1))
     print("first `}`     at line %d   (%d rows of body)" % (close + 1, close - sig))
     print("sleh_undef   at line %d" % (undef + 1))
+    hook = next((k for k, l in enumerate(lines) if "watch_le_hook.inc" in l
+                 and l.lstrip().startswith("#include")), None)
+    if hook is not None:
+        where = ("INSIDE" if sig < hook < close else "OUTSIDE")
+        print("hook include at line %d - %s the function" % (hook + 1, where))
     print("doexception inside the function: %d" % inside)
     print("doexception between the function's close and sleh_undef: %d" % escaped)
+    if hook is not None and not (sig < hook < close):
+        print("")
+        print("DEFECT: the hook include stands OUTSIDE sleh_abort. It names `reason` and `arm_ctx`,")
+        print("        which exist only inside the body - ALL reports them undeclared. It belongs")
+        print("        inside the function, ahead of its own close.")
+        return 1
     if escaped:
         print("")
         print("DEFECT: %d `doexception(` call(s) stand OUTSIDE sleh_abort. A rung's block ends past"
