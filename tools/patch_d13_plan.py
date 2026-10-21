@@ -358,8 +358,13 @@ def compose(t, xnu):
     # (THE SEAT IS 1038's MODEL'S ROWS, read from its owner: the hook include (1038's model has ONE
     #  row there), the defs include at file scope, the fwd include and the protos' two statics.  The
     #  hook row carries trap.c's absolute path, as every include in the tree does.)
-    _seat_rows = [T + "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm",
-                                                            wl.INC_HOOK) + chr(34)]
+    # **The seat does NOT carry 1038's hook include.** 1038's own rung puts it there
+    # (`patch_d13_watch_le.py`'s TAIL edit: "the hook at sleh_abort's TAIL (before its final return)").
+    # When the plan also wrote it, the hook file was `#include`d TWICE in the same function - at the
+    # preamble (the plan's row) and at the tail (1038's) - so its block ran twice, `_wl_owned` and the
+    # slot writer were applied twice per abort, and the pool got `expected identifier or '('` plus
+    # ~1900 errors in watch_le_*.inc. One include, one owner: the rung that defines the hook places it.
+    _seat_rows = []
     # **`watch_le_fwd.inc` does NOT belong in the seat.** It is the FORWARD DECLARATION file - its own
     # header says so: "trap.c `#include`s this at FILE SCOPE in front of sleh_abort ... A file-scope
     # declaration reaches only DOWNWARD". The defs it stands in for are ~1300 lines below the
@@ -550,7 +555,10 @@ def verify(t, xnu):
     _ci = next((_k for _k in range(len(_tl)) if _tl[_k] == _call0), -1)
     if _ci > 0 and _tl[_ci - 1].endswith(chr(92)):
         probs.append("the hook's arm include is spliced onto its predecessor's line")
-    if len(_call) != 1 or _ci < 0:
+    # (The plan no longer writes the hook's arm include - the hook CHUNK names it, and 1038's rung
+    #  places the chunk. So the row is checked only where it exists: more than one is still a defect,
+    #  and a row spliced onto its predecessor is still a defect.)
+    if len(_call) > 1 or (len(_call) == 1 and _ci < 0):
         probs.append("the hook's arm include is not the plan's line")
     # (1038's rows are in the ARM file the hook includes, not in the hook's text: counted in o alone)
     for name in ("xnu_live_fb_pc=", "xnu_live_fcr_seq="):
@@ -715,9 +723,11 @@ def off(t, xnu, had_1037=True):
     # **The fwd include is no longer one of the seat's rows** - it stands at file scope, in front of
     # sleh_abort (see compose() for why), so the body carries only the hook, the defs include and the
     # model's own declarations. It is cut separately, below, by its absolute path.
-    if len(_kill) != 1 + 1 + len(_model):
+    # (hook + defs + the model's declarations. The hook row went when the seat stopped writing it -
+    #  1038's own rung places the include; the plan names the chunk no more than once.)
+    if len(_kill) != 1 + len(_model):
         return None, ("cannot fold: the seat carries %d model row(s), expected %d -- the text is not"
-                      " compose's") % (len(_kill), 2 + len(_model))
+                      " compose's") % (len(_kill), 1 + len(_model))
     # (the fwd include, at file scope: cut by its own absolute path)
     _fwd_abs = "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm",
                                                     "watch_le_fwd.inc") + chr(34)

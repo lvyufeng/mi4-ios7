@@ -1403,9 +1403,15 @@ def _is_hook_frame(t, i):
 
 
 def hook_block(inc=None):
-    """trap.c's edit at sleh_abort's TAIL: the include line, then the HOOK'S FRAME -- up to chunk h's
-    close, looked up in the line the tree's include names (the statics are not restated here)."""
-    return inc_line("hook", inc, SEAM_IND) + _call_close("")
+    """trap.c's edit: the include line of the hook chunk, and NOTHING ELSE.
+
+    It used to append `_call_close("")`, which is the hook's own text from its `#if` to its close -
+    i.e. the contents of the very file the line just `#include`d. The tree therefore held the hook
+    TWICE: once by inclusion, once inline, so its block ran twice per abort and the pool reported
+    `expected identifier or '('` plus ~1900 errors in watch_le_*.inc. The chunk is self-contained and
+    the plan `#include`s the same file at the preamble; one include names it once.
+    """
+    return inc_line("hook", inc, SEAM_IND)
 
 
 def closes_inside_1025(t):
