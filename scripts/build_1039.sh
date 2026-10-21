@@ -447,7 +447,13 @@ t = open(sys.argv[1]).read()
 d = sys.argv[2]
 defs = os.path.join(d, "watch_le_defs.inc")
 arm = os.path.join(d, "watch_le_arm.inc")
-assert t.count("#include " + chr(34) + defs + chr(34)) == 1, "the defs include is not in the tree exactly once"
+# **One or two, never more.** 1038 writes the include at the seam; the rung that `#define`s the
+# switch also needs it at file scope, and the replay moves the seat's copy there. `watch_le_defs.inc`
+# guards its statics with `#ifndef WATCH_LE_STATICS_DEFINED`, so both placements compile to one
+# definition - demanding exactly one rejected the very layout that builds.
+_n_defs = t.count("#include " + chr(34) + defs + chr(34))
+assert 1 <= _n_defs <= 2, ("the defs include occurs %d time(s) in the tree, expected one at the seam "
+                           "and at most one more at file scope" % _n_defs)
 assert t.count(os.path.join(d, "watch_le_arm.inc")) == 1, "the arm include is not in the tree exactly once"
 a = open(arm).read()
 o = "#if defined(STAGE90_XNU_WATCH_LE) && STAGE90_XNU_WATCH_LE"
