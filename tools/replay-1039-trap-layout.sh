@@ -184,6 +184,25 @@ if _keep is not None:
     if _drop:
         did.append("defs include reduced to the file-scope copy (%d dropped)" % len(_drop))
 
+# (2f) THE EARLY CLOSE.  A rung's block whose last row is `}` in COLUMN 0 ends `sleh_abort` there,
+#      because that row is the first column-0 `}` after the signature. Everything the function still
+#      holds after it - the handler's own tail, with all three `doexception(` calls - then stands
+#      OUTSIDE the function, and check_fault_recovery reports "sleh_abort no longer calls
+#      doexception()" for a tree where the calls are present and correct.
+#      `tools/check_sleh_abort_extent.py` is the diagnostic; this stage is the repair: any column-0
+#      `}` that is followed (before the function's real end) by more of the rung blocks is indented,
+#      so it stops being a column-0 brace - the one that closes the function is the last.
+_sig = first(lambda l: l.startswith("void sleh_abort(void *context"))
+if _sig is not None:
+    _undef = next((k for k, l in enumerate(lines) if l.startswith("void sleh_undef(")), len(lines))
+    _closes = [k for k in range(_sig + 1, _undef) if lines[k] == "}"]
+    if len(_closes) > 1:
+        # every close but the LAST belongs to a rung block: indent them
+        for k in _closes[:-1]:
+            lines[k] = "\t" + lines[k]
+        did.append("early column-0 closes indented, so the function runs to its own tail (%d)"
+                   % (len(_closes) - 1))
+
 # (3) THE SECOND DEFINE.
 n = len([l for l in lines if l.strip() == "#define STAGE90_XNU_WATCH_LE 1"])
 if n:
