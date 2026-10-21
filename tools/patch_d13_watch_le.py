@@ -471,12 +471,54 @@ def splice_block(t):
     # ALREADY STAGED: 1037's close, then (a neighbour's block and) OUR include line -- searched for
     # DIRECTLY; a `_seam_re()` search would also match 1037's own `#if TRAP_FRAME`/`#endif` pair as
     # "a neighbour's block" and call a pre-1038 tree staged (measured 2026-10-19).
+    _line = inc_line("b", None, "")
     if TRAP_ANCHOR in t:               # 1037's arm is empty (seam_site): place the include line there
         # 1037's OWN close of the anchor stays: only 1025's close is re-stated by the include line's
         # side (its `#endif` at column 0 answers 1025's bracket; it was TAB-indented once and read as
         # text -- measured 2026-10-20)
-        return t.replace(TRAP_USTACK_CLOSE, inc_line("b", None, "") + TRAP_USTACK_CLOSE)
-    return t                          # stage() names the refusal
+        return t.replace(TRAP_USTACK_CLOSE, _line + TRAP_USTACK_CLOSE)
+    # **1037's close, then the inherited chain's blocks, then 1025's close.** The adjacent shape above
+    # is what a 1037-only tree has; on a tree that also carries abt_entry..pc_carrier_caller those
+    # blocks are spliced at the end of 1025's arm too, so they stand between the two closes. The
+    # include line belongs immediately in front of 1025's close in BOTH shapes - it is the last row of
+    # the arm - so the position is found by depth, the same way seam_site() validates it.
+    _pos = _uster_close_after_trap_frame(t)
+    if _pos is None:
+        return t                      # stage() names the refusal
+    return t[:_pos] + _line + t[_pos:]
+
+
+def _uster_close_after_trap_frame(t):
+    """The offset of the 1025 close that ends 1037's arm, skipping any rung blocks in between.
+
+    Depth-counted, not a substring search: a plain ``find`` of the close would match one NESTED
+    inside the blocks it is walking over. Returns None when 1037's close is absent or the pair does
+    not meet at 1037's own depth.
+    """
+    if t.count(TRAP_FRAME_CLOSE) != 1:
+        return None
+    # **`_k` starts ON the close's newline, not past it.** The walk looks for the next `\n#`; the close
+    # row ENDS with that `\n`, so starting after it steps over the very next directive - measured: the
+    # `#if ABT_ENTRY_PROBE` that immediately follows 1037's close was skipped, the walker's first hit
+    # was ABT's OWN `#endif` at depth 0, and it concluded the depth had gone below zero.
+    _start = t.index(TRAP_FRAME_CLOSE) + len(TRAP_FRAME_CLOSE) - 1
+    _d = 0
+    _k = _start
+    while True:
+        _nl = t.find(chr(10) + chr(35), _k)
+        if _nl < 0:
+            return None
+        _end = t.find(chr(10), _nl + 1)
+        _row = t[_nl + 1:(_end + 1 if _end >= 0 else len(t))]
+        if _row.startswith("#if"):
+            _d += 1
+        elif _row.startswith("#endif"):
+            if _d == 0 and _row.strip() == TRAP_USTACK_CLOSE.strip():
+                return _nl + 1
+            _d -= 1
+            if _d < 0:
+                return None
+        _k = _nl + 1
 
 
 
