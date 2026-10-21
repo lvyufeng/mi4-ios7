@@ -154,6 +154,36 @@ if _c is not None:
             del lines[_c:_e + 1]
             did.append("the inline hook frame outside sleh_abort dropped (%d rows)" % (_e - _c + 1))
 
+# (2e) THE DEFS INCLUDE, ONCE MORE THAN TWICE.  Every rung that publishes rows includes the file,
+#      and the file guards its statics with `#ifndef WATCH_LE_STATICS_DEFINED`, so the extra
+#      placements compile to one definition - but the build's own gate allows two, and three is what
+#      a fully staged tree comes to. Keep the first two (the file-scope copy the seat needs, and the
+#      first block's), drop the rest.
+# **Only the FILE-SCOPE copy may stay.** The file DEFINES functions, and a definition inside a
+# function body is illegal ("function definition is not allowed here") - which is exactly what the
+# ALL switch combination hits, because that is the one that compiles the hook, and the hook's
+# include drags the defs in from wherever it stands. So: keep the first row that is at file scope,
+# drop every other.
+def _in_function(idx):
+    sig = None
+    for j in range(idx - 1, -1, -1):
+        if (lines[j] and lines[j][0] not in " \t" and "(" in lines[j] and ")" in lines[j]
+                and not lines[j].lstrip().startswith("#")):
+            sig = j
+            break
+    if sig is None:
+        return False
+    return next((j for j in range(sig + 1, idx) if lines[j] == "}"), None) is None
+
+_rows = [k for k, l in enumerate(lines) if "watch_le_defs.inc" in l and l.lstrip().startswith("#include")]
+_keep = next((k for k in _rows if not _in_function(k)), None)
+if _keep is not None:
+    _drop = [k for k in _rows if k != _keep]
+    for k in reversed(_drop):
+        del lines[k]
+    if _drop:
+        did.append("defs include reduced to the file-scope copy (%d dropped)" % len(_drop))
+
 # (3) THE SECOND DEFINE.
 n = len([l for l in lines if l.strip() == "#define STAGE90_XNU_WATCH_LE 1"])
 if n:

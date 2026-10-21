@@ -2832,7 +2832,11 @@ def _arm_lines(xnu, gates):
     L.append(A("/* the words the pc can reach: pc-8, pc-4, pc */"))
     L.append(A("_wl_a_pcok = (unsigned)(_wl_rd(thread->task->map, _wl_a_pc0 - 8U, &_wl_a_pc8) +"))
     L.append(A("                 _wl_rd(thread->task->map, _wl_a_pc0 - 4U, &_wl_a_pc4) +"))
-    L.append(A("                 _wl_rd(thread->task->map, _wl_a_pc0, &_wl_a_pcz)));"))
+    # **One `)` closes the cast, one closes nothing.** The whole statement is
+    # `x = (unsigned)(a + b + c);` - three balanced calls inside one cast - so the last row ends with
+    # `);`, not `));`.  Measured: the extra paren made `watch_le_arm.inc` fail with "extraneous ')'
+    # before ';'" in the one switch combination that compiles the arm.
+    L.append(A("                 _wl_rd(thread->task->map, _wl_a_pc0, &_wl_a_pcz));"))
     L.append("")
     L.append(A("/* THE WALK: bp0 = s3's value; up while 0 < fp < 0x80000000, 30 levels */"))
     L.append(A("if (_wl_a_s3ok[0] && _wl_a_s3v >= 8U && _wl_a_s3v < 0x80000000U) {"))

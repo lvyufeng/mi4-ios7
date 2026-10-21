@@ -454,10 +454,22 @@ arm = os.path.join(d, "watch_le_arm.inc")
 _n_defs = t.count("#include " + chr(34) + defs + chr(34))
 assert 1 <= _n_defs <= 2, ("the defs include occurs %d time(s) in the tree, expected one at the seam "
                            "and at most one more at file scope" % _n_defs)
-assert t.count(os.path.join(d, "watch_le_arm.inc")) == 1, "the arm include is not in the tree exactly once"
+# **The arm is reached through the HOOK, not directly.** The rows loop's model puts the arm's
+# include in watch_le_hook.inc (which trap.c includes once); trap.c naming the arm itself as well
+# would compile it twice. Measured: this used to ask trap.c for the arm include and refused a tree
+# in which the arm was exactly where the model puts it.
+hook = os.path.join(d, "watch_le_hook.inc")
+_h = open(hook).read()
+assert t.count(os.path.join(d, "watch_le_hook.inc")) == 1, "the hook include is not in the tree exactly once"
+assert _h.count(os.path.join(d, "watch_le_arm.inc")) == 1, "the arm include is not in the hook exactly once"
+assert t.count(os.path.join(d, "watch_le_arm.inc")) == 0, ("trap.c names the arm directly as well as "
+                                                           "through the hook - it would be compiled twice")
 a = open(arm).read()
-o = "#if defined(STAGE90_XNU_WATCH_LE) && STAGE90_XNU_WATCH_LE"
-assert o in a, "the arm file does not open with its switch"
+# **The switch lives in the HOOK, not in the arm.** The rows loop emits the arm as a fragment - its
+# braces close its own blocks - and wraps it in `#if STAGE90_XNU_WATCH_LE` in watch_le_hook.inc.
+# Asking the arm file for the guard refused the model's own shape.
+assert a.strip(), "the arm file is empty"
+assert "#if STAGE90_XNU_WATCH_LE" in _h, "the hook does not guard the arm with the switch"
 print("   1038: defs+arm includes once each; the arm stands behind its switch in its own file")
 PYLE
 fi
