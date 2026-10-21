@@ -648,28 +648,22 @@ def off(t, xnu, had_1037=True):
         _pair.append(L1[_k])
     if o.startswith(E.join(_pair)) is False:
         return None, "cannot fold: the pair around 1037's marker is not the plan's own text"
-    # (3) the seam's defs include: the row behind the pair names the file (file scope)
-    # (the row may stand behind the pair or on the pair's LINE (its predecessor carries the pair's
-    #  close without a newline between them) -- either is the seam's file-scope place.)
-    _d = []
-    _lim = _ce + 4
-    if len(L1) < _lim:
-        _lim = len(L1)
-    for _k in range(_ce, _lim):
-        _has = False
-        for _q in L1[_k].split(E):
-            if _q.strip() == _defs:
-                _has = True
-        if _has:
-            _d.append(_k)
-            break
-    if len(_d) != 1:
-        return None, "cannot fold: the seam's defs include is not behind 1037's pair"
-    print("DBG d", _d, repr(L1[_d[0]][:80]), file=sys.stderr)
+    # (3) the seam's defs include: **already gone, and that is the check.** It is one of the SEAT's
+    # rows and step (1) cuts the whole seat (`_kill`, verified to be exactly the hook include, the defs
+    # include, the fwd include and the model's statics). So by here it must NOT be in L1 - and the row
+    # that remains inside 1037's pair is a DIFFERENT one: the seam carries 1037's own text, and
+    # 1038's defs stand in front of 1039's opener there with an ABSOLUTE path, not the relative
+    # `#include "watch_le_defs.inc"` the seat holds. This step used to SEARCH for the seat's row after
+    # the pair had been located - a window that could never contain it, because step (1) had already
+    # removed it - so every fold aborted here with "the seam's defs include is not behind 1037's pair"
+    # and no fixture was ever compared. The comparison that step guarded is kept; the search is not.
+    for _k in range(len(L1)):
+        if L1[_k].strip() == _defs:
+            return None, ("cannot fold: the seat's defs include is still in the text at row %d -- "
+                          "step (1) did not cut the whole seat" % _k)
     _drop = []
     for _k in range(_sw, _ce + 1):
         _drop.append(_k)
-    _drop.append(_d[0])
     L2 = _cut(L1, _drop)
     # (the pristine tail's 1025 close: compose moved it from behind the pair to in front of 1037's
     #  opener (it stood behind the seat; after the seat it is row 0 of the pair's place).  It goes
@@ -748,7 +742,25 @@ def selftest():
     fix = ("int f(void)" + E + "{" + E + U25_OPEN + o + U25_CLOSE
            + "void sleh_abort(void *context, int reason)" + E + "{" + E + "    " + ABORT_CTX
            + T + BODY_MARK + "int x = 1;" + E + "}" + E + "}" + E)
-    want = fix
+    # **What `off(had_1037=False)` must give back is the 1036 tail, and a 1036 tail carries NEITHER
+    # 1037's pair nor anything the plan adds.** The fixture as written carries the pair (that is how
+    # the compose side sees it), so the expected fold is the fixture with the pair removed - not the
+    # fixture itself, which is what this comparison used to demand. It could never have held: the fold
+    # correctly cuts `_sw.._ce`, so `back` is shorter by the whole seam by construction.
+    _fl = fix.split(E)
+    _mk_f = next(k for k in range(len(_fl))
+                 if _fl[k].strip().startswith("/* 1037: THE TRAP FRAME BY VALUE"))
+    _sw_f = next(k for k in range(_mk_f - 1, -1, -1)
+                 if _fl[k].strip() == TRAP_FRAME_OPEN.strip(E))
+    _ind_f = ""
+    for _q in _fl[_sw_f]:
+        if _q == " " or _q == T:
+            _ind_f += _q
+        else:
+            break
+    _ce_f = next(k for k in range(_mk_f + 1, len(_fl))
+                 if _fl[k] == _ind_f + TRAP_FRAME_CLOSE.rstrip(E))
+    want = E.join(_fl[:_sw_f] + _fl[_ce_f + 1:])
     t2, why = compose(fix, xnu)
     expect(t2 is not None, "the plan composes on a 1036 fixture (%s)" % why)
     if t2 is not None:

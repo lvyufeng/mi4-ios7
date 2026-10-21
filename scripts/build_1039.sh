@@ -110,7 +110,7 @@ if m.verify(t, xnu) == []:
 # str.strip()ed fold comparison; the 1037 body is TAB-indented, the stripped fold matched, nothing was
 # folded, and the plan composed a SECOND seam -- trap.c carried it twice and step 6 caught the doubled
 # row.  Ask the composer, never a look-alike of it.)
-_at, _b, _why = m.place(t, xnu)
+_at, _why = m.place(t, xnu)
 if _at is None:
     # (2026-10-20: a tree that still carries the OLD composite -- 1037's switch present, the plan's
     # bytes changed under it -- refused here.  It is not pristine: compose() INSERTS and the tree
