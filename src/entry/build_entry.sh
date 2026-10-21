@@ -23,6 +23,7 @@
 # the link is where they meet.
 
 set -euo pipefail
+layout_fail() { say "FAIL: $*" >&2; exit 1; }
 
 cd "$(dirname "$0")"
 # **Three directories, and the third is new.** This script lives in `src/entry/`, so `..` is the
@@ -29419,7 +29420,7 @@ if [[ $REAL_ARM_INIT -eq 1 ]]; then
               xnu_live_fcr_spsr_ok= xnu_live_fcr_pc_odd= xnu_live_fcr_lr_odd=)
     _fc_found=0; _fc_bad=()
     for _fc_lit in "${_fc_rows[@]}"; do
-        _fc_n=$(strings "$_wl_trap_obj" | grep -cxF "$_fc_lit" || true)
+        _fc_n=$(strings "$_wl_trap_obj" | grep -c "^$_fc_lit" || true)
         if [[ $_fc_n -eq 1 ]]; then _fc_found=$((_fc_found + 1)); else _fc_bad+=("$_fc_lit x$_fc_n"); fi
     done
     if [[ $_fc_req == 1 ]]; then
@@ -30835,7 +30836,6 @@ ENTRY_IDENTITY_LIMIT=$(align_up $ENTRY_IDENTITY_LIMIT 0x100000)
 # Both failure modes are silent corruption with no cause in the log, so both are refused here. An
 # image reaching past topOfKernelData is overwritten by XNU's own tables a few instructions into the
 # boot; a limit set so high that the tables reach the tree is the same corruption done to the tree.
-layout_fail() { say "FAIL: $*" >&2; exit 1; }
 (( bss_end - ENTRY_BASE <= ENTRY_DATA_LIMIT )) ||
     layout_fail "the image ends $((bss_end - ENTRY_BASE)) bytes from the base, past topOfKernelData at $ENTRY_DATA_LIMIT"
 (( ENTRY_ARGS_OFFSET + ARGS_BYTES <= ENTRY_DATA_LIMIT )) ||
