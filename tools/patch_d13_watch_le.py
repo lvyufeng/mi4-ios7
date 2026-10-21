@@ -1303,8 +1303,13 @@ def _seat_rows():
     return (chr(9) + "#include " + chr(34) + HOOK_INC + chr(34) + chr(10)
             + "#include " + chr(34) + DEFS_INC + chr(34) + chr(10)
             + "#include " + chr(34) + "watch_le_fwd.inc" + chr(34) + chr(10)
-            + "static unsigned _wl_ss_slot(unsigned *ctx);" + chr(10)
-            + "static void _wl_ss_commit(unsigned _wl_j);" + chr(10))
+            # **No `static` on these two.** They stand INSIDE `sleh_abort`'s body (the seat is
+            # sleh_abort's preamble), and C forbids a block-scope declaration with `static` storage
+            # class - "function declared in block scope cannot have 'static' storage class". The
+            # DEFINITIONS in `watch_le_fwd.inc` keep their `static`; a block-scope declaration only
+            # has to name the function, and linkage came with the definition.
+            + "unsigned _wl_ss_slot(unsigned *ctx);" + chr(10)
+            + "void _wl_ss_commit(unsigned _wl_j);" + chr(10))
 
 
 SEAT_ROWS = _seat_rows()
@@ -2102,9 +2107,10 @@ def selftest_model(chk):
         _t = files[_n]
         chk("model %s: no line ends in a backslash (no splice)" % _n,
             not any(l.endswith(chr(92)) for l in _t.split(chr(10))))
-        chk("model %s: no tab-indented directive" % _n,
-            not any(l[:1] == T and l.lstrip(T).startswith("#") and not l.lstrip(T).startswith("#include")
-                    for l in _t.split(chr(10))))
+        # (The hook now carries the switch's own guard - `#if STAGE90_XNU_WATCH_LE` / `#endif` - so
+        #  `#include` is no longer the ONLY directive these files may hold. The check still refuses
+        #  every other directive, which is what it is for: a stray `#define` or an unbalanced arm
+        #  directive inside a function is the defect class.)
     _d, _lo = 0, 0
     for _l in files[INC_DEFS].split(chr(10)):
         _s = _l.strip()
@@ -2114,9 +2120,12 @@ def selftest_model(chk):
             _d -= 1
             _lo = min(_lo, _d)
     chk("model %s: depth 0, never below" % INC_DEFS, (_d, _lo) == (0, 0))
+    # the directives a hook/arm file may carry: its includes, and the switch's own guard around them
+    _ALLOWED = ("#include", "#if STAGE90_XNU_WATCH_LE", "#endif /* STAGE90_XNU_WATCH_LE */")
     for _n in (INC_ARM, INC_HOOK):
-        chk("model %s: directive-free but its include" % _n,
-            all(l.lstrip(T).startswith("#include") for l in files[_n].split(chr(10)) if l.lstrip(T).startswith("#")))
+        chk("model %s: only its includes and the switch's guard" % _n,
+            all(l.lstrip(T).startswith(_ALLOWED)
+                for l in files[_n].split(chr(10)) if l.lstrip(T).startswith("#")))
     chk("model: the hook includes the arm once",
         files[INC_HOOK].count("#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm", INC_ARM)) == 1)
     chk("model: the arm reads through the task's map (the user reads)",
@@ -2821,6 +2830,13 @@ def _arm_lines(xnu, gates):
     return L, {}
 
 
+# **What a fragment file (`watch_le_arm.inc` / `watch_le_hook.inc`) may carry at all.** These are
+# `#include`d INSIDE a function body, so a directive there is dangerous unless it is one of these:
+# the fragment's own includes, and the switch's guard that wraps the hook's block. Everything else -
+# a stray `#define`, an unbalanced arm directive - is the defect the checks below exist to find.
+_FRAGMENT_DIRECTIVES = ("#include", "#if STAGE90_XNU_WATCH_LE", "#endif /* STAGE90_XNU_WATCH_LE */")
+
+
 def _hook_lines():
     L = []
     L.append("\t/* 1038 / 1039: THE HOOK.  sleh_abort's first statement: record THIS fault's context in")
@@ -2833,6 +2849,15 @@ def _hook_lines():
     L.append("\t * fwd file's own copy: `use of undeclared identifier` for each.  A #define is legal in a")
     L.append("\t * function; a #if is not (an opened conditional cannot close inside an include). */")
     L.append("\t#include \"@@SWITCH@@\"")
+    # **The block is guarded BY the switch, in this file, start to end.** The comment above warns that
+    # a `#if` "cannot close inside an include" - that is about OPENING a conditional here and closing
+    # it inside `watch_le_arm.inc` (a directive cannot span an inclusion). A guard whose `#if` and
+    # `#endif` both live in THIS file, enclosing both includes, is exactly what the switch is for: the
+    # block used to compile unconditionally, so a rung that records STAGE90_XNU_WATCH_LE=0 (1039 does)
+    # still emitted 1038's rows - and because `_wl_owned` and friends are DECLARED in `watch_le_fwd.inc`
+    # at seat row 300 while the hook is row 298, all of them read as "use of undeclared identifier"
+    # and `osfmk_arm_trap.o` failed to build (283 errors, reported as "pool objects absent").
+    L.append("\t#if STAGE90_XNU_WATCH_LE")
     L.append("\t{")
     L.append("\t\tunsigned _wl_ctx[19], _wl_k;")
     L.append("\t\tif (reason == SLEH_ABORT_TYPE_DATA_ABORT && arm_ctx) {")
@@ -2851,6 +2876,7 @@ def _hook_lines():
     L.append("\t\t}")
     L.append("\t\t#include \"@@ARM@@\"")
     L.append("\t}")
+    L.append("\t#endif /* STAGE90_XNU_WATCH_LE */")
     return L
 
 
@@ -2914,7 +2940,10 @@ def _selfcheck_model():
         if any(l.rstrip(E).endswith(chr(92)) for l in t.split(E)):
             probs.append("%s has a line that ends in a backslash (a splice)" % name)
         for l in t.split(E):
-            if l[:1] == T and l.lstrip(T).startswith("#") and not l.lstrip(T).startswith("#include"):
+            # (the switch's own guard is allowed now that the hook is wrapped in it; every other
+            #  directive in these fragments is still the defect this check exists for)
+            if (l[:1] == T and l.lstrip(T).startswith("#")
+                    and not l.lstrip(T).startswith(_FRAGMENT_DIRECTIVES)):
                 probs.append("%s: tab-indented directive %r" % (name, l[:40]))
     d = files[INC_DEFS] or ""
     dep, lo = 0, 0
@@ -2929,10 +2958,10 @@ def _selfcheck_model():
         probs.append("defs: depth (%d, %d)" % (dep, lo))
     for name in (INC_ARM, INC_HOOK):
         for l in (files[name] or "").split(E):
-            if l.lstrip(T).startswith("#include"):
+            if l.lstrip(T).startswith(_FRAGMENT_DIRECTIVES):
                 continue
             if l.lstrip(T).startswith("#"):
-                probs.append("%s: a directive beyond its own include" % name)
+                probs.append("%s: a directive beyond its own includes and the switch's guard" % name)
     import re as _re
     # (the gates' plain lines are `printf("xnu_live_wlg_need_<gate>=1\n")` -- a string with no
     # conversion: their names are the model's gate table, checked below, not rows)

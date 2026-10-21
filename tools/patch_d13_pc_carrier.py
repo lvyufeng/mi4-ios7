@@ -148,6 +148,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_CALLER_PROBE",       # 1031
     "STAGE90_XNU_EVAL_FRAME",         # 1033
     "STAGE90_XNU_PC_CARRIER",         # 1035 (this rung)
+    "STAGE90_XNU_TRAP_FRAME",         # 1037 (tools/patch_d13_trap_frame.py)
     "STAGE90_XNU_FRAME_CARRIER"}  # 1039 (tools/patch_d13_frame_carrier.py)
 
 

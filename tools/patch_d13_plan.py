@@ -599,10 +599,18 @@ def off(t, xnu, had_1037=True):
     #  by the FILE it names: a whole-row needle measured False on this host).  Each is cut where it
     #  stands; the fwd's position is remembered, because that is where a pristine tail's close goes
     #  back to.)
+    # **The seat's prototype rows are recognised by SHAPE, not by `static`.** They are declared
+    # inside `sleh_abort`'s body, where C forbids `static` storage class, so they no longer begin with
+    # it - and a list built from "starts with static" then missed both of them, the `_kill` length
+    # check failed, and every fold refused. What identifies them is that they are the seat's remaining
+    # function declarations: a row ending in `;` that names a function.
     _model = []
     for _l in wl.SEAT_ROWS.split(E):
-        if _l.strip().startswith("static"):
-            _model.append(_l.strip())
+        _s = _l.strip()
+        if not _s or _s.startswith("#"):
+            continue
+        if _s.endswith(";") and "(" in _s:
+            _model.append(_s)
     _fwd = "#include " + chr(34) + "watch_le_fwd.inc" + chr(34)
     _defs = "#include " + chr(34) + wl.INC_DEFS + chr(34)
     _kill = []

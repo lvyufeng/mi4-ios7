@@ -1209,7 +1209,18 @@ DEFINES=(
 # in trap.o (entry's 1038 link-site clause).
 # (2026-10-19: the rows travel in the tree's own arm, so no `-include` of a switch-define stand-in is
 # needed -- the one that forced the macro ON for every trap.c compile is retired here, see build_1039.)
-[[ ${STAGE90_XNU_WATCH_LE:-0} -eq 1 ]] && DEFINES+=(-DSTAGE90_XNU_WATCH_LE=1)
+# **A switch that is OFF is DEFINED to 0, not left undefined.** `watch_le_switch.inc` - the file
+# `#include`d inside the hook, because the defs file that declares the statics lives 600 lines below -
+# carries `#ifndef STAGE90_XNU_WATCH_LE / #define ... 1 / #endif`. With the switch simply absent from
+# argv, that guard fires and defines it to 1, so a rung that RECORDS the arm as off (1039 does:
+# STAGE90_XNU_WATCH_LE=0) still compiled 1038's rows - and every symbol they touch came up
+# "use of undeclared identifier", 283 errors and no trap.o. Passing the 0 explicitly is what makes
+# the record and the compilation agree.
+if [[ ${STAGE90_XNU_WATCH_LE:-0} -eq 1 ]]; then
+  DEFINES+=(-DSTAGE90_XNU_WATCH_LE=1)
+else
+  DEFINES+=(-DSTAGE90_XNU_WATCH_LE=0)
+fi
 # 1039: STAGE90_XNU_FRAME_CARRIER -- the frame carrier (records/1037-read.txt RUNG READING
 # 2-3).  INSTRUMENT ONLY.  Adds a block (owned by the 1039 patcher) inside 1025's data-abort
 # publisher that reads thread->machine.uss through its pointer/task map (not through arm_ctx),
