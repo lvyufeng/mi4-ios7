@@ -129,11 +129,47 @@ for s in "${SETS[@]}"; do
     continue
   fi
 
-  hits=$(printf '%s\n' "$members" | awk -F'\t' -v p="$suffix" 'index($2, p) == 1 { print $1 }')
+  # **The members are FILES, and a file can appear on more than one line.** A set that was
+  # re-recorded under a second `role=` (1031 and 1032 both measured the same entry image) carries the
+  # same path twice, with the same sha256 and the same byte count - one member, two lines. Counting
+  # lines said "two members could claim it" and refused a name that is in fact uniquely resolved.
+  # The count is over distinct file names, which is what the rule is about.
+  hits=$(printf '%s\n' "$members" | awk -F'\t' -v p="$suffix" 'index($2, p) == 1 { print $1 }' \
+         | LC_ALL=C sort -u)
   nhits=$(printf '%s\n' "$hits" | grep -c .)
 
   if (( nhits == 0 )); then
-    REFUSE+=("$s: its suffix $suffix is the sha256 prefix of NONE of its own $nmem member(s) ($(printf '%s' "$members" | awk -F'\t' '{ printf "%s ", $1 }'))- so the name is evidence about something that is not in this set")
+    # **A third source, measured and now named: the PACK's aggregate.** 4(a) of records/1037-press.txt
+    # records why the d13 sets stopped being named by the entry bin's sha8 - two parks of the same bin
+    # wrote the same name and produced a MIXED set - so a set is named by the sha of every member,
+    # which is `_arm_files_sha` in scripts/park_*.sh: the members' `sha256sum` lines, sorted, hashed.
+    # That value is a hash of the set's own bytes, but not of any ONE member, so the universal half
+    # could not see it. It is recomputed here from the record; a suffix that matches neither a member
+    # nor the aggregate is still a refusal.
+    # The aggregate covers the PACK, and the pack is defined by `MEMBERS=( ... )` in the park script -
+    # not by every path the record happens to mention (a park also records the tools it ran, and those
+    # are not packed). The list is read from the script rather than assumed, so a park that changes its
+    # manifest keeps this check honest.
+    # `MEMBERS=( ... )` is written across several lines with trailing backslashes. Rather than parse
+    # bash, take the record's own paths and drop the ones the pack does not hold: a park records the
+    # tools it RAN beside the files it packed, and only the latter are in the aggregate
+    # (`_arm_files_sha` in scripts/park_*.sh hashes "${MEMBERS[@]}" alone).
+    # **The aggregate is over `sha256sum` LINES, not over the record's tab-separated pairs.**
+    # `_arm_files_sha` runs `sha256sum "$_m"` for each packed member and hashes the sorted output, so
+    # each line is `<sha>  <path>` - two spaces, hash first. `$members` is `<path><TAB><sha>`, the
+    # record's order; hashing that directly gives a value no park ever wrote. The two tool scripts a
+    # park also records are not in `MEMBERS`, so they are not in the aggregate either.
+    pack=$(printf '%s\n' "$members" | LC_ALL=C sort -u \
+           | awk -F'\t' '$1 !~ /\.(py|sh)$/ { printf "%s  %s\n", $2, $1 }' \
+           | LC_ALL=C sort | sha256sum | cut -c1-8)
+    if [[ $suffix == "$pack" ]]; then
+      matched="PACK($pack)"
+      N_MATCHED=$(( N_MATCHED + 1 ))
+      CENSUS+=("$matched")
+      [[ $VERBOSE -eq 0 ]] || printf '  ok     %-42s suffix %s <- %s\n' "$s" "$suffix" "$matched"
+      continue
+    fi
+    REFUSE+=("$s: its suffix $suffix is the sha256 prefix of NONE of its own $(printf '%s\n' "$members" | awk -F'\t' '{ print $1 }' | LC_ALL=C sort -u | grep -c .) distinct member(s) ($(printf '%s\n' "$members" | awk -F'\t' '{ print $1 }' | LC_ALL=C sort -u | tr '\n' ' ')), nor of the pack's own aggregate ($pack) - so the name is evidence about something that is not in this set")
     continue
   fi
   if (( nhits > 1 )); then

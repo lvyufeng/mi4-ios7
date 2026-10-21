@@ -450,7 +450,7 @@ MEASURED, this arm: the last four hangs (517's first run, 521, 522, 526) did NOT
     pool word 0   movt rD, #0xf901 10   mov/mvn immediate 0
   and nothing in this image pets the net, so the run is CAPPED: a run of this arm that goes well
   also ends within the net's own interval, not when the payload stops. The two constants are read
-  out of stage90.h rather than quoted here:
+  straight from `src/entry/stage90.h` rather than quoted here:
     STAGE90_HW_WATCHDOG_TIMEOUT_S    29 s   (the bark)
     STAGE90_HW_WATCHDOG_BITE_GAP_S   3 s   (bark -> bite)
     so the bite is at most 32 s after the payload arms it, and the payload
