@@ -1662,7 +1662,7 @@ def stage(xnu, do_apply, piped=False):
             if bad or not h_ok:
                 bad = bad or [os.path.basename(INCS["h"])]
                 print("   stale: %s" % ", ".join(bad))
-                write_chunks()
+                write_chunks(xnu, model=True)
                 print("patch_d13_watch_le: already staged; the chunk file(s) %s were STALE - rewritten."
                       % ", ".join(bad))
             else:
@@ -1700,7 +1700,12 @@ def stage(xnu, do_apply, piped=False):
         sys.stdout.write(out)          # --out: the composed trap.c on stdout, nothing written
         return 0
     write(tp, out)
-    write_chunks()
+    # **`model=True`.** `write_chunks()` defaults to the OLD chunk format, which still carries the
+    # inline arm (`#if 1   /* 1038 chunk: arm */` as the file's first row) - so an `--apply` that
+    # ended by calling it here wrote the model's files back in the superseded shape, and the pool then
+    # compiled them: 1610 errors out of watch_le_arm.inc, all "expected identifier or '('" from the
+    # one-row-of-literal-backslash-n form. The rows loop's own files are what this rung stages.
+    write_chunks(xnu, model=True)   # (the tree, or unit_text() builds `"osfmk", "osfmk", "arm"`)
     print("   trap.c : staged: ONE include line at the seam (after 1037's close, before 1025's close) "
           "-> the statics, the switch, the arm and the gate table at file scope; the hook at sleh_abort's "
           "TAIL (before its final return), as the second `#include` line + its prototypes.")
