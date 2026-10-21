@@ -59,6 +59,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+import importlib.util as _ilu, os as _os
+_inc_stub = _ilu.module_from_spec(_s := _ilu.spec_from_file_location(
+    "inc_stub", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "inc_stub.py")))
+_s.loader.exec_module(_inc_stub)
+
 XNU_SYSCALL_SW = "osfmk/kern/syscall_sw.c"
 XNU_RPC = "osfmk/ipc/mach_kernelrpc.c"
 
@@ -203,12 +208,9 @@ def _directive_idents(text):
 
 
 def _placeholder_headers(text, incdir):
-    """Create an empty header for every <...>/"..." include the file names."""
-    for m in _INCLUDE.finditer(text):
-        p = Path(incdir) / m.group(1)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        if not p.exists():
-            p.write_text("")
+    """Create an empty header for every relative <...>/"..." include; absolute names are the tree's."""
+    _inc_stub.stub([m.group(1) for m in _INCLUDE.finditer(text) if not
+                    Path(m.group(1)).is_absolute() and ".." not in Path(m.group(1)).parts], incdir)
 
 
 def _preprocess(path, defines, incdir):

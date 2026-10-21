@@ -1,0 +1,41 @@
+2026-10-20 -- osfmk/arm/trap.c WAS OVERWRITTEN BY A HOST-SIDE TOOL SLIP. NO DEVICE ACTION, NO BUILD
+FROM THE CLOBBERED BYTES.
+
+WHAT WAS SEEN
+  03:13:12  the tree's trap.c (97119 B) is no longer a trap.c at all: its first line is
+            `# 1 "/mnt/data/mi4-ios6/src/xnu_aeabi_runtime.c"`, the whole `xnu_aeabi_runtime.c` body
+            has been spliced in (its own `# 1 ...` line markers, 604 of them) and the last function
+            defined is `__aeabi_memclr8`.  `grep -c 'xnu_live_'` = 0, `#if` = 0, `sleh_abort` absent.
+  Its ROOT was a real 1038-stage tree: the segment from `void act_set_apc(thread_t);` to the end
+  matches `/tmp/f149b/xnu/osfmk/arm/trap.c` line for line (105/105 non-marker lines), and that tree is
+  the last state whose `STAGE90_XNU_FRAME_CARRIER` arm was EMPTY (1039 not yet staged).
+
+THE CAUSE (by value, from this session's own transcript)
+  clang's driver slip, twice over, on 2026-10-20 03:11-03:13:
+   * `clang -E $(grep -E '^-I|^-include' ...) $(grep -E '^-D' ...) -DSTAGE90_XNU_WATCH_LE=1 $S` -- the
+     `-include` options were first and the `-I` roots followed, so the driver took the NEXT element
+     as the force-include's path ([[mi4-1039-guard-argv-not-pool-argv]]).
+   * `python3: out=["clang"]; ... (drop "-o" and its argument) ... subprocess.run(out)` -- the argv was
+     the POOL's, whose last element is the trap.c path and whose `-o obj` pair had been removed FOR
+     the guard-less variant: a full COMPILE whose `-o` was still in the list at that point.  One run
+     of it wrote the preprocess/compile product over the source.  (The exact opcode sequence is not
+     reconstructed here; the file's content -- clang `-E` markers + the EABI runtime -- is.)
+  Both are the one-value-two-definitions shape at the argv level: a HAND-BUILT argv aimed at a source
+  that also appears in the pool's own argv list.
+
+WHAT IS TRUE NOW
+  * Nothing was built from the clobbered bytes: the pool's 705-object run AFTER it (03:13) was the
+    failed wrapper, and the 1039 host gates never reached a compile.
+  * tree HEAD (external/xnu-hd2-darwin13, git) carries trap.c (38177 B, `601a4639...`) and kern_exec.c
+    (122291 B).  Neither carries any 10xx rung.
+  * The live tree's kern_exec.c (128095 B) carries the xnu_live_abt/rdr accessors (1031-1037).
+  * NO 1036 tail file survives on disk: the only 1038-stage, carrier-empty text is `/tmp/f149b`
+    (149780 B, 00:05), which carries 1038's hook AND the arm -- not the rung's layout (1038 is
+    re-expressed in the `watch_le_*.inc` model first, [[mi4-1039-plan-composer-preprocesses]]).
+
+REBUILD (in progress at the time of writing)
+  HEAD trap.c + HEAD kern_exec.c -> the 1036 chain (/tmp/x1039/pre-1039) -- but the chain as recorded
+  in /tmp/x1039/stage_live.sh and stage1036.sh does NOT reproduce the 1036 tail the plan keys on
+  (`place()`: 1025's ONE open ... ONE close at the arm's end; `thread_t thread = current_thread();`
+  ONCE).  To be re-established from the patchers' own preconditions, not from a remembered order.
+  The live trap.c is a CANARY (`#error`) until then: no build can silently consume a stand-in.

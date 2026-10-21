@@ -25,9 +25,11 @@ file are one rung ([[mi4-one-file-many-rungs]]).  There is NO C block in this pa
      xnu_live_sweq_wpc / _wfp / _w_ok                    -- the WALK's pc, through the saved-r11 chain
      FAULT-IN-USER-CODE (design 1): the (far, pc) pair the kernel itself tested, far == *(pc-0x40).
        STATUS: tools/patch_d13_watch_le.py DOES emit swb_far/_pc/_ok (with _slot/_tag/_cpsr/_fsr/
-       _r3/_lr/_sp/_ins/_der/_an/_m40; added by wire1038 after this file's first draft).  swb_pc is the
-       REAL faulting pc (the saved context's pc at +0x38), NOT far-0x40.  The host cannot read
-       *(pc-0x40); A1 is adjudicated on the device rows plus wpc (bound below).
+       _r3/_lr/_sp/_ins/_der/_an/_m40; added by wire1038 after this file's first draft).  swb_pc is
+       slot word 15 -- the saved-context pc, PRINTED AS SUCH (2026-10-19, wire1038: swb_pc=far-0x40 was
+       an inference and is withdrawn; the reader takes swb_pc as printed and never derives it).  The slot
+       is 16 x 19 words; row index 19*((ss-1)&15)+k; word 14=lr, 15=pc, 16=cpsr, 17=fsr, 18=far.
+       The host cannot read *(pc-0x40); A1 is adjudicated on the device rows plus wpc (bound below).
   B  xnu_live_ler_seq / _pid / _r3 / _cnt_w (+ _ok) / _cnt_b (+ _ok) / _al0 / _mfp1 / _mfp2 / _ppc
      / _le (+ _ok)
   G  xnu_live_wlg_byte (1/0/2) / xnu_live_wlg_lev (0/1/2) / xnu_live_wlg_need_<row>
@@ -107,6 +109,35 @@ file are one rung ([[mi4-one-file-many-rungs]]).  There is NO C block in this pa
     required rows = 29 (core 23 + swb_far/pc/ok/m40/m40_ok/ge), all printable, rc 0.
   * P3: all 11 other TRAP patchers' allowed-if sets name STAGE90_XNU_WATCH_LE (one each). The patcher's
     --selftest passes in a mkdtemp copy (the real trap.c is untouched).
+
+  * 2026-10-19, wire1038: work on the 1038 A-side PAYLOAD code is STOPPED.  That code does not build;
+    the payload code is abandoned and the live tree is untouched.  A press of the current 1038 code would
+    test rung code that has not got to compile.  Consequently build_1038.sh / park_1038.sh / press_1038.sh
+    must not run, and no 1038 press is pre-registered as possible, until the A-side payload builds.
+  * 2026-10-19 (wire1038's slot correction, in the reader): swb_pc is slot word 15 as printed; a
+    swb_ge=0 is REJECTED only when swb_pc is B2's pc, otherwise WITHHELD; a slot far that is not the
+    walk's 0x10 leaves A1 UNREAD (not refuted); the A1 conjunct is swb_ok=1 AND swb_m40_ok=1 AND
+    swb_far!=0 AND swb_ge=1, bound to the arm by wpc==swb_pc.  --selftest PASS; --emitter-missing on the
+    patcher prints exactly the 10 sweq s3/bp rows (rc 1): the known 1038 gap, now UNDERSTOOD -- see the
+    next entry.
+  * 2026-10-19, THE EMITTER GAP (measured by reading the patcher, not narrowed away): tools/
+    patch_d13_watch_le.py's _a_rows_text() prints the 16 words and the 32 bytes as ler rows
+    (xnu_live_ler_sv0..15(+_ok), xnu_live_ler_b0..3(+_ok)), while check_1038_capture.py's A cells read
+    xnu_live_sweq_s3/_s3_ok/_bp0..3(+_ok) -- the PROGRAM the design specifies, which the 1038 patch does
+    not carry.  So on this build: s3 never reaches a printf (it is set inside the arm), the bp window
+    prints as ler rows the reader does not map, and A2/A3/A4 would be WITHHELD in every capture.  GATE
+    DECISION: NOT narrowed.  --required-rows = 29 (the 21-row core including s3/_s3_ok/bp0..3+_ok, plus
+    wpc/_w_ok, plus the 6 swb rows) and the build's step 1 / park's P2 REFUSE until the patcher prints all
+    29.  Consequence, stated: build_1038.sh and park_1038.sh stop at step 1 / P2 (rc 1, the 10 names
+    above), and press_1038.sh's step 0 finds no parked 1038 set and also stops.  Rows DROPPED: none.
+    Owners: the patcher (wire1038's lane) or the design (map ler_* to the A window) -- not this reader.
+  * 2026-10-19, rowside switch (team lead, commit 8a04521): a correct 1038 slot in the staged trap.c now
+    carries ONE `#define STAGE90_XNU_WATCH_LE 1` inside its own `#if STAGE90_XNU_WATCH_LE` by design.
+    NONE of this lane's gates greps the stray define over all of trap.c (checked: build_1038.sh, park_1038.sh,
+    press_1038.sh and the reader name it nowhere); the only check that touches it is the patcher's own
+    --verify, which reads chunk b's include (stage90/trap_watch_le_b.inc) and requires the define there.
+    tools/patch_d13_watch_le_rowside.py --selftest PASSes under python3 -I.  This changes nothing about the
+    emitter gap above or the press block.
 
   * 2026-10-19, gate defects measured on 1037 (team lead): park names a set by EVERY pack member's sha
     (not the bin's sha8); the pack member list is checked present and CURRENT before the record write,

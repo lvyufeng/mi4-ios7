@@ -103,7 +103,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_PC_CARRIER",  # 1035 (tools/patch_d13_pc_carrier.py)
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036 (tools/patch_d13_pc_carrier_caller.py)
     "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
-}
+    "STAGE90_XNU_FRAME_CARRIER"}  # 1039 (tools/patch_d13_frame_carrier.py)
 
 # ---------------------------------------------------------------- kern_exec.c (Site B)
 
@@ -150,7 +150,7 @@ EXEC_ALLOWED_STAGE90 = {
     "STAGE90_XNU_READER_PROBE",       # 1029 (this rung)
     "STAGE90_XNU_CALLER_PROBE",       # 1031 (tools/patch_d13_caller_probe.py)
     "STAGE90_XNU_EVAL_FRAME",         # 1033 (tools/patch_d13_eval_frame.py)
-}
+    "STAGE90_XNU_FRAME_CARRIER"}  # 1039 (tools/patch_d13_frame_carrier.py)
 
 
 def read(p):
@@ -164,12 +164,17 @@ def write(p, t):
 
 
 def if_stage90_ids(text):
+    # LINE-STARTING directives only, and an id must stand WHOLE (a prefix of a longer id, or one quoted
+    # inside 1038's staged string literal, is not a directive ID) -- [[mi4-one-file-many-rungs]]
+    dirs = [m.group(1) for m in re.finditer(r"^[ \t]*#\s*(?:if|elif|ifdef|ifndef)\b(.*)$", text, re.M)]
     ids = set()
-    for m in re.finditer(r"^\s*#\s*(?:if|elif|ifdef|ifndef)\b(.*)$", text, re.M):
-        for ident in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", m.group(1)):
-            if ident.startswith("STAGE90_"):
-                ids.add(ident)
-    return ids
+    for e in dirs:
+        ids.update(i for i in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", e) if i.startswith("STAGE90_"))
+    whole = set()
+    for e in dirs:
+        e = re.sub(r'"(?:[^"\\]|\\.)*"', "", e)
+        whole.update(i for i in re.findall(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*", e) if i in ids)
+    return whole
 
 
 def trap_path(xnu):

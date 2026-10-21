@@ -178,7 +178,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_PC_CARRIER",         # 1035
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036
     "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
-}
+    "STAGE90_XNU_FRAME_CARRIER"}  # 1039 (tools/patch_d13_frame_carrier.py)
 
 
 def read(p):
@@ -192,12 +192,17 @@ def write(p, t):
 
 
 def if_stage90_ids(text):
+    # LINE-STARTING directives only, and an id must stand WHOLE (a prefix of a longer id, or one quoted
+    # inside 1038's staged string literal, is not a directive ID) -- [[mi4-one-file-many-rungs]]
+    dirs = [m.group(1) for m in re.finditer(r"^[ \t]*#\s*(?:if|elif|ifdef|ifndef)\b(.*)$", text, re.M)]
     ids = set()
-    for m in re.finditer(r"^\s*#\s*(?:if|elif|ifdef|ifndef)\b(.*)$", text, re.M):
-        for ident in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", m.group(1)):
-            if ident.startswith("STAGE90_"):
-                ids.add(ident)
-    return ids
+    for e in dirs:
+        ids.update(i for i in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", e) if i.startswith("STAGE90_"))
+    whole = set()
+    for e in dirs:
+        e = re.sub(r'"(?:[^"\\]|\\.)*"', "", e)
+        whole.update(i for i in re.findall(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*", e) if i in ids)
+    return whole
 
 
 def trap_path(xnu):
@@ -252,12 +257,27 @@ def evf_closes_inside_1025(t):
     accept a whole later block)."""
     close = "#endif /* %s */\n" % SWITCH
     blocks = re.compile(r"#if defined\((STAGE90_[A-Z0-9_]+)\) && \1\n.*?#endif /\* \1 \*/\n", re.S)
+    # (1040) 1025's arm re-opens its bracket a second time (the first close shuts the region 1025 wrote
+    # its publisher in; the rows live in the PUBLISHER, which the next plain close shuts).  The re-open
+    # is one more "later whole thing" for this scan; the bracket's pairing is the build's to prove.
+    reopen = "#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE\n"
     for m in re.finditer(re.escape(close), t):
         rest = t[m.end():]
         pos, ok = 0, True
         while True:
             if rest.startswith("#endif /* STAGE90_XNU_USTACK_PROBE */\n", pos):
                 return True
+            # 1025's arm re-opens its bracket a second time behind 1036's block so 1037's block lands
+            # inside it.  NB `#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE` is a
+            # PREFIX of the close's raw text (`#endif /* STAGE90_XNU_USTACK_PROBE */`), so a raw splice
+            # would answer "open" where the preprocessor closes: classify by LINE, not by prefix.
+            if rest.startswith(reopen, pos):
+                nxt = rest[pos + len(reopen):]
+                line = nxt[:(nxt.find("\n") + 1) if nxt.find("\n") >= 0 else len(nxt)]
+                if line.lstrip().startswith("#endif"):
+                    return True          # the close, ordered exactly (the close line's own end)
+                pos += len(reopen)
+                continue
             b = blocks.match(rest, pos)
             if b is None:
                 break

@@ -1,0 +1,4 @@
+== 1039: THE FRAME CARRIER (STAGE90_XNU_FRAME_CARRIER=1, STAGE90_XNU_TRAP_FRAME re-staged, STAGE90_XNU_WATCH_LE=0: 1038's row side inert; instrument only) ==
+patch_d13_watch_le_rowside: selftest PASS.
+patch_d13_watch_le: --selftest PASS
+REFUSING: /mnt/data/mi4-ios6/external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c already carries 1038's block end but it does not verify (a half-laid-out or foreign write) - restore the pre-1039 tree first

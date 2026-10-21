@@ -96,6 +96,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",     # 994  (tools/patch_d13_dyld_witness.py)
     "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
+    "WATCH_LE_STATICS_DEFINED", "chunk", "arm",  # 1038's chunk names (shared namespace: [[mi4-one-file-many-rungs]])
     "STAGE90_XNU_GLOBAL_FIX",       # 1015b (fires in pmap.c, allowed here for the shared proof)
     "STAGE90_XNU_UNDEF_RAISE",      # 1020 (tools/patch_d13_undef_raise.py)
     "STAGE90_XNU_IOS7_TRAPS",       # 1023 (row-24 gate, drives mach_trap.c; allowed for the proof)
@@ -109,14 +110,16 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_PC_CARRIER",  # 1035 (tools/patch_d13_pc_carrier.py)
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036 (tools/patch_d13_pc_carrier_caller.py)
     "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
-}
+    "STAGE90_XNU_FRAME_CARRIER"}  # 1039 (tools/patch_d13_frame_carrier.py)
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WORDS = {"defined", "if", "elif", "ifdef", "ifndef"}
 
 
 def if_identifiers(text):
-    return {w for expr in _DIRECTIVE.findall(text) for w in _IDENT.findall(expr) if w not in _WORDS}
+    # inside quotes -> not an identifier; a prefixed id (X_EVIL) is its own name, never the switch X
+    exprs = [re.sub(r'"(?:[^"\\]|\\.)*"', "", e) for e in _DIRECTIVE.findall(text)]
+    return {w for expr in exprs for w in _IDENT.findall(expr) if w not in _WORDS}
 
 # ---------------------------------------------------------------------------------------------------
 # (A) trap.c -- the vm_fault return-code publisher

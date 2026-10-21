@@ -772,7 +772,8 @@ ENTRY_CFG_KEYS=(STAGE90_XNU_ENTRY_SHA256 STAGE90_XNU_ENTRY_BYTES STAGE90_ENTRY_T
                 STAGE90_XNU_PC_CARRIER
                 STAGE90_XNU_PC_CARRIER_CALLER
                 STAGE90_XNU_TRAP_FRAME
-                STAGE90_XNU_WATCH_LE)
+                STAGE90_XNU_WATCH_LE
+                STAGE90_XNU_FRAME_CARRIER)
 # **1024: `STAGE90_XNU_VM_MAX_SPLIT`, the task map's ceiling (`VM_MAX_ADDRESS`).** It went in at the
 # tail after `STAGE90_XNU_GENERAL_REGS`; like every key above it is a REQUIRED key whose value is
 # printed by name, and the CONVERSE check below now accepts it. A record that does not carry it is a
@@ -1327,9 +1328,17 @@ do
     printf '  %s=(absent, and a record that does not name the trap-frame switch is one built before 1037 - the only value a pre-1037 build could have written)\n' "$_k"
     continue
   fi
-  # **1038's switch, the same one-way rule.**  Every arm parked before 1038 ran no stack-watch / LE block.
-  if [[ -z $_v && $_k == STAGE90_XNU_WATCH_LE ]]; then
-    printf '  %s=(absent, and a record that does not name the stack-watch / LE switch is one built before 1038 - the only value a pre-1038 build could have written)\n' "$_k"
+  # **1038's switch, the same one-way rule for an ABSENT line -- and `(unset)` for one ECHOED by a
+  # parent whose env never carried it.**  Every arm parked before 1038 ran no stack-watch / LE block;
+  # 1039's build writes `(unset)` into the parent record on purpose (build_1039.sh step 5), and its
+  # step-7 echo replaces it with the truth.
+  if [[ ( -z $_v || $_v == '(unset)' ) && $_k == STAGE90_XNU_WATCH_LE ]]; then
+    printf '  %s=(absent or (unset), and a record that does not MEASURE the stack-watch / LE switch is one built before 1038 - the only value a pre-1038 build could have written)\n' "$_k"
+    continue
+  fi
+  # **1039's switch, the same one-way rule.**  Every arm parked before 1039 ran no frame-carrier block.
+  if [[ -z $_v && $_k == STAGE90_XNU_FRAME_CARRIER ]]; then
+    printf '  %s=(absent, and a record that does not name the frame-carrier switch is one built before 1039 - the only value a pre-1039 build could have written)\n' "$_k"
     continue
   fi
   [[ -n $_v ]] \

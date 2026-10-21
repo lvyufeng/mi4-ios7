@@ -1296,7 +1296,21 @@ def _hook_protos():
     + chr(34) + "\n")
 
 
-HOOK_PROTOS = _hook_protos()
+def _seat_rows():
+    # (1040) compose()'s SEAT in trap.c, row for row: the hook include, the defs include (FILE SCOPE,
+    # once -- 1038's model), the fwd include (file scope) and the protos' two statics.  The rows are
+    # ungated here, as 1038's own seat is: with WATCH_LE=0 the build compiles the include out.
+    return (chr(9) + "#include " + chr(34) + HOOK_INC + chr(34) + chr(10)
+            + "#include " + chr(34) + DEFS_INC + chr(34) + chr(10)
+            + "#include " + chr(34) + "watch_le_fwd.inc" + chr(34) + chr(10)
+            + "static unsigned _wl_ss_slot(unsigned *ctx);" + chr(10)
+            + "static void _wl_ss_commit(unsigned _wl_j);" + chr(10))
+
+
+SEAT_ROWS = _seat_rows()
+
+
+
 
 
     # ^ the ')' closes the + chain: the include's "\n" must be its own line's last thing below it
@@ -2109,8 +2123,14 @@ def selftest_model(chk):
         "thread->task->map" in files[INC_ARM] and "thread->map" not in files[INC_ARM])
     chk("model: the arm is capped by its named cap", "WL_PRINT_CAP" in files[INC_ARM]
         and str(WL_PRINT_CAP) in files[INC_ARM])
-    chk("model %s: the arm included once, the hook inside a function" % INC_ARM,
-        files[INC_DEFS].count("#include") == 0 and files[INC_HOOK].count("#include") == 1)
+    # (1040: the quote is a TERM in every expected line -- a missing one is not a test the include
+    #  fails, it is an expected value that is not the text [[mi4-one-value-two-definitions]])
+    sw_open = "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm", INC_SWITCH) + chr(34)
+    chk("model %s: the arm included once, the switch and the arm in the hook" % INC_ARM,
+        files[INC_DEFS].count("#include") == 0
+        and [l.strip() for l in files[INC_HOOK].split(E) if l.strip().startswith("#include")]
+        == [sw_open, "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm", INC_ARM)
+            + chr(34)])
     for _r in ("xnu_live_sweq_seq=", "xnu_live_ler_cnt_b="):
         chk("model: row %s printed once" % _r, files[INC_ARM].count(_r) == 1)
 
@@ -2556,6 +2576,7 @@ def main(argv):
 INC_DEFS = "watch_le_defs.inc"
 INC_ARM = "watch_le_arm.inc"
 INC_HOOK = "watch_le_hook.inc"
+INC_SWITCH = "watch_le_switch.inc"        # (1040) the switch's `#define`, the hook `#include`s it
 
 T = chr(9)
 E = chr(10)
@@ -2572,8 +2593,7 @@ def _defs_lines():
     L.append(" * the gate table; the rows are watch_le_arm.inc's (the hook).  */")
     L.append("")
     L.append("#if defined(STAGE90_XNU_WATCH_LE) && STAGE90_XNU_WATCH_LE")
-    L.append("#ifndef WATCH_LE_STATICS_DEFINED")
-    L.append("#define WATCH_LE_STATICS_DEFINED 1")
+    L.append(WATCH_DEFINE.rstrip(chr(10)))   # (1040) THE SWITCH, first: ...
     L.append("static unsigned _wl_swb[304U];      /* the slots: 16 x 19 (r0-r12, sp, lr, pc, cpsr, fsr, far) */")
     L.append("static unsigned _wl_ssslot;         /* the newest committed slot + 1 */")
     L.append("static unsigned _wl_owned;          /* the hook's claim for THIS thread's fault + 1 */")
@@ -2599,7 +2619,6 @@ def _defs_lines():
     L.append("{")
     L.append(T + "__atomic_store_n(&_wl_ssslot, _wl_j + 1U, __ATOMIC_RELEASE);")
     L.append("}")
-    L.append("#endif /* WATCH_LE_STATICS_DEFINED */")
     L.append("")
     L.append("/* ===== A: THE STACK WATCH (the tables; the hook's arm MEASURES) ===== */")
     L.append("unsigned _wl_a_st[16];               /* the 16 words at sp-4 .. sp+0x3c */")
@@ -2808,6 +2827,12 @@ def _hook_lines():
     L.append("\t * the slot when it is a user-mode ARM data abort, claim the slot for this thread, and run")
     L.append("\t * the arm (its reads and its ONE print).  The arm is a DIRECTIVE-FREE fragment (its")
     L.append("\t * braces close its own blocks; no #if crosses into this function). */")
+    L.append("\t/* (1040) THE SWITCH, HERE, OUTSIDE THE BRACES: the defs file -- which DEFINES the switch --")
+    L.append("\t * is included 600 lines BELOW this function, so the ROWS (this arm) read the switch")
+    L.append("\t * UNDEFINED and every row compiled out while the statics the rows touch came from the")
+    L.append("\t * fwd file's own copy: `use of undeclared identifier` for each.  A #define is legal in a")
+    L.append("\t * function; a #if is not (an opened conditional cannot close inside an include). */")
+    L.append("\t#include \"@@SWITCH@@\"")
     L.append("\t{")
     L.append("\t\tunsigned _wl_ctx[19], _wl_k;")
     L.append("\t\tif (reason == SLEH_ABORT_TYPE_DATA_ABORT && arm_ctx) {")
@@ -2854,6 +2879,10 @@ def unit_text(xnu):
     h = _hook_lines()
     ddir = os.path.join(os.path.abspath(xnu), "osfmk", "arm")
     h = [l.replace("@@ARM@@", os.path.join(ddir, INC_ARM)) for l in h]
+    swp = os.path.join(ddir, INC_SWITCH)
+    h = [l.replace("@@SWITCH@@", swp) for l in h]
+    with open(swp, "w") as f_:
+        f_.write(WATCH_DEFINE)          # (the file @@SWITCH@@ names: the switch ON, nothing else)
     files = {INC_DEFS: E.join(d) + E, INC_ARM: E.join(a) + E, INC_HOOK: E.join(h) + E}
     lines = ["#" + "include " + chr(34) + os.path.join(ddir, INC_DEFS) + chr(34)]
     return files, lines

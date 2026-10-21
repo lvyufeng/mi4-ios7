@@ -1,0 +1,113 @@
+1039 PRE-REGISTRATION -- fixed BEFORE the press.  The reading is appended below section 3.
+Rung 1039 (scripts/build_1039.sh; tools/patch_d13_frame_carrier.py): ONE trap.c block inside 1025's
+user-mode data-abort publisher, after 1037's block, that reads the faulting thread's user context
+INDEPENDENTLY OF arm_ctx (through thread->machine.uss, by its own address, chosen loader printed),
+plus thread->continuation, the entry's saved spsr (uss word 0x40), bit0 of pc/lr and bit5 (T) of pc,
+and the kernel's uptime.  INSTRUMENT ONLY: NO fix.  It also RE-STAGES 1037's body (its fb_ctx_diff
+compared arm_ctx with itself; the re-staged body reads the uss VA it points at) and carries 1038's
+WATCH_LE arm verbatim.
+
+WHAT 1037 READ (records/1037-read.txt READING; capture recovered-unknown-arm-20261019-102252):
+  pid 2 (launchctl), pc=0x38492474 lr=0x3848a9af slide=0x86c000 ctx_diff=0 uss_ok=0 (the mask was a
+  tautology), far=0x10 dfsr=7 (a READ); launchd died with "Bus error: 10".  r1=0 at an ldrb whose
+  r1 had just been loaded.  File-side (records/1039-static-lr.txt): lr is one byte past the return
+  address of a `blx` (an ODD bit in a register the ARM fault path only ever copies), pc is the walk.
+
+====================================================================================================
+1. ROWS (tools/check_1039_capture.py --required-rows is the authority; names exact)
+====================================================================================================
+  xnu_live_fcr_seq / _pid / _tid / _pc / _lr / _cpsr          (arm_ctx as the kernel holds it now)
+  xnu_live_fcr_uss_va / _uss_via        (_via: 1 = read through the task map, 2 = kernel ldr, 0 = none)
+  xnu_live_fcr_uss_pc / _ok / _uss_sp / _ok / _uss_lr / _ok   (uss words 15 / 13 / 14, read by ADDRESS)
+  xnu_live_fcr_uss_armctx_diff          (arm_ctx words XOR the pointed-to record's words; 1037's defect)
+  xnu_live_fcr_cont / _cont_ok          (thread->continuation)
+  xnu_live_fcr_spsr / _spsr_ok          (uss word 16 = 0x40, the trap entry's saved PSR)
+  xnu_live_fcr_pc_odd / _lr_odd / _tbit (bit0 of pc, bit0 of lr, bit0 of pc OR lr -- see the first
+  amendment; the reader's L2a uses tbit as "the saved pc is a Thumb address", so tbit is NOT bit 5 in
+  this tree and L2a's Thumb sentence is read only through fcr_spsr's T bit, which S1 prints)
+  AMENDED 2026-10-19 before the press: the first emitter read bit 1 (`>> 1`) -- corrected to bit 0;
+  the reader's L cells are defined on BIT 0, so the row names now mean what the cells read.
+  xnu_live_fcr_uptime_s / _time_abs / _time_ns / _uptime_ok  (clock_get_uptime; diagnostics only)
+  Parents read beside (inherited, not gated): xnu_live_fb_* (1037, re-staged), xnu_live_sweq_* /
+  _ler_* / _wlr_* / _wlg_* (1038).
+  Every value raw; every _ok a 0/1; an ABSENT row is absent, never a zero.
+  AMENDED 2026-10-19 (third amendment, before the press) -- THE ISS ROWS ARE ROLES, BY VALUE:
+  the staged frame_carrier emitter prints six rows, xnu_live_fcr_iss_pc / _pc_ok / _iss_lr / _lr_ok /
+  _iss_sp / _sp_ok, each by VALUE from the same 17-word register walk (words 15 / 14 / 13).  The
+  words are named by what they are IN THE BANK (pcb.c:331/334/337, cswitch.s:132 read the block as a
+  register walk); whether word 15 is the saved pc is NOT decided by the name -- records/1039-static-lr.txt
+  (iii) is the only reading of that, and the rows are read beside it.  A W-named draft (iss_w00..w40)
+  was withdrawn before the press because a W name decides nothing and loses the role beside the value.
+
+  SECOND AMENDMENT (before the press): the emitter prints the kernel's uptime as
+  `xnu_live_fcr_uptime_ok` / `_uptime_s` / `_time_abs` / `_time_ns` (clock_get_uptime, the boot epoch
+  count, the same count in ns; _uptime_s = abs/1s).  An earlier draft printed `_boot_epoch`; the
+  reader has always named the four rows above, so the emitter now matches the reader.  No row is
+  conditional on a CPP symbol: the block carries NO directive of its own (verify-off enforces it).
+
+DELIBERATELY NOT READ: thread->machine.iss.  It is typed arm_saved_state_t but written as a REGISTER
+BLOCK (pcb.c:331/334/337; cswitch.s:132 `ldmia r3!,{r4-lr}` from iss+0x10), so words 13..16 are not
+pc/lr/spsr; the 1039 design's ISS rows (records/1039-static-lr.txt 3, R2) were DROPPED rather than
+printed under the wrong names.  The static walk (records/1039-static-lr.txt (iii)) stands as the only
+reading of that block, and the I cell below decides the one part of it a kernel row can decide.
+
+====================================================================================================
+2. THE CELLS (decided now; the capture only selects)
+====================================================================================================
+  ctrl : xnu_live_fcr_seq present AND pid == 2 AND _cont_ok == 1        (the block ran, on launchctl)
+  L0  EVEN-REPRODUCED   pc and lr both even -> REPORTED, no cell: the odd registers 1037 read were
+                        not reproduced; nothing about 1039's question is decided by this run.
+  L1  BOTH-ODD          both odd -> the carrier is systematic; ask what writes bit0 into BOTH.
+  L2  LR-ODD-ONLY       lr odd, pc even.  SUB-CELLS (the reader prints lr_odd and tbit; the question
+                        "is the user's own save odd" is U1/U2/U3):
+      L2a tbit == 1     -> the pc the kernel holds is a Thumb address: a Thumb switch happened in
+                           this bank; with an all-ARM fault path that is itself the defect.
+      L2b tbit == 0     -> no Thumb switch in the saved pc; the odd lr is either the user's save
+                           (U1: the record agrees) or a kernel-side writer (U2/U3).
+  L3  PC-ODD-ONLY       pc odd -> the pc carrier is the odd one.
+  U1  USARMCTX-AGREES   uss pc/lr (read by address, _ok=1) == arm_ctx pc/lr -> REPORTED: the save and
+                        the C view are the SAME words; the disagreement is with the FILE, not between
+                        two kernel views.  L2b + U1 is the odd-lr-named cell: the USER's save is odd.
+  U2  TWO-VIEWS-DISAGREE  both readable and different -> CELL: name the writer between them.
+  U3  USS-UNREADABLE    the record at uss_va is not readable (_via=0/2 refused, or lookup/copyin miss)
+                        -> REPORTED: the frame 1037 read is not the record at the port's uss.
+  I3  CONTINUATION-SET  thread->continuation != 0 -> the next switch is a CONTINUATION entry, and
+                        machine_load_context's r0 = 0 is reachable (records/1039-static-lr.txt (a)).
+  I4  NO-CONTINUATION   continuation == 0 -> REPORTED: the r0=0 mechanism (a) is not reachable on this
+                        thread; r0=0 (1037) must come from the shim-return or elsewhere.
+  S1  SPSR              REPORTED whenever _spsr_ok: mode = spsr&0x1f (0x10 = user), T = bit5.  If the
+                        spsr mode is NOT user (0x10), the "user frame" is a bank the trap did not
+                        expect -- that makes U1 read the WRONG record and is itself the cell.
+  E1/E2 1038's PAIR     REPORTED (swb_far's memory pair), not 1039's question.
+
+  FALSIFIERS recorded now:
+   - if uss_via == 0 while uss_va != 0, the port's uss pointer is not a value this kernel prints
+     (a report, not a U3 cell);
+   - if U1 holds and uss_armctx_diff == 0 (the re-staged 1037 rows), the two views are one view;
+   - if L0 fires and the re-staged 1037 fb rows ALSO show even pc/lr, the 1037 odd pair was a
+     one-run event and 1039's question is not asked by this run;
+   - if fcr_pid != 2, no cell: the block ran on another process.
+
+====================================================================================================
+3. STALENESS (by value, fixed now)
+====================================================================================================
+  This kernel prints no in-log epoch: the XNU console lines are `[os-console-...]`/`[RTCLOCK]`, never
+  `[<sec>.<frac>]` (measured on the 1037 capture: 0 such lines).  The kernel's own `uptime_s` row is
+  run-relative and states no wall time; it is printed for the host to check the SPLIT, not to date the
+  capture.
+  Therefore the capture's boot is anchored by its FILE MTIME, i.e. the moment recover_last_kmsg.sh
+  read /proc/last_kmsg of the boot AFTER this press (a press does not return; the operator's
+  power press boots the installed ROM; that boot's last_kmsg is the run).  The checker requires
+  mtime (or an in-log wall stamp, should one appear) >= the press's boot epoch, else
+  `NO READING - STALE SLOT`, exit 2.  Never the `-YYYYMMDD-HHMMSS-` name stamp (when TAKEN).
+
+  The relaunch precondition (from 1037): the 1037 run's launchd faulted a few seconds after boot and
+  STAYED DEAD (no re-scan, up to 10 s).  If 1039's run does NOT re-fault after the instrumented
+  capture, the launchd launch loop is not spinning and the capture is a report, not a cell.
+
+====================================================================================================
+4. THE PRESS
+====================================================================================================
+  scripts/build_1039.sh -> scripts/park_1039.sh (role=1039-frame-carrier) -> scripts/press_1039.sh
+  with STAGE90_1039_LAST_PRESS_EPOCH >= 1792405372 (1037's boot epoch).  fastboot boot ONLY, never
+  flash; the previous run's console is recovered before the boot overwrites the slot.

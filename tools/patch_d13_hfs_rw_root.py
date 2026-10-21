@@ -53,6 +53,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+import importlib.util as _ilu, os as _os
+_inc_stub = _ilu.module_from_spec(_s := _ilu.spec_from_file_location(
+    "inc_stub", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "inc_stub.py")))
+_s.loader.exec_module(_inc_stub)
+
 REL = "bsd/hfs/hfs_vfsops.c"
 
 # The file this patch was written for, by content - not by name.  `hfs_mountroot`'s definition is the
@@ -209,10 +214,7 @@ def if_identifiers(text: str):
 def cpp_probe(text: str, defines, workdir: Path, tag: str) -> str:
     """The REAL preprocessor, over the WHOLE file, every #include resolved to an empty file."""
     inc = workdir / f"inc_{tag}"
-    for name in _INCLUDE.findall(text):
-        p = inc / name
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("")
+    _inc_stub.stub(_INCLUDE.findall(text), inc)
     src = workdir / f"{tag}.c"
     src.write_text(text)
     argv = ["clang", "-E", "-P", "-x", "c", "-nostdinc", f"-I{inc}"] + list(defines) + [str(src)]

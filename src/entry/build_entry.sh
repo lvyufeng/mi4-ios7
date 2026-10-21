@@ -2140,6 +2140,7 @@ ENTRY_ARM_KEYS=(STAGE90_ENTRY_TRACE STAGE90_ENTRY_REAL_ARM_INIT STAGE90_XNU_SLOT
                 STAGE90_XNU_PC_CARRIER_CALLER
                 STAGE90_XNU_TRAP_FRAME
                 STAGE90_XNU_WATCH_LE
+                STAGE90_XNU_FRAME_CARRIER
                 STAGE90_XNU_TREE_D13)
 #
 # **The seven switches are not the whole arm, and finding that out is what made this eleven.** Checking
@@ -2365,6 +2366,9 @@ do
         # 1038: the stack-watch + little-endian table block (trap.c, staged by the 1038 patcher).
         # POOL-only, read from the ENVIRONMENT with a default 0, like its TRAP_FRAME sibling.
         STAGE90_XNU_WATCH_LE)  _v=${STAGE90_XNU_WATCH_LE:-0}; _v=${_v:-0} ;;
+        # 1039: the frame carrier -- uss read through the port's pointer, ISS words, saved spsr,
+        # continuation, pc/lr bit0, boot epoch (trap.c, staged by the 1039 patcher). POOL-only.
+        STAGE90_XNU_FRAME_CARRIER)  _v=${STAGE90_XNU_FRAME_CARRIER:-0}; _v=${_v:-0} ;;
         # 912: read from the ENVIRONMENT directly and not from `$ENTRY_SIZE`, because this loop runs
         # ~27000 lines ABOVE the assignment (`:28651`) - the same reason `STAGE90_ENTRY_REAL_ARM_INIT`
         # is read with its own `${...:-0}`. The default is the same literal, so an unset switch and an
@@ -29399,6 +29403,34 @@ if [[ $REAL_ARM_INIT -eq 1 ]]; then
         [[ ${#_wl_bad[@]} -eq ${#_wl_rows[@]} ]] \
             || layout_fail "REFUSING: STAGE90_XNU_WATCH_LE=0 but osfmk_arm_trap.o STILL carries the block's rows (${_wl_found}/${#_wl_rows[@]} present: ${_wl_bad[*]} are the missing ones, want all 17). A stale object built under the switch with a record that says it is off - the reverse of the 1029 clause's OFF arm. Rebuild the pool: STAGE90_XNU_WATCH_LE=0 ./tools/build_xnu_arm_kernel.sh"
         say "  xnu_entry_1038: osfmk_arm_trap.o carries none of the 1038 block's rows and this build sets STAGE90_XNU_WATCH_LE=0 - the plain pre-1038 image (no stack-watch / LE block)"
+
+    # ================================================================================================
+    # 1039: THE FRAME-CARRIER CLAUSE.  Same shape and reason as 1038's above: the switch is a POOL-only
+    # switch, osfmk_arm_trap.o gains the block's rows (xnu_live_fcr_*), build_entry.sh only LINKS the
+    # pool objects, so a record that says 1 over a pool carrying none is a refusal.  The rows read are
+    # the ones whose absence would leave a 1039 cell with no input: the seq, the uptime triple (a
+    # freshness anchor beside the capture's own boot stamp), the uss-side pc/lr and their _ok (the
+    # second witness; each a printf LITERAL, so grep -cxF), the continuation, the saved spsr/ok and the
+    # two odd rows.
+    _fc_req=${STAGE90_XNU_FRAME_CARRIER:-0}
+    _fc_rows=(xnu_live_fcr_seq= xnu_live_fcr_uptime_s= xnu_live_fcr_time_abs= xnu_live_fcr_time_ns= \
+              xnu_live_fcr_uptime_ok= xnu_live_fcr_uss_pc= xnu_live_fcr_uss_pc_ok= \
+              xnu_live_fcr_uss_lr= xnu_live_fcr_uss_lr_ok= xnu_live_fcr_cont= xnu_live_fcr_spsr= \
+              xnu_live_fcr_spsr_ok= xnu_live_fcr_pc_odd= xnu_live_fcr_lr_odd=)
+    _fc_found=0; _fc_bad=()
+    for _fc_lit in "${_fc_rows[@]}"; do
+        _fc_n=$(strings "$_wl_trap_obj" | grep -cxF "$_fc_lit" || true)
+        if [[ $_fc_n -eq 1 ]]; then _fc_found=$((_fc_found + 1)); else _fc_bad+=("$_fc_lit x$_fc_n"); fi
+    done
+    if [[ $_fc_req == 1 ]]; then
+        [[ $_fc_found -eq ${#_fc_rows[@]} ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_FRAME_CARRIER=1 but osfmk_arm_trap.o does NOT carry the 1039 block's rows (${_fc_found}/${#_fc_rows[@]}; wrong or repeated: ${_fc_bad[*]}). A record over a STALE pool or over a spelling the patcher does not emit (records/1020-build-defect.txt). Rebuild the pool: STAGE90_XNU_FRAME_CARRIER=1 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1039: osfmk_arm_trap.o carries all ${#_fc_rows[@]} xnu_live_fcr_* literals and this build sets STAGE90_XNU_FRAME_CARRIER=1 - the 1039 block is IN the linked image"
+    else
+        [[ ${#_fc_bad[@]} -eq ${#_fc_rows[@]} ]] \
+            || layout_fail "REFUSING: STAGE90_XNU_FRAME_CARRIER=0 but osfmk_arm_trap.o STILL carries the 1039 block's rows (${_fc_found}/${#_fc_rows[@]} present, missing: ${_fc_bad[*]}). A stale object built under the switch with a record that says it is off. Rebuild the pool: STAGE90_XNU_FRAME_CARRIER=0 ./tools/build_xnu_arm_kernel.sh"
+        say "  xnu_entry_1039: osfmk_arm_trap.o carries none of the 1039 block's rows and this build sets STAGE90_XNU_FRAME_CARRIER=0 - the pre-1039 image"
+    fi
     fi
     # **The DOOR half of 888's check is the NEXT block's business, not this one's** - see the
     # `entry_storage_driver_read` clause the link block carries after `xnu_arm_entry.elf` exists. A
@@ -40760,6 +40792,8 @@ IDLE_STACK_FOR_RECORD=${STAGE90_XNU_IDLE_STACK:-1}
     echo "STAGE90_XNU_TRAP_FRAME=${STAGE90_XNU_TRAP_FRAME:-0}"
     # **1038's stack-watch + LE-table switch, same POOL-only shape as TRAP_FRAME's.**
     echo "STAGE90_XNU_WATCH_LE=${STAGE90_XNU_WATCH_LE:-0}"
+    # **1039's frame-carrier switch, same POOL-only shape as WATCH_LE's.**
+    echo "STAGE90_XNU_FRAME_CARRIER=${STAGE90_XNU_FRAME_CARRIER:-0}"
     # **1028's H2 headroom fix switch, written here for the SAME reason as 1025's and 1026's.**  The fix is
     # a value change in `create_unix_stack`'s FIXED `mach_vm_allocate` extent (both edited files are POOL
     # objects), so the entry image's own linked bytes are IDENTICAL with it on and off and this record line

@@ -52,6 +52,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+import importlib.util as _ilu, os as _os
+_inc_stub = _ilu.module_from_spec(_s := _ilu.spec_from_file_location(
+    "inc_stub", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "inc_stub.py")))
+_s.loader.exec_module(_inc_stub)
+
 REL = "osfmk/arm/trap.c"
 
 # The file this patch was written for, by content - not by name.
@@ -111,6 +116,7 @@ ALLOWED_IF_IDENTIFIERS = {
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",
     "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
+    "WATCH_LE_STATICS_DEFINED", "chunk", "arm",  # 1038's chunk names (shared namespace: [[mi4-one-file-many-rungs]])
     "STAGE90_XNU_GLOBAL_FIX",
     "STAGE90_XNU_UNDEF_RAISE",
     "STAGE90_XNU_IOS7_TRAPS",
@@ -159,7 +165,7 @@ ALLOWED_IF_IDENTIFIERS = {
     # 1036's inside 1025's publisher.  Same shared-namespace rule, same OFF reasoning
     # ([[mi4-one-file-many-rungs]]).
     "STAGE90_XNU_TRAP_FRAME",
-}
+    "STAGE90_XNU_FRAME_CARRIER"}  # 1039 (tools/patch_d13_frame_carrier.py)
 _DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:if|elif|ifdef|ifndef)\b(.*)$", re.M)
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _WORDS = {"defined", "if", "elif", "ifdef", "ifndef"}
@@ -265,10 +271,7 @@ def if_identifiers(text: str):
 def cpp_probe(text: str, defines, workdir: Path, tag: str) -> str:
     """The REAL preprocessor, over the WHOLE file, every #include resolved to an empty file."""
     inc = workdir / f"inc_{tag}"
-    for name in _INCLUDE.findall(text):
-        p = inc / name
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("")
+    _inc_stub.stub(_INCLUDE.findall(text), inc)
     src = workdir / f"{tag}.c"
     src.write_text(text)
     argv = ["clang", "-E", "-P", "-x", "c", "-nostdinc", f"-I{inc}"] + list(defines) + [str(src)]

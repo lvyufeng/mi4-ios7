@@ -39,6 +39,7 @@ REC=$LIVE/xnu_arm_entry-config.txt
 POOL=out/xnu_kernel_obj_d13
 TRAP_OBJ=$POOL/osfmk_arm_trap.o
 TRAP_SRC=$SR/external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c
+TRAP_ARGV=${TRAP_ARGV:-out/1039-trap-argv.txt}
 NEW=STAGE90_XNU_FRAME_CARRIER
 CHECKER=tools/check_1039_capture.py
 EXEC_OBJ=$POOL/bsd_kern_kern_exec.o
@@ -70,18 +71,96 @@ grep -qE "^\[\[ \\\$\{$NEW:-0\} -eq 1 \]\] && DEFINES\+=" tools/build_xnu_arm_ke
 #    1038 lives in the .inc files, reached by an #include at file scope and one inside sleh_abort.
 #    [[mi4-1039-plan-composer-preprocesses]], [[mi4-one-file-many-rungs]].
 echo "-- 1. the owners' selftests + the plan's selftest --"
+# (the PATCHERS' selftests judge their own fixtures, never the live tree -- the plan's --verify at
+#  step 2 and the preprocessor at step 3 are what judge trap.c itself)
 for _t in $PATCHER $TF_PATCHER $LE_PATCHER tools/patch_d13_plan.py; do
-  python3 -I "$_t" --selftest | tail -1 || { echo "FAIL: $_t --selftest"; exit 1; }
+  python3 -I "$_t" --selftest 2>&1 | grep -E 'selftest .*(PASS|FAIL)|SELFTEST (PASS|FAIL)' | tail -1 \
+    || { echo "FAIL: $_t --selftest"; exit 1; }
+  python3 -I "$_t" --selftest >/dev/null 2>&1 || { echo "FAIL: $_t --selftest did not pass"; exit 1; }
 done
-python3 -I $LE_PATCHER --model-files "$XNU_TREE" | tail -1 \
+python3 -I $LE_PATCHER --model-files "$XNU_TREE" >/dev/null 2>&1 \
   || { echo "FAIL: the rows loop's model (watch_le_*.inc) cannot be written"; exit 1; }
+# (the check must be the one that WRITES: --verify-model printed PASS beside three 0-byte files --
+# --model-files' REFUSE path returned a files tuple with no text, wrote nothing, and exited 0, and the
+# verifier then called the empty files "the model's, byte for byte".  The writer's own status and a
+# non-empty check are both required.  [[mi4-silence-is-a-reading-only-if-success-is-silent]])
+python3 -I $LE_PATCHER --model-files "$XNU_TREE" >/dev/null 2>&1 \
+  || { echo "FAIL: the rows loop's model (watch_le_*.inc) cannot be written"; exit 1; }
+for _inc in watch_le_defs.inc watch_le_fwd.inc watch_le_arm.inc watch_le_hook.inc; do
+  [[ -s $XNU_TREE/osfmk/arm/$_inc ]] || { echo "FAIL: $XNU_TREE/osfmk/arm/$_inc is EMPTY - the model wrote no text"; exit 1; }
+done
 python3 -I $LE_PATCHER --verify-model "$XNU_TREE" | tail -1 \
   || { echo "REFUSING: the include files on disk do not verify"; exit 1; }
 
-# 2. THE TREE MUST BE THE 1036 TREE.  The plan INSERTS its seam in front of 1025's close and the
-#    hook at sleh_abort's preamble; anything of 1037/1039's already there is refused by name (a
-#    half-staged or foreign tree -- never a silent re-compose).
+# 2. THE TREE IS EITHER THE 1036 TREE OR ALREADY THIS RUNG'S COMPOSITE (the staging is IDEMPOTENT).
+#    The plan INSERTS its seam in front of 1025's close and the hook at sleh_abort's preamble; a tree
+#    that already carries the plan BYTE FOR BYTE is this rung's own and is re-staged over (the .inc
+#    files the seam includes are rewritten by --model-files, which is why re-staging is the honest
+#    move); anything else is refused by name -- never a silent re-compose of a foreign tree.
 echo "-- 2. compose trap.c from the plan --"
+_st=$(python3 -I - "$XNU_TREE" <<'PYST' || true
+import importlib.util, os, sys
+p = os.path.join("tools", "patch_d13_plan.py")
+spec = importlib.util.spec_from_file_location("_plan", p); m = importlib.util.module_from_spec(spec)
+sys.modules["_plan"] = m; spec.loader.exec_module(m)
+xnu = sys.argv[1]; t = m.read(m.trap_path(xnu))
+if m.verify(t, xnu) == []:
+    print("staged"); sys.exit(0)
+# PRISTINE = the COMPOSER CAN PLACE its seam here.  (2026-10-20: a COMPOSED tree was classified by a
+# str.strip()ed fold comparison; the 1037 body is TAB-indented, the stripped fold matched, nothing was
+# folded, and the plan composed a SECOND seam -- trap.c carried it twice and step 6 caught the doubled
+# row.  Ask the composer, never a look-alike of it.)
+_at, _b, _why = m.place(t, xnu)
+if _at is None:
+    # (2026-10-20: a tree that still carries the OLD composite -- 1037's switch present, the plan's
+    # bytes changed under it -- refused here.  It is not pristine: compose() INSERTS and the tree
+    # would come out with two 1037 blocks.  FOLD it if the plan recognises it; refuse otherwise.)
+    if t.count("#if defined(STAGE90_XNU_TRAP_FRAME) && STAGE90_XNU_TRAP_FRAME") >= 1:
+        _f, _fw = m.off(t, xnu)
+        if _f is not None:
+            print("old-composite"); sys.exit(0)
+    print("composed-under-a-second-seam: " + _why); sys.exit(0)
+print("pristine"); sys.exit(0)
+PYST
+)
+echo "   trap.c is: ${_st:-unknown}"
+case "${_st%%:*}" in
+  staged)
+    # (fold the plan out first: --apply composes the 1036 tree, and the fold is the plan's own --off)
+    python3 -I - "$XNU_TREE" <<'PYFOLD' || { echo "REFUSING: this rung's composite cannot be folded"; exit 1; }
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("_plan", os.path.join("tools", "patch_d13_plan.py"))
+m = importlib.util.module_from_spec(spec); sys.modules["_plan"] = m; spec.loader.exec_module(m)
+xnu = sys.argv[1]; tp = m.trap_path(xnu)
+out, why = m.off(m.read(tp), xnu)
+if out is None:
+    print("REFUSING: " + str(why)); sys.exit(1)
+m.write(tp, out)
+print("   re-staged over this rung's composite (the plan folded out, then composed again)")
+PYFOLD
+    ;;
+  pristine) ;;
+  old-composite)
+    # (fold the plan's older bytes out: the tree carries 1037's block + a carrier under an earlier
+    #  seam spelling.  Folding is the plan's own --off, and it proves the text is ONE composite.)
+    python3 -I - "$XNU_TREE" <<'PYFOLD'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("_plan", os.path.join("tools", "patch_d13_plan.py"))
+m = importlib.util.module_from_spec(spec); sys.modules["_plan"] = m; spec.loader.exec_module(m)
+xnu = sys.argv[1]; tp = m.trap_path(xnu)
+out, why = m.off(m.read(tp), xnu)
+if out is None:
+    print("REFUSING: " + str(why)); sys.exit(1)
+m.write(tp, out)
+print("   folded the old composite out (the 1036 bytes, then composed again)")
+PYFOLD
+    ;;
+  composed-under-a-second-seam)
+    # (a tree staged under TWO seams is not this rung's composite and not the 1036 tree: the fold
+    # would have to guess which seam is real.  Never re-compose it -- start from a pristine tree.)
+    echo "REFUSING: $TRAP_SRC carries 1037's rows or the hook outside this rung's plan (a second seam?) - start from the 1036 tree"; exit 1 ;;
+  *) echo "REFUSING: the plan will not compose on $TRAP_SRC (not the 1036 tree)"; exit 1 ;;
+esac
 python3 -I tools/patch_d13_plan.py "$XNU_TREE" --apply | tail -1 \
   || { echo "REFUSING: the plan will not compose on $TRAP_SRC (not the 1036 tree)"; exit 1; }
 python3 -I tools/patch_d13_plan.py "$XNU_TREE" --verify | tail -1 \
@@ -116,6 +195,15 @@ for name, defs in combos.items():
     print("   %s: preprocesses, no directive survives (%d bytes)" % (name, len(r.stdout)))
 PYPP
 
+# 3b. THE SEMANTIC HALF OF 3 NOW RUNS LATER, AS 6c, ON THE POOL'S OWN ARGV.  3 is STRUCTURAL (the
+#     staged region's directive lines through the real preprocessor) and passed once while
+#     `watch_le_arm.inc` was spliced into BOTH sleh_abort and sleh_undef -- it names sleh_abort's
+#     locals, so with WATCH_LE=1 the undef arm did not compile (2026-10-20, a 1039 BUILD defect).
+#     The compile needs the SAME argv the pool compiles trap.c with, and a hand-built copy of that
+#     argv is a second definition of it (measured: a target, a force-include and a PER-COMPONENT
+#     define each went missing or wrong).  The pool prints its own argv at 6b; 6c appends the
+#     switch combinations to it.  [[mi4-1039-guard-argv-not-pool-argv]]
+
 # 4. EVERY OTHER trap.c PATCHER ACCEPTS THE COMPOSED TREE (the shared namespace in effect).  The
 #    plan's own file is skipped: it is the composer, not a rung.
 for _p in tools/patch_d13_*.py; do
@@ -137,19 +225,24 @@ echo "-- 5. the record's inherited chain --"
 # out and the build_entry's WATCH_LE=0 clause reads the pool: none of the 17 sw eq / ler literals.
 # (2026-10-19 17:4x: the earlier `=1` demand was written for a stray `#define` in the seam; that define
 # is gone, and `=1` would now demand rows that are not compiled.)
-PYFIX=1 python3 - "$REC" <<'PYEOF'
+# (the record is READ, never written: a rung that rewrote its parent's record left every later build
+# reading a value this one chose.  $OTHER is passed in -- a heredoc cannot see the shell's variables.)
+PYFIX=1 python3 - "$REC" "$OTHER" <<'PYEOF'
 import sys
-p = sys.argv[1]
+p, other = sys.argv[1], sys.argv[2]
 t = open(p).read()
 NL = chr(10)
 key = "STAGE90_XNU_WATCH_LE="
 if key + "0" + NL in t:
-    print("   1038 ($OTHER) is 0 in the record (its ROW side compiles out: the switch is undefined)")
+    print("   1038 (%s) is 0 in the record (its ROW side compiles out: the switch is undefined)" % other)
     raise SystemExit(0)
-for _one in (key + "1" + NL, key + "(unset)" + NL):
+_other = (key + "1" + NL, key + "(unset)" + NL)
+for _one in _other:
     if _one in t:
-        open(p, "w").write(t.replace(_one, key + "0" + NL, 1))
-        raise SystemExit(0)
+        print("REFUSING: the record has %s=%s; this rung builds with 1038's row side compiled OUT. "
+              "Set it to 0 in the record (a parent's record is not this rung's to rewrite)."
+              % (key.rstrip("="), _one[len(key):].rstrip(NL)))
+        raise SystemExit(1)
 raise SystemExit("REFUSING: the record carries no %s line at all" % key)
 PYEOF
 for k in $TF STAGE90_XNU_PC_CARRIER_CALLER STAGE90_XNU_PC_CARRIER STAGE90_XNU_EVAL_FRAME \
@@ -230,26 +323,82 @@ done
 export STAGE90_XNU_HFS_ROOT_RW=1
 export STAGE90_XNU_HFS=1
 (( ${STAGE90_XNU_FRAME_CARRIER:-0} == 1 )) || { echo "FAIL: $NEW=1 did not export"; exit 1; }
+# THE REPRODUCER: the pool's own trap.c ARGV, for a host-side syntax check.  The pool compiles 705
+# objects; `--trap-argv` walks the same manifest, stops at osfmk/arm/trap.c and prints the argv THAT
+# loop would have run -- no object written, the pool NOT torn down (the mode is read-only by
+# construction: its teardown is skipped beside `--platform-only`'s).
+if [[ ${STAGE90_1039_TRAP_ARGV_ONLY:-0} == 1 ]]; then
+  # (the host gates are the work; steps 6b/6c print and judge the argv and stop here)
+  :
+else
 XNU_TREE="$XNU_TREE" XNU_KERNEL_CONFIG=STAGE90_XNU \
 XNU_MASTER_LOCAL="$PWD/tools/xnu_config/boot/STAGE90_XNU.local" \
 XNU_KERNEL_EXTRA_DEFINES="$EXTRA" \
     ./tools/build_xnu_arm_kernel.sh
+fi
+if [[ ${STAGE90_1039_TRAP_ARGV_ONLY:-0} != 1 ]]; then
 [[ -f $TRAP_OBJ && -f $EXEC_OBJ ]] || { echo "FAIL: pool objects absent"; exit 1; }
 for s in $(python3 -I "$CHECKER" --required-rows); do
   grep -qa "^$s" <(strings "$TRAP_OBJ") || { echo "FAIL: $TRAP_OBJ carries NO $s row - the pool was NOT recompiled with $NEW=1 (env channel) or the TRAP edit is not staged"; exit 1; }
 done
-for s in xnu_live_fb_seq= xnu_live_sweq_seq= xnu_live_ler_cnt_b= xnu_live_wlg_byte= xnu_live_pcc2_seq= xnu_live_pcc_pc= \
+# (1038's sweep/LER rows are NOT in this list: step 5 just read the record's WATCH_LE=0, so its arm
+# is compiled OUT and the rows' absence is the reading (build_1039.sh's own note at 3.) -- demanding
+# them here refused a pool that built exactly what the record says.  WATCH_LE=1 -> the arm's own
+# rows travel in watch_le_arm.inc and appear without this list naming them.)
+for s in xnu_live_fb_seq= xnu_live_pcc2_seq= xnu_live_pcc_pc= \
          xnu_live_evf_pc= xnu_live_cal_region_end= xnu_live_wrp_r4= xnu_live_rdr_far= xnu_live_abt_lookup_far= xnu_live_abt_vmfkrv=; do
   grep -qa "^$s" <(strings "$TRAP_OBJ") || { echo "FAIL: $TRAP_OBJ lost $s - the pool rebuild dropped an inherited rung"; exit 1; }
 done
 grep -q "$NEW" "$TRAP_SRC" || { echo "FAIL: the staged TRAP carries no $NEW"; exit 1; }
+# 2026-10-20: the arm (inside sleh_abort) names the defs file's objects and helpers, and the defs are
+# included ~1300 lines BELOW the function -- C declares downward only, so the fwd include must stand
+# at FILE SCOPE in front of sleh_abort (552 "use of undeclared identifier" without it on the pool's
+# argv).  The fact is checked by value: one include, in front of sleh_abort's signature line.
+python3 - "$TRAP_SRC" "$XNU_TREE/osfmk/arm" <<'PYFWD' || { echo "FAIL: the staged TRAP does not include watch_le_fwd.inc at file scope in front of sleh_abort"; exit 1; }
+import os, sys
+t = open(sys.argv[1]).read()
+d = sys.argv[2]
+fwd = "#include " + chr(34) + os.path.join(d, "watch_le_fwd.inc") + chr(34)
+sig = "void sleh_abort("
+assert t.count(fwd) == 1, "the fwd include is not in the tree exactly once"
+assert t.index(fwd) < t.index(sig), "the fwd include stands at or below sleh_abort (not file scope)"
+dep = 0
+for l in t[:t.index(fwd)].split(chr(10)):
+    s = l.strip()
+    if s.startswith("#if"):
+        dep += 1
+    elif s.startswith("#endif"):
+        dep -= 1
+assert dep == 0, "the fwd include stands at preprocessor depth %d, not file scope" % dep
+print("   fwd include: once, at depth 0, in front of sleh_abort")
+PYFWD
 _src_rec=out/xnu_kernel_src_d13.sha256
 [[ -s $_src_rec ]] || { echo "FAIL: $_src_rec absent - the pool's source record cannot certify the rebuild"; exit 1; }
 _tc_want=$(sha256sum "$TRAP_SRC" | awk '{print $1}')
 _tc_have=$(awk -v p="$TRAP_SRC" '$2==p{print $1}' "$_src_rec" | head -1)
 [[ -n $_tc_have && "$_tc_want" == "$_tc_have" ]] || { echo "FAIL: $_src_rec's TRAP hash (${_tc_have:-none}) != the staged file's ($_tc_want) - the pool was NOT rebuilt from the staged trap.c"; exit 1; }
 echo "   6 PASS: trap.o carries the fcr rows (from $CHECKER --required-rows) and the fb/sweq/pcc2/pcc/evf parents; the source record names the staged TRAP's sha256"
-[[ $(grep -c 'xnu_live_fb_seq=' "$TRAP_SRC") == 1 ]] || { echo "FAIL: the staged TRAP does not carry EXACTLY 1 xnu_live_fb_seq= row - 1037's block is partial or doubled"; exit 1; }
+# THE EXPECTED COUNT IS THE OWNER'S, not a constant: 1037's re-staged body carries the row twice (its
+# constant witness and its distinct-VA witness).  A constant would call the complete body "doubled".
+# THE EXPECTED COUNT IS THE OWNER'S, READ FROM 1037's OWN BODY -- never a constant (1037's RE-STAGED
+# body carries the row twice: its constant witness and its distinct-VA witness; a constant called the
+# complete body "doubled").  Boundary: the body is the text between 1037's head and its two close lines.
+# THE EXPECTED COUNT IS THE OWNER'S, READ FROM 1037's OWN BODY -- never a constant (1037's RE-STAGED
+# body carries the row twice: its constant witness and its distinct-VA witness; a constant called the
+# complete body "doubled").  The source record already ties $TRAP_SRC to the pool, so the count is
+# read from the STAGED file against the owner's body, and the owner's body must be exactly 1037's
+# block between its head (carrier close + switch) and its two close lines.
+_fb_owner() {
+  python3 -I - "$XNU_TREE" "$1" <<'PYR'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("_plan", "tools/patch_d13_plan.py")
+m = importlib.util.module_from_spec(spec); sys.modules["_plan"] = m; spec.loader.exec_module(m)
+print(m.row_count(sys.argv[1], sys.argv[2]))
+PYR
+}
+_fb_want=$(_fb_owner 'xnu_live_fb_seq=') || _fb_want=0
+_fb_have=$(grep -c 'xnu_live_fb_seq=' "$TRAP_SRC")
+[[ ${_fb_want:-0} -ge 1 && "$_fb_have" == "$_fb_want" ]] || { echo "FAIL: the staged TRAP carries $_fb_have xnu_live_fb_seq= row(s), 1037's own body carries ${_fb_want:-0} - 1037's block is partial or doubled"; exit 1; }
 # 1038's arm lives in watch_le_arm.inc, reached by ONE hook include inside sleh_abort; its rows
 # reach trap.o through that include.  Check the FACT by value, not the old in-trap.c markers.
 python3 - "$TRAP_SRC" "$XNU_TREE/osfmk/arm" <<'PYLE' || { echo "FAIL: 1038's includes are not the model's"; exit 1; }
@@ -265,7 +414,61 @@ o = "#if defined(STAGE90_XNU_WATCH_LE) && STAGE90_XNU_WATCH_LE"
 assert o in a, "the arm file does not open with its switch"
 print("   1038: defs+arm includes once each; the arm stands behind its switch in its own file")
 PYLE
-python3 -I "$CHECKER" --emitter-missing $PATCHER || { echo "FAIL: $PATCHER does not emit every row the reader needs"; exit 1; }
+fi
+# 6b. THE POOL'S OWN ARGV, PRINTED BY THE POOL (`--trap-argv`), FOR 3c.  This is the argv the pool
+#     COMPILES osfmk/arm/trap.c with -- the compiler, its target and dialect flags, every include
+#     root in its order, every define (the configuration's AND osfmk's component set), every
+#     force-include -- printed, never run: no object written, the pool NOT torn down.  A guard that
+#     spells any of it itself compiles an argv the pool never runs
+#     ([[mi4-one-value-two-definitions]]; the MACH_KERNEL_PRIVATE case of 2026-10-20).
+[[ $TRAP_ARGV == /* ]] || TRAP_ARGV=$PWD/$TRAP_ARGV    # (the pool may chdir inside itself)
+: > "$TRAP_ARGV"
+env XNU_TREE="$XNU_TREE" XNU_KERNEL_CONFIG=STAGE90_XNU \
+  XNU_MASTER_LOCAL="$PWD/tools/xnu_config/boot/STAGE90_XNU.local" \
+  XNU_KERNEL_EXTRA_DEFINES="$EXTRA" TRAP_ARGV_CAPTURE="$TRAP_ARGV" \
+  TRAP_ARGV_SRC=xnu/osfmk/arm/trap.c \
+      ./tools/build_xnu_arm_kernel.sh --trap-argv || { echo "FAIL: the pool would not print trap.c's argv"; exit 1; }
+[[ $(grep -c . "$TRAP_ARGV") -ge 100 ]] || { echo "FAIL: $TRAP_ARGV has $(grep -c . "$TRAP_ARGV") element(s) - not a command"; exit 1; }
+grep -qxF -- "-fno-common" "$TRAP_ARGV" && grep -qxF -- "$XNU_TREE/osfmk" <(sed 's/^-I//' "$TRAP_ARGV") \
+  || { echo "FAIL: $TRAP_ARGV is not the pool's compile argv (no dialect flag or no osfmk root)"; exit 1; }
+echo "   trap argv: $(grep -c . "$TRAP_ARGV") element(s), the pool's own (compiler first, source last)"
+
+# 6c. THE TREE THE POOL WOULD COMPILE COMPILES UNDER EVERY SWITCH COMBINATION -- on THAT argv, not a
+#     second spelling of it.
+python3 - "$TRAP_SRC" "$TRAP_ARGV" <<'PYCC3' || { echo "REFUSING: the staged trap.c does not compile on the pool's own argv"; exit 1; }
+import os, subprocess, sys
+src, cap = os.path.abspath(sys.argv[1]), sys.argv[2]
+argv = [l.rstrip(chr(10)) for l in open(cap) if l.strip()]
+if len(argv) < 10 or argv[-1] != src:
+    print("   %s: %d element(s), last %r" % (cap, len(argv), argv[-1:] or None)); sys.exit(1)
+argv = argv[:-1]
+combos = {"OFF": [], "1025": ["-DSTAGE90_XNU_USTACK_PROBE=1"],
+          "framecarrier": ["-DSTAGE90_XNU_USTACK_PROBE=1", "-DSTAGE90_XNU_TRAP_FRAME=1",
+                           "-DSTAGE90_XNU_FRAME_CARRIER=1"],
+          "ALL": ["-DSTAGE90_XNU_USTACK_PROBE=1", "-DSTAGE90_XNU_TRAP_FRAME=1",
+                  "-DSTAGE90_XNU_FRAME_CARRIER=1", "-DSTAGE90_XNU_WATCH_LE=1"]}
+for name, defs in combos.items():
+    # (the switch flags go LAST: a `#define` of the switch must win over any the pool's argv carries)
+    # (`clang`, never the pool's `-O2` object: the argv is the list the pool gives its compiler, and
+    #  the compile does not need the pool's optimization level -- [[mi4-1039-guard-argv-not-pool-argv]])
+    r = subprocess.run(["clang"] + argv[1:] + defs + ["-fsyntax-only", src], capture_output=True, text=True)
+    if r.returncode != 0:
+        print("   %s: DOES NOT COMPILE:" % name)
+        for l in [x for x in r.stderr.splitlines() if "error" in x][:5]:
+            print("     " + l)
+        sys.exit(1)
+    print("   %s: compiles (the pool's own argv, syntax only)" % name)
+PYCC3
+if [[ ${STAGE90_1039_TRAP_ARGV_ONLY:-0} == 1 ]]; then
+  echo "== 1039 HOST GATES PASS (trap.c composed + the pool's own argv compiles it under every combo). No pool, no device. =="
+  exit 0
+fi
+
+# 1039's OWN gate (FCR rows) is the carrier's: it must pass.  1038's rows are a COMPANION here --
+# measured and reported, never this rung's conjunct: the arm prints them from the .inc files, which the
+# patcher's python source cannot show (a check on another rung's text through the wrong text).
+python3 -I "$CHECKER" --emitter-missing $PATCHER 2>&1 | grep -v '^COMPANION ' \
+  || { echo "FAIL: $PATCHER does not emit every row the reader needs"; exit 1; }
 
 # 7. THE ENTRY IMAGE, rebuilt reproducibly (build_entry.sh changed: its key list now names $NEW).
 echo "-- 7. entry image (reproducible: same sources -> same bin) --"

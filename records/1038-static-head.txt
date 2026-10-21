@@ -1,0 +1,76 @@
+1038 STATIC -- THE CACHE HEAD AND THE COUNT TABLE (host only, python3 -I, byte-exact)
+2026-10-19.  Source: /tmp/dyld-extract/dyld_shared_cache_armv7 (315,952,666 B).  No device, no build.
+Rule used: card = 0x455D000 + (VA - 0x2C000000); mapping record 0 VA 0x2c000000 size 0xc266000
+=> file offset == VA - 0x2C000000 (MEASURED: libobjc `__objc_catlist` text at file 0xbc27fef, walk at 0xbc26474).
+
+====================================================================================================
+ANSWER
+====================================================================================================
+HEAD-LAYOUT  (MEASURED).  File 0 is a dyld shared-cache HEADER, not code, and the mapping records are
+  64-bit raw-file records, so header fields are at ABSOLUTE file offsets (not VA-relative -- the
+  1034-design "record 0 @0x68 = {0x2c000000,0xc266000,0}" read is a coincidence through this shiftless
+  mode; the record there is the dyld-versionC FBLocation pair by value):
+   0x00  "dyld_v1   armv7\0"                      (ARMv7, NOT armv7s)
+   0x10  u64 0x68                                 header struct offset (u64 fields; see 0x68)
+   0x18  u32 3                                    image count
+   0x20  u64 0x2be00000                           sharedRegionStart
+   0x28  u64 0x12bda000                           sharedRegionSize
+   0x58  u32 0x548bd452,0x4f3955f4,0x2d73848c,0xc94aaef0   = the four u64@0x20 pair (16-byte-block
+                                                  little-endian read) -- the 1034 errata is HALF right:
+                                                  the bytes ARE sharedRegionStart, a u64 reader that
+                                                  starts at 0x20 shows them; the errata read 8 B late.
+   0x68  {0x2c000000, 0xc266000}                  mapping[0];  FBLocation.maximumSlide 0, slide 0
+   0x80  {0x5, 0x1ce0000, 0x38268000}             mapping[1] VA 0x38268000
+   0x8c  {3, 0x39f48000, 0x1f1c000}               mapping[2] VA 0x39f48000
+   types: 1 __TEXT exec, 3 __DATA_CONST non-exec , 5 __DATA non-exec.  __LINKEDIT has no mapping record
+  (image count 3 = 3 mappings includes __LINKEDIT?  text end VA 0x2c000000+0xc266000 = 0x38266000.  INTENT provisional: the 0x8000-block table
+  (2002 x 16 B {VA,0,fileOff,1}) lists 1001 image __TEXT segments, and the walk VA 0x37C26474 is in
+  mapping[0]; whether mapping[1]/[2] are __LINKEDIT/__DATA by the table's own fileOffs is OPEN.  The
+  deterministic table VA = mappingStart+0x1ce0000+0x38268000 = 0x3FCA68000 underflows 32-bit and this
+  host file is <4 GiB, so the table as read is not usable without the 64-bit header mode.)
+  0x2b8 {0x9b06b801,0x1,0x9e1a8,0x0,0x2c0a0000,0x0}  -- tail record, OPEN what it is
+  (it names VA 0x2c0a0000; the image table is the 0x8000-block).
+  File 0x68..0xC7 is the 3-level header; 0xC8..: dyld ImageInfo records {0x2c008000, 0x53991c67,
+  0x1a97b6c7f} -- the classic per-image records; 0x1000 prints code (`50 b4 3e 04 ...`) = the first
+  text page mapped at VA 0x2c001000, NOT a table.
+HEAD-TEXT (MEASURED, classify every 4 KiB of 0..0x10000; 1 "small int + 0x1c zeros" hit = file 0x8924,
+  in the header data = __LINKEDIT-like blob, not a table head):
+  0x0000 HEADER   0x1000 OTHER/text 0x2000 OTHER/text 0x3000 OTHER/text 0x4000 OTHER/text
+  0x5000 OTHER/text 0x6000 ZERO 0x7000 ZERO 0x8000 dyld ImageInfo records (0xC8-shaped, 16 B)
+  0x9000 code (0xBCA5/4ff2/c0f6 pattern) 0xa000 code 0xb000 records 0xc000 ZERO
+  0xd000 code 0xe000 code 0xf000 strings ("String:\0voiceWit")  -- head is header+data, no count table
+  A count table is NOT at a fixed offset in the head.  There is no per-block magic; the one host test
+  is the 16-byte magic at file 0: "dyld_v1   armv7" vs "dyld_v1   armv7s" (the only difference in ARM
+  caches; any other suffix => not an ARM7 cache).  Any 16-byte-block-le read of u64@0x20 prints
+  0x548bd452...; that is a reader artifact of a u64 header, not a reading.
+COUNT-AT (MEASURED).  Every 4-aligned int32 0<v<0x100000 followed by >=28 zero bytes in
+  0xbc00000..0xbc40000: 0xbc10978=0x10000, 0xbc109a4=0x10000, 0xbc10a80=0x1ffff, 0xbc10aec=0x10001,
+  0xbc10bc4=1, 0xbc10c94=0x10000, 0xbc129ec=0xa8, 0xbc2a2b0=3.  The last is only "count-shaped" by
+  chance: it sits right after the libobjc literal "OPTIMIZATION: is ENABLED (version %d)\0", then 3 in a
+  zero field -- a stray literal, not a table with word2==3.  Nearest to the walk within 4 KiB: NONE
+  (nearest is 0xbc2a2b0 = walk+0x3e3c, 15.9 KiB away).  No count table sits in the walk's page.
+STRUCT (MEASURED from the walk bytes + the header).  At 0xbc26474: `09 7c 00 29 f7 d0 04 eb 80 00
+  50 f8 04 0c dd 46 ...` = ldrb r1,[r1,#0x10]; cmp r1,#0; beq -0xa; add.w r0,zr,r0,lsl#2; ldr.w r4,[r0,#0xc];
+  mov sp,r8; ...; bx lr -- the parent returns 0 (r0=0) when count==0; the child then reads ldr [r0+4]
+  = ldr [4] / next [pc - 0x40] with r4 = 0.  The walk's page is an ARBITRARY CODE page
+  (pc-volatile, crossed by ldrb) -- it is not a table head.  The r1=0 the fault records is a
+  value the CALLER feeds the walk (r3=imageInfo?), not a file property.
+OPEN.  Where libobjc's __objc_opt_* table is in THIS file: the section names __objc_opt_methname_t /
+  __objc_opt_cstring_t are ABSENT from the whole file (0 hits); `__objc_opt_catlist`/`_protocols`
+  likewise absent in the header block.  The obj_opt table layout (if any) is not locatable from the
+  section names, so COUNT-AT for the real table cannot be named here.  OPEN: parse the libobjc image
+  header in the 0x8000-block table (16 B records: {imageInfoOff,0,hash,1}) to get its __TEXT file
+  offset and find the table inside it.
+
+FALSIFIERS CHECKED
+  * "record 0 @0x68 = {0x2c000000,0xc266000,0}" -- TRUE as bytes (u32 pairs); record layout is a
+    12-byte struct {addr,size,fileOffset}, not a 16-byte 3-field set.  1034 errata text stands.
+  * a symbol count at 0x18 (3) for a 301 MiB cache -- refuted: 3 is the image/mapping count (the
+    0x8000-block lists 1001 image text segments).  0x40 is a u64 VA 0x10233000 (a pointer, not a
+    record); what 0x2b8 is remains OPEN.
+  * a count at 0x8924 = "8 then 0x1c zeros" -- checked, it is in header data after "Foundation...\0"
+    string table, not text; no table head.
+  * "file 0 is text" -- refuted: magic + 8-byte records + 0x1000 code start.
+  * "the file is an ARMv7S raw pull" -- refuted by the magic at 0: "armv7".
+  * nearest candidate 0xbc2a2b0 == table with count 3 -- refuted by context "OPTIMIZATION is ENABLED".
+  * walk page has the table -- refuted by the count scan (none in the walk's 4 KiB).

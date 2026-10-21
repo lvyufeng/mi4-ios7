@@ -1,0 +1,164 @@
+USB LIVE-KLOG CHANNEL - design + verification report   2026-10-20   (no device action, no build run)
+==================================================================================================
+Goal (operator): 「抓紧开始usb通道建立啊，否则你每次都得刷镜像」 - the kernel console streamed live over USB,
+so an iteration is `fastboot boot` + watch, not press + cold recovery.
+
+0. SHORT ANSWER
+  Built (959-962): a full-speed 18d1:0910 device that streams the RAM-console ring out EP1-IN - but only
+  from a poll hook on the IDLE loop, with no kernel thread, no interrupt, no debug-mode port, and it
+  answered 4 of ~7 control requests a host's probe asks. The last recording that looked (press-1000,
+  2026-10-13) has ALL FOUR rungs absent and no 18d1:0910 on the bus. The host reader attaches once and is
+  typed into a person's shell. So: no live channel today. The plan below is NOT "fix the enum": enabling
+  the stream on a crash that is not in idle is structurally impossible with an idle hook, and per-boot
+  enumeration fragility is what makes a press cost a recovery. The client choice decides the design.
+
+1. WHAT EXISTS (file:line, by value)
+  src/entry/entry_trace.c:2285  `__wrap_machine_idle` - the ONE site. :2370-2390 PROBE, DEV,
+       ENUM, STREAM in that order (951: D13 compiles `__wrap_Idle_load_context` out). 4570 twin :2495-2581.
+  entry_usb_dev.c:246 `entry_usb_dev_init` - maps OTG via `entry_mmio_section`; GATE :309 = refuses unless
+       `USBMODE[1:0]==2` unless `STAGE90_XNU_USB_DEV_FORCE=1`; link reset, PHY POR, ULPI 0x63->0x81.
+  entry_usb_enum.c:497 `entry_usb_enum_poll` - mode gate, SETUP dispatch; :459-490 handles GET_DESCRIPTOR,
+       SET_ADDRESS, GET_STATUS, SET_CONFIGURATION (-> `usb_enum_arm_ep_in`). GET_CONFIGURATION /
+       CLEAR_FEATURE / SET_FEATURE fall to the status-only prime with `g_usb_in_buf` STALE
+       (only GET_STATUS fills it: entry_usb_enum.c:484-485) - a host's GET_CONFIGURATION check misreads.
+  entry_usb_enum.h:174-175 idVendor 0x18d1, idProduct 0x0910; :192 EP_IN_EPADDR = 0x80|1 = 0x81;
+       :186 EP_IN_MAXPKT 64 (full speed: no HS chirp in the PHY bring-up, dtsi phy-type 2, no `ci13xxx_msm_notify_event`).
+  entry_usb_stream.c:225 `entry_usb_stream_poll` - gates on USBMODE device + ENDPTCTRL(1).TXE; one page
+       chunk per dTD, cursor = forward-only over ring `size` at CONSOLE_VA 0xde500000+0x01000000
+       (header :43-46); completion from dTD token TOTAL_BYTES (:203-219); back-pressure = no prime.
+  :260-264 EVERY PASS appends 6 `xnu_live_usb_stream_*` keys to the SAME ring it streams (self-referential
+       ring growth; harmless for the device but defeats any "deliver only new bytes" framing).
+  Build: `STAGE90_XNU_USB_*` come from STAGE90_EXTRA_CFLAGS -> build_entry.sh:1050-1072 (:1070 refuses
+       STREAM=1 with ENUM=0) -> record :40720-40722 -> linked-image check :40936-40963 (count of calls at
+       `__wrap_machine_idle` must equal the switch). `xnu_arm_entry-config.txt:63-67` TODAY carries all
+       four =1 (entry record only; `stage90-build-config.txt` has none - the switches are entry-only).
+  tools/usb_console_read.py - `libusb_open_device_with_vid_pid` once (:144), waits with `--wait` (:148-154),
+       claim+bulk loop (:160, :179-194). NO re-enumerate: on USB reset (device reboot/bootloader hop) the loop
+       returns errors forever; the reader must be restarted. It is started by hand in a shell
+       (`scripts/press_979.sh:74`) - a background process in a tool-call session dies with the call.
+  tools/check_usb_host_reader.py - EP_IN/--vid/--pid literals vs entry_usb_enum.h; `--selftest` mutates
+       each of the three and proves refusal.
+  Evidence it does not run: out/stage90/captures/press-1000-*.log:1613-1616 = `xnu_live_usb_loaded /
+       _dev_loaded / _enum_* / _stream_state  absent`; `lsusb` showed no 18d1:0910. Same in 997/998/1005.
+  962 itself has NO capture on disk: the ladder has never been READ over EP1-IN.
+
+2. IF THE ENTRY IMAGE CARRIES ALL FOUR=1 - DOES THE HOST SEE IT?
+  Conditionally, and it is not a property we control today.
+  (a) In-IMAGE: yes, the site is right (check :40950-40963 pins D13 `__wrap_machine_idle`); the device
+      arm will reset the link (`entry_usb_dev.c:346`) and the host must re-enumerate AFTER that - the
+      reader's one-shot open is on the wrong side of that event if it attaches during the entry phase.
+  (b) In-HOST: we need (i) a port left in DEVICE mode by aboot (the `USBMODE==2` gate; FORCE would drop
+      an enumeration aboot already made - comment entry_usb_dev.h:130-136), (ii) the HOST's own probe
+      to get through: GET_STATUS / SET_ADDRESS / GET_DESCRIPTOR x3 / GET_CONFIGURATION (stale buffer) -
+      usually fine on Linux at FS, not a guarantee; (iii) the core to reach the IDLE path.
+  (c) NOT while the kernel is executing: the poll runs only from `machine_idle`; during init/panic/hang
+      nobody calls it. So "watching a live boot" works only in the quiet stretches - not a live console.
+  Conclusion: STREAM=1 on the saved payload is necessary and NOT sufficient, and it costs every press
+  one more unread variable. Do not make the USB channel a dependency of the current 1039 press.
+
+3. WHAT IS MISSING (evaluated)
+  (a) Enable in the payload build: the switches ARE entry-side; the saved record already has them. For
+      a trial arm add `-DSTAGE90_XNU_USB_{PROBE,DEV,ENUM,STREAM}=1` to the script that writes the record
+      (the main session's build_10NN.sh `$_arm_sw`) - I do not edit those scripts.
+  (b) Kernel phase: the entry text is NOT inside XNU's executable (call 0 + 0x80001000, header
+      entry_trace.c:20 / entry_stubs.c:35); static data (ring, stream buf) is inside XNU's rw image, so
+      an XNU THREAD can read them. Nothing arms a timer IRQ today: `fleh_irq` (entry_stubs.c:3811) runs
+      with XNU's page tables live, USB's 0x12500000 is not mapped there, and the idles' L1 hooks are
+      compiled out (910a2 §9). NEEDED: a `NULL`-task-trampoline style spawn (entry side already used the
+      technique for iokit stubs) + `ml_get_timebase`-programmed timer (DEADMAN gives the formula:
+      0xf0000000 + 0x01000000*N) + a second L1 section for OTG + `entry_usb_*_irq()` that does the
+      SETUP/complete work, then main == idle loops on a NAK state.
+  (c) Host reader: add re-attach (open/claim/free in a loop: any bulk error, rc<0, or >=1 s of NAK ->
+      free the handle and `libusb_open...` again; track re-enumerations and gaps in stdout/stderr),
+      `--follow` for non-tty (append capture + echo), `--bell-on` patterns, and daemonize under
+      `setsid` so it outlives a tool call. ALSO: spawning stdio from inside a live Python harness -
+      `PYTHONUNBUFFERED=1`, never `--logout` on long-lived bridges, `cat > /dev/null 2>&1` for
+      daemonized children (SIGPIPE-immune), PATH-qualified script paths (all learned in main today).
+  (d) Cheaper than a press: no. Every iteration needs the new image on the phone, and the image goes on
+      by `fastboot boot` (must stay, one-slot record untouched). BUT OS-SIDE iteration can be made
+      press-free LATER: `gUSBDevice` (isochronous kdp-style console) is the kernel's own sink, so all of
+      entry AND kernel output flow through ONE capture; a `KDP_READ`-style command could accept a
+      segment write into a pre-mapped staging window. That needs an XNU thread + trap.c/DEFS work, i.e.
+      AFTER frontier work, not now. ios-sweet (dipa-studio, SM7150) does the same shape over CDC-ECM
+      UDP:5140 in USERSPACE after launchd - it does not help the crash loop we are in. No clone local
+      (/mnt/data has none); not fetched (remote code is untrusted and unnecessary for this design).
+
+4. THE DESIGN (client decision first)
+  * If the working client is **libusb** (python) -> bare FULL-speed device, descriptor UNCHANGED
+    (18d1:0910, 0xff/0x42/1) - Linux cannot early-suspend iface 0 of FS, so a "sleep-prone me" cannot
+    stop the stream; speed is 12 Mbit but console volume is tiny.
+  * If the working client is **macOS** (AppleUSBHostCompositeDevice) -> HIGH speed + IAD + CDC-ACM
+    (class 2/2/1, the generic driver is loaded unconditionally).
+  * Either way: interface 1 = SECOND BULK-IN DATA endpoint (ring only). EP1-IN keeps today's name-keyed
+    text WITHOUT framing for old readers. Framing is on EP2 only: 16-byte header {magic 'MKLG'
+    0x474c4b4d, seq LE32, head, epoch LE32, len LE16} so bytes lost in a host gap are DETECTED
+    (`lost = head_b - prev_head_b`), never silently. `seq`/`epoch` disambiguate a cold boot vs reboot.
+  * Device-side ring: 64 KiB, SPSC: producer = `entry_write_kv`-shaped writers (XNU printfs later),
+    consumer = USB xfer; 2 buffers, xfer k outstanding, publish `head` only after clean+commit.
+  * Settling: `usb_enum[.settle]` console var (0 CMD, 1 SETADDR, 2 CFG, 3 DATA-primed, 4 STREAM#),
+    default 2 - fast-boot's "no device" is ambiguous.
+  * Device can end a host's read early: `DIR_IN+TYPE_STD+RECIP_DEV+RNDIS` -> zero-length IN, then STALL
+    as in Android's `allow_short` gadget (one-shot; V3 is press-free once the short-write bug is fixed).
+
+5. ORDERED PLAN (lanes: mine = src/entry/entry_usb_*.{c,h}, tools/usb_*, tools/check_usb_*)
+  P0 HOST-ONLY, today, no device:
+     tools/usb_console_read.py: `--follow` (already appends; add reconnect + gap log + `--frames` that
+       parses the 16-byte header if the rings are present), `--setsid` (re-exec in a new session),
+       SIGPIPE-immune daemon mode, `--bell-on`, `--no-reset` (no libusb_reset_device, ever).
+     Selftest: `--selftest-frames` (decode: clean run, dropped run, epoch change -> three distinct
+       verdicts); `--selftest` on the fake backend (record a run into a pipe, kill it, prove re-attach).
+     tools/check_usb_host_reader.py: extend to EP2 const + frame magic; mutate each; each must refuse.
+     toolcheck: `python3 -m py_compile`, `tools/check_usb_host_reader.py --selftest`.
+  P1 DEVICE-HOST-ONLY (compiles in a scratch dir - NOT out/stage90, NOT external/xnu... during a build):
+     entry_usb_stream.{c,h}: (i) stop writing stream_* keys into the ring (moving counters to
+       g_stage90_usb_stream_* statics); (ii) frame header on a SECOND buffer + a `--rings` compile flag
+       OFF by default (old bytes byte-identical by extraction test); (iii) a completion count `n`;
+       (iv) `entry_usb_stream_ring_publish(buf,len)` - the ONE writer interface, callable by any sink.
+     entry_usb_enum.{c,h}: answer GET_CONFIGURATION from `g_usb_enum_configured`; accept SET_FEATURE/
+       CLEAR_FEATURE (device_remote_wakeup) as status-only-and-recorded; preload `g_usb_in_buf` 0 and
+       publish `xnu_live_usb_enum_bad_req=bRequest|(type<<8)` on any other bRequest (no more silent
+       status-only); `usb_enum_settle` console var; RECIP_DEV RNDIS -> short IN one-shot.
+     Tests (no device): tools/check_usb_stream.py --selftest extended with (1) a HOST-SIM model: run the
+       qh/dTD state machine against a synthetic host that NAKs 0/1/2 passes - prove cursor advances by
+       `actual` only, no overwrite while ACTIVE, DRAINED after the host stops; (2) static: every
+       `entry_usb_*_poll` call site is `__wrap_machine_idle` (grep of the linked disasm is the build's,
+       but a source-level twin in the checker catches an edit before a build); (3) two values, one
+       definition: no second VID/PID/EP literal outside entry_usb_enum.h.
+     tools/check_usb_enum.py: add the request-coverage table (the 7 standard requests a host probe
+       sends, each must be answered or recorded) as a check, with --selftest deleting one answer ->
+       refuse.
+     CHECK: stream.c/stream.h display in main UI is the acceptance (12 Mbit reads the same analysts,
+       curl, busybox q):
+       `am start -a android.intent.action.VIEW -d http://127.0.0.1:8123` etc. Final: `curl -F "f=@/sdcard/a" localhost:8123/upload`
+  P2 KERNEL-TASK (needs build_entry.sh/entry_trace.c - report to the main session, not mine):
+     IRQ vector for USB: needs a `letic`/`vel` + `vbar` write in `.text`, i.e. `STAGE90_EXTRA_CFLAGS` +
+       a new source compiled in `USB_ENUM_OBJ` and linked (`LINK_OBJS` edit). Spike first: the 5-line
+       probe compiled into a SEPARATE pool never under out/stage90. Add entry_usb_enum_irq() calling
+       the same state functions at IRQ level (no blocking), `platform->Reserved` pages for the stream
+       dTD, and `entry_usb_stream.c`'s ~64 KiB static ring NOT in the pool image.
+  P3 FENCES + evidence: every key the stream publishes is a real reading; verify with the fixed
+       (already-caused real device faults in 1014/1026) and the RAM console fallback.
+  WHAT NEEDS A DEVICE (fastboot boot only, target 4a2fe00b, 33e80afe unplugged): libusb/bus speed
+  identification (the client question), the 4×5 s settle points 0 and 2, the crash loop, and the
+  existing 1039 payload with the stream on - each ONE already-authorized press.
+
+6. RISKS
+  * 1039 build in flight (pgrep build_10 shows PID 446779) - nothing here touches out/* or xnu.
+  * Arm record carries STREAM=1 but no proof the stream ran: any report must say `no EP1-IN bytes`.
+  * `STAGE90_HFS` MUST be 0 on D13 (memory); fastboot boot only; the one-slot last_kmsg record is NOT
+    our channel and a fastboot boot of anything burns it.
+  * The USB switch changes the D13 entry image every time - never an additional blind variable next to a
+    rung whose device answer matters.
+  * Client identity (libusb vs mac) changes interface layout; decide BEFORE P1 (the descriptor is a
+    contract with check_usb_host_reader.py).
+  * `entry_usb_dev_init` link-reset drops an enumeration aboot made - that is by design; the host must
+    re-attach after it, which is why P0 comes first.
+
+7. FIRST EDIT I WOULD MAKE
+  tools/usb_console_read.py: wrap the open+claim in `attach()` and the loop in a `reconnect on error /
+  1 s NAK` outer loop with a timestamped `[gap Ns]` line into the capture; add `--timeout N`
+  (`--timeout_S`), `--frames`, and daemonize via `os.setsid()` + SIGPIPE ignored; change nothing in what
+  it reads. Then `tools/check_usb_host_reader.py --selftest` must still pass and a new
+  `--selftest-reconnect` (fake backend) must prove: a process killed mid-stream re-opens; a frame header
+  with a jumped seq is printed as a LOST line. Device files come only after the client question is
+  answered, so the descriptor choice is made once.

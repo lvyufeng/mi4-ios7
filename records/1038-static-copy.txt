@@ -1,0 +1,131 @@
+1038 STATIC FORENSICS -- the one-byte-late stack copy.  Host only: no build, no device, no press.
+Inputs: /tmp/dyld-extract/dyld_shared_cache_armv7 (size only, 315,952,666 B, mtime 2026-09-29),
+out/stage90/captures/recovered-unknown-arm-20261019-080148-last_kmsg.txt,
+external/xnu-hd2-darwin13.  Reads: python3 -I, path as argv.  BYTES = file; INFER = BYTES+source; OPEN = unsettled.
+
+
+====================================================================================================
+0. VERDICT: COPY-REFUTED
+====================================================================================================
+Decisive measurement: the source window of a one-byte-late copy is file 0x5d3bd7..0x5d3be4 =
+  9e 85 0e 01 00 e3 80 84 0e 01 00 07 63 83
+Placed one byte late (frame window sp-4 = 0x2bd8d084), words 4..9 would read
+  0x010e859e | 0x8480e300 | 0x0000010e | ...
+but the capture says s2=0x2bd8d084 s3=0xffffffff s4=0x2bd8d088 -- NOT ONE WORD MATCHES.
+The window is not a prefix of the source either (0x2bd8d084 != 0x010e859e).  So the window is not
+that code block, one byte late or otherwise.  The 0x10e85 word is at 0x5d3bd8 (BYTES): the block is
+aligned there.  1037-read B(2)'s quoted "45 07 00 9b .." at 0x5d3bd7 is NOT in the file (BYTES); that
+17-byte claim originated in B(2) itself (the lead has accepted the correction and is annotating it).
+
+s3 = 0xffffffff has a cheaper, measured explanation (section 2): it is the process's own r5/r2, in the
+frame's first r4..sl slot -- `stmea sp,{r0-lr}^` with the fault PC already -=2 in Thumb (traps_lo.s
+304).  The position is not a coincidence and not a copy.
+
+====================================================================================================
+1. BYTES -- the frame, by value
+====================================================================================================
+BYTES  capture :4253 evf_dfsr_raw=0x7 (translation fault, page) ; :4249 far_raw=0x10 ; :4248 cpsr=0x30.
+BYTES  capture :4322-4332 pcc2 s0..s5 = 2bd8d080, 399a16fb, 2bd8d084, ffffffff, 2bd8d088, 2bd8d0ac ;
+       :4263 evf_slot10=0x3a166ae0 ok=1 ; :4357-4359 r5=0xffffffff r2=0xffffffff.
+BYTES  capture :4122/:4164 trap15 frames r1=2bdc2428/2bd8d108 (launchctl[1]/[2]) and :4166-4176
+       vm_map64 addresses 0x85000, 0x87000, 0x15d00000, 0x16000000 -- INSIDE the shared region
+       (code prints r1 as lr: mach_kernelrpc.c:266).
+INFER  the handler ran in USER context; lr is the shim's return address; the MIG message starts at
+       lr-4 = sp-8, so s0 = header (size 0x1000) and s4 = msgh_remote_port (port 0x807, just received).
+       A copy placed one page off (pageIndex +1, vm_pageout.c:7947) would overwrite both; BOTH read
+       intact -- two witnesses inside the copy window, independent of the source address.
+BYTES  capture :4296-4300 pcc near0..near5 = ebad46a5 f856d20b 29007c09 f8500080 d1054291 2800eaf2
+       (pc-page halfwords); :4311-4312 pcc2_sp=0x2bd8d088 r7=0x2bd8d0ac.
+
+====================================================================================================
+2. THE FRAME IS LAUNCHCTL'S OWN -- calibrated on pid 1, where the alternative is excluded
+====================================================================================================
+BYTES  capture :4158 launchd[1] started (pid 1 already exec'd and returned a ROUND FAR from its
+       stack).  :4177-4184 trap24 frames of pid 1: r1=0x2bd8d030, r4=0x2bd8d048, r2/r8 (context)=
+       0x15d45c50 -- the heap, NOT the stack.  :4221-4224 pid 2 wrp: far=0x0 r4_minus_far=0x2bd8d084.
+INFER  the trap frame layout (r1 at sp, r4 at sp+0xC, sp saved only at slot 14) is the same template
+       in both processes; pid 1's pair (0x2bd8d030,0x2bd8d048) and pid 2's pair (0x2bd8d108,0x2bd8d0b8)
+       are each `hold`/`add` of mach_kernelrpc.c (:254-255) -- an operation that can only work if the
+       frame IS the user stack.
+BYTES  capture :4324 s2 == r4 (:4212) and :4312 s5 == r7 (:4233/:4261) -- the saved map is the exec's.
+INFER  LAYOUT (from traps_lo.s:304 `sub lr,lr,#4` / :308 `stmea sp,{r0-lr}^`): slot k = sp+4k, k=r
+       for r0..r12, k=14 for lr.  Contradiction with the map (s2=sp-4) means the map was read at
+       (saved sp)+4, i.e. 1036-read A's "sp=0x2bd8d088" is the post-save register pair r6/sp (r6
+       stores into slot 6 = sp+0x18; the map's sp = slot 14).  The frame lies at [0x2bd8d084,
+       0x2bd8d0c0); s3 = slot 2 = r2 = -1 = the shim's hold arg (:4228/4259).  Same for the walk:
+       "pc" 0x399a1474 is the kernel's saved PC = fault PC + 2 (Thumb).  ALTERNATIVE LAYOUT (OPEN):
+       a save at sp-4 makes s3 = r6/sp; then 1036-read A is right and r5's frame copy is sold as -1.
+       Both readings give s3 = -1 from a register.  NEITHER leaves room for a code copy.
+INFER  THE LAYOUT-DECIDING ROW NEEDS NO NEW CODE: tools/patch_d13_watch_le.py already prints
+       xnu_live_sweq_sp / _usp / _k, with sp = arm_ctx->sp and usp printed as
+       (unsigned)thread->machine.uss->sp (the record's read: machine.uss is a POINTER,
+       arm_saved_state_t *, so *_usp today is a pointer value, not a register).  LAYOUT: usp = sp-4;
+       the ALTERNATIVE: usp = sp.  One row decides; only the deref needs touching.
+BYTES  frame words are NOT addresses (0x399a16fb 0x1507f270 0x3a166ae0 0x3a16b7f0 0x2f232575) and
+       the process is 32-bit (r9=0x1fff) -- the slide never ran on this stack (OPEN: the walk's
+       0x577000 slide is the shim's, unverified).
+
+====================================================================================================
+3. BYTES -- the cache around the alleged source
+====================================================================================================
+BYTES  hdr :0x00 magic any/'v1 ', :0x04 arch armv7, :0x14 nMapping=3, :0x18 mappingOffset=0xc8(32-bit),
+       :0x1c codeSign=0x2b8.  Old-layout maps: 0x2c008000/0x2c000000, 0x39f48000/0x22ed000,
+       0x2c00b000.  The page-aligned `tbl_hdr=0x4e5f5f00` (:4320) = "_ _ N" @0xc8-0x90 (BYTES).
+BYTES  the bytes at 0xc8+ are also, under a 16 B record stride, an increasing-VM table (every
+       vm=v_base+page_off, align 1 or 0x10000) -- the file matches TWO layouts one 0x90 apart.
+INFER  page-size skew (a): NEITHER layout has a page-size field, and the kernel's only page constant
+       here is PAGE_SIZE (vm_pageout.c:7947) -- so a 2 KiB vs 4 KiB assumption cannot produce a 1-byte
+       skew at all.  page-size skew (b): 1037-read B(3) places file 0x140 at VA 0x384CC140 under
+       map1 fileOffset 0x38268000; that is the MAP2 row's fileOffset (BYTES) and VA 0x384CC140-0x37D1B000
+       = 0x7B1140 lies in no map (BYTES: maps meet).  B(3)'s mov r0,r0 is the wrong page.
+BYTES  the whole cache holds TWO word-aligned words 0x010e85 (0x5d3bd8, both maps; 0xa12e9f6, LINKEDIT).
+       No 4-byte-word ramp of consecutive integers >= 3 anywhere (longest run = 2 over 47 MB).
+       0xffffffff density: 72,214 in map0-DYLD, 56,637 DATA, 3,273 TEXT; none can explain a frame word.
+INFER  0x5d3bd8 is not a table of sorted 32-bit offsets: 0x10e85 is the high half of a big-endian
+       pair (0x09e85 / 0x10e85 every 4 B); nearby words follow offset % 0x10000 - 0xdc0, step -0x1e20.
+OPEN   what map is loaded at VA 0x2dd7b000..0x39fe3000 (:4112), i.e. file offset 0 == VA - 0xe7c3000;
+       and the header's 0x88-mapping not being at address 0xc8.  Needs a dyld-image reader; none on
+       this host (jtool/dyld_info/otool absent).
+
+====================================================================================================
+4. WHAT COULD MISALIGN -- scanned, by value
+====================================================================================================
+INFER  U1 slide cannot move bytes: both paths (pageout.c:7947 pageDelta; vm_shared_region.c slide())
+       only add `slide` to bit-set words, and a bitmap slot is < 0xFFF bytes in.  The one byte copy:
+       copyin(slide_start) of the blob, which lands in another process's map (OPEN).
+INFER  exec: the argv/env copy lands at p->user_stack (< 0x2be00000) under ip_argspace/ip_strspace
+       (kern_exec.c:2768, 3036-3105); no producer was found writing [0x2c000000,0x2be00000).
+OPEN   a userland copy inside the image (1 MB heap at 0x15d00000.., a stack) can be excluded only
+       on the device.
+
+====================================================================================================
+5. CONTAMINATION -- still real, but not the trap-frame contamination
+====================================================================================================
+BYTES  capture :4212/:4311/:4357 all agree r5=0xffffffff, and trap15's vm_map64 lines (:4165..:4176)
+       interleave with NO abnormal trap row, so after slot 4 was built the shim had not overwritten
+       slots 4-9 (it reuses the same message; the vm_map64 r1 slots 0x2bd8d108/0x2bd8d0b8/0x2bd8d018
+       are different messages).  So a second entry at an off-by-one offset is not shown here.
+INFER  the handler saw a clean save; "the window was free at fault time" does not make it corrupt.
+
+====================================================================================================
+6. WHERE THE SKEW CLASS COULD LIVE (for 1038 to aim at)
+====================================================================================================
+INFER  purge uses the RIGHT edge (slide_info.end, pageout.c:7903) where pageDelta divides by the
+       LEFT (:7947); B(3)'s count-at-0x10 has the shape a one-page left-edge answer gives.  Test it
+       by value (pageIndex 0 vs N for one page), not by alignment: needs a pageDelta/slide row.
+INFER  any copy row must be a *bare* row (this thread's pc/lr/sp, slot 4) and negative-control-
+       calibrated (offset 0 -> 0x808; one page late -> nonzero) or it re-creates [[mi4-measurement-defects]].
+
+====================================================================================================
+7. THE 3 CHEAPEST 1038 ROW CHECKS
+====================================================================================================
+0. needed only if watch_le is not on the 1038 build: xnu_live_sweq_sp beside (unsigned)
+   thread->machine.uss->sp.  LAYOUT gives usp = sp-4; the ALTERNATIVE gives usp = sp.
+1. vm_page_slide trace row (kernel, pageDelta path or pageout): print page->offset, slide_info.start,
+   pageIndex and the first 8 words of the kernel mapping before and after the slides.  On the first
+   page: pageIndex == 0 and no diff.  ONE run settles left-edge vs right-edge for ALL pages.
+2. a bare trap-24 row: for the first port_construct of each pid print sp, lr, cx, and slot 4 (sp+0x10)
+   -- not the return of the shim, but the slot itself read from the kernel on trap entry.
+3. the "copy landed" falsifier as a row: spill all 16 slots + the word at sp+0x40 from the trap frame
+   at THREE instants (entry of trap-24 #1, entry of trap-15 #1, the pcc2 snapshot): a shift visible in
+   the middle but gone at the end is the overwrite; identical everywhere is a save.

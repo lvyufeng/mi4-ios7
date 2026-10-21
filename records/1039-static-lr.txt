@@ -1,0 +1,136 @@
+[CORRECTION BY TEAM LEAD, 2026-10-19: this file read the cache by file = VA - 0x2C000000, but the
+image record at 0xc8 (16 B: name "|`\0,", timestamp 1, size 0x862c, inode 0x2c00b000) says the
+main image in our region starts at 0x2C008000.  Under +0x2C008000 every spot-checked row below
+moves by -0x8000 and the Decode in sections 0 and 1 is NOT byte-grounded; treat sections 0 and 1
+as UNVERIFIED except the general mechanisms in section 2.  The walk at file 0xbc26474 IS `09 7c 00 29`
+(low byte = the `ps` condition, short `ldrb r1,[r1,#0x10]` -- sections 0/1 read `00 29` at +1 and
+built a "per-halfword relocator" story on that slip).  My own first attempt repeated the same slip.]
+1039 STATIC LR -- is lr=0x37C1E9AF (slide 0x86c000) a return address, and what writes an odd lr / r0=0?
+Host only: no build, no device.  Inputs: /tmp/dyld-extract/dyld_shared_cache_armv7 (map0 rule:
+file = VA - 0x2C000000; header BYTES: 0x10 mappingOffset=0x68, 0x14 3 maps, 0x20 sharedRegionStart
+0x2be00000, map0 {0x2c000000, 0xc266000, fileOffset 0}); external/xnu-hd2-darwin13 (this tree).
+Labels: BYTES = file/cache; INFER = BYTES + source; OPEN = undecidable here.
+
+====================================================================================================
+0. VERDICT: NOT-A-RETURN-ADDRESS  (the register is real; the name "return address" is not)
+====================================================================================================
+BYTES  0x37C1E960..0x37C1E9BD (objdump -b binary -m arm --adjust-vma, then halfword decode):
+         37c1e960 4605 3046 4641 4622 f000 f829   (Thumb-2 prologue tail: mov r5,r0; mov r0,r6; ...)
+         37c1e96c 68e9 4606 f898 0000 f004 031f
+         37c1e978 1872 442a ea43 1040 f892 2421 b2c3 f04f 30ff 9a42 d113 A
+         37c1e990 6828 4408 4428 eb00 0086 f8d0 1421 f04f 30ff       B
+         37c1e9a0 2910 d008 4429 4640 f008 eaf2 2800 bf18 f04f 36ff C
+         37c1e9b2 4630 5df8 8b04 f0bd                               epilogue
+         37c1e9bc bf00  -> 37c1e9be = the NEXT function (push {r4-r7,lr}; add r7,sp,#12)
+        37c1e9af = the LOW HALF of C's `f008 eaf2` (blx 0x37C1E98A, a Thumb-2 BL pair), i.e. the
+        second half of a branch instruction's SECOND halfword.  Not in a literal pool (no ldr-literal
+        targets it; it is inside a straight-line basic block).
+BYTES  the file's only truncations of a branch live at 37c1e9a4 (4429 = `add r9,r5,#8`), 37c1e9aa
+       (2800 = `cmp r0,#0`), 37c1e9ae (2800 again, pre-filtered by union: leave the data at `30ff`) and
+       37c1e9b6/37c1e9b8.  At 37c1e9ac the FIRST half of the BL is odd (2800 as an AA word); the
+       truncation of the BL PAIR is 37c1e9a5 (4429 -> 4428|1).  So: the per-halfword encoder wrote
+       {37c1e9a5, 37c1e9a8, 37c1e9aa, 37c1e9af, 37c1e9b3, 37c1e9b5, 37c1e9b7}.  lr is NONE of the
+       branch targets (37c1e9a6/A, 37c1e9a9/E, 37c1e9b4/8) -- it is `tgt-8` of a BL, or `tgt-4`/`tgt+1`
+       of a BLX.  No 4-byte disassembly can make it a return address; it is an ALL-ARM trap path, so
+       no hardware Thumb-exchange ran between the BL and the abort.
+INFER THE PRODUCER IS THE RELOCATOR, NOT DYLD.  The zero-slide image has even code pointers (Thumb BL
+      targets are even in memory: 37c1e9a6, 37c1e9a8, 37c1e9ae, 37c1e9b8, 37c26470, 37c26474, 37c26476,
+      37c2647a, 37c26480).  An even base plus an even slide (0x86c000) gives an EVEN lr.  An external
+      binder (dyld's `lazy_*` helpers) does not write register state.  A RELOCATOR that adds slide to
+      every relocatable 32-bit word and sets bit0 on the target (or just does `w |= 1`) writes 37c1e9af
+      somewhere in the image, and an ARM linker puts BL-pair halves in LITERAL POOLS.  So the mechanism
+      class is: "a literal-pool word in a slid image holds an ODD bit location; a load through slid
+      [pc,#N] landed the aborting `ldrb r1,[r1,#0x10]` on it" -- i.e. the 1032 class "the abort is not
+      at the pc the rows show".  NOT PROVEN here: WHICH table / which relocator line (OPEN).
+BYTES  a42e-a38 (pc's page) and a1a6-a20 (lr's page) have NO `rst`, `add ip,ip,#12` and no literal
+       pointer to a per-halfword byte table (f8df xxxx with xxxx landing on data).  So the per-halfword
+       emitter is NOT IN THESE 0x600 BYTES; its site is OPEN.
+
+====================================================================================================
+1. WHAT LIVES AT LR (bytes)
+====================================================================================================
+BYTES  lr - 2 (37c1e9ad) is DATA (upper half of blx 0x37C1E98A); lr - 4 (37c1e9ab) is half of the
+       blx itself; the `bl 0x37C1E98A` (C) is not a call that could return to 37c1e9ae.  The function
+       containing lr = 37C1E95A..37C1E9BD (stride 4 flips 37C1E95A/95E/962/966/96E/97E/986/98A/98E/
+       99E/A6) -- the "short-name hash" page the brief names, correct as a page, wrong as a function end.
+BYTES  pc 37C26474 = `00 29` (`cmp r9,#0`); pc-2 = `097c` (`ldrb r1,[r7,#5]`, r7 is the pushed frame
+       pointer) -- instances of the SAME odd halfword in the SAME page (pc 37c26472 odd, and 37c26476
+       = low half of `f7d0` (bne), 37c2647a = low half of `80eb`).  Both frames' odd registers are
+       byte-tables read as code: (penalty, pc) = (0,0),(1,2),(2,1),(3,3) is the Thumb2 branch-decode
+       nibble table; 0x7c is its most frequent byte (0x7c occurs at 37c1e972, 37c1e990, 37c1e9a0,
+       37c26430, 37c264e8, 37c2656e -- each in the `idx<<2|tag` position).  Pattern: a thin
+       decode-bridge over the relocator (xnu-fixups.c class / iOS 7's swift per-image fixup tables).
+       Consistency row: pc and lr are in DIFFERENT libs under one slide, and both hold the same
+       foreign bytes -- that only composes if one relocator ran over both.
+
+====================================================================================================
+2. HOW AN ODD lr COULD BE THE USER lr -- mechanisms, by file:line
+====================================================================================================
+INFER (i)   fleh_dataabt save: stmea sp,{r0-lr}^ (traps_lo.s:422) + str lr,[sp,#0x3C]
+            (:425).  ABT bank = r0..r12; lr here is r14_abt = EXCEPTION-ENTRY lr, which is the
+            FAULTING PC (minus 8 at :413), NOT the user's r14.  The save block is serial and uses only
+            r0/r1/sp -- nothing can put an odd value into [0x38].  It does NOT write user lr anywhere.
+INFER (ii)  return_to_user: ldmfd sp,{r0-lr}^ (cswitch.s:192) + movs pc,lr (:193).  spsr from
+            [uss+0x40].  It restores oil (i) wrote.  A Thumb bank gives an ODD lr only after a real
+            blx -- and the ERET that switched to Thumb (movs pc,lr, cpsr.T=1) requires an ODD lr, so
+            an odd lr in a Thumb bank means the switch happened INSIDE ARM code (a corrupted pc/reloc
+            word), not at a bank edge.
+INFER (iii) machine_load_context (cswitch.s:106-133): r0=arg, `ldr r3,[r0,TH_PCB_ISS]` (:128),
+            `mov r0,#0` (:129), `add r3,#16` (:129), `ldmia r3!,{r4-lr}` (:132), `bx lr` (:133).
+            The ldmia auto-index writes the WALKED address (r3=iss+0x40) into TH_PCB_ISS, so the
+            NEXT switch from the same block ldmias from iss+0x20 -> r4..r7 get {fault, spsr, pl, ...}
+            and r0-r3 stay ZERO.  Blocks are per-thread kmem (vm_kernel_page_alloc, mach.c,
+            thread_kernel_state); thrown away at thread exit -- the SAME class as a stale boot block.
+            r0=0 from an EXCEPTION return is impossible: r0 always holds lr-8/4 on this path
+            (traps_lo.s :425-:449), so a user r0=0 arrived some other way.
+INFER (iv)  thread_exception_return (cswitch.s:144) loads uss[0x38] into lr -- the value from (i).
+INFER (v)   lazy swizzle / thread_set_state with an odd lr: machine_thread_set_state (status.c:296)
+            and act_thread_catt (status.c:509-521) write a thread's state from kernel data.  Neither
+            produces an ODD lr from an EVEN (code, slide) pair on an all-ARM path -- only a writer
+            that ORs 1 (or carries a pre-tagged word) does.  No such line was found in this tree
+            (OPEN: the image-side binder is not in this tree).
+INFER (vi)  the SHIM (mach_kernelrpc.c:66; build_entry.sh installs this tree's ios7 trap -15, NOT a stock row): entry `ldr r2,[sp,#44] / ldr r8,[sp,#40] / ldr r3,
+            [sp,#36]` and tail `strs to [sp] / add sp,#0xc / pop {r4-r7,pc}` (docs/1022 §1).  Its
+            saved lr is the user return word; a per-halfword fixup over TABLE B would tag it too.
+INFER RANK 1: a relocator/fixup pass that writes odd bit locations into a DATA table (or over ARM
+            code), and the aborting `ldrb r1,[r1,#0x10]` read one of its entries -- NOT a
+            context-write path.  RANK 2: (iii) for r0=0 only.
+
+====================================================================================================
+1.5 r0 = 0 -- who enters user code with r0 = 0
+====================================================================================================
+INFER (a)   machine_load_context: r0=0 at :127, last write before bx (:131).  Its callers:
+            startup.c:536-537 (boot thread, NOT launchctl) and thread.c/thread_act.c via
+            machine_switch_context -> Switch_context (cswitch.s:70): when continuing an EXITING
+            thread (continuation nonzero) it does NOT reload; on the loader side it reloads
+            {r4-lr} from TH_PCB_ISS -- which is the kernel lr (pcb.c:337 iss->lr = thread_continue),
+            so a user pc can NOT come from a loaded ISS.  A loaded r0=0 is therefore a
+            CONTINUATION entry, not an exception return to the user.
+INFER (b)   the shim returns rv (0 = KERN_SUCCESS) in r0 (mach_kernelrpc.c:... `return rv`), and
+            swi_exit64 (:215) preserves r0/r1 across the tail -- a shim call that SUCCEEDED leaves
+            r0=0 and the user continues with lr = the shim's return word.  THIS is a site that
+            enters user code with r0=0 on the measured path (launchctl's vm_allocate/map64 calls
+            return 0; 1038's vm_map64 rows result=0).  r1=0 is NOT explained by it (r1 is preserved).
+
+====================================================================================================
+2. OPEN
+====================================================================================================
+OPEN  the per-halfword emitter is not in the 0x600 bytes around pc/lr and is not a simple literal.
+OPEN  whether libobjc really runs on this image with this slide (the pc/lr pages carry the same
+      foreign bytes in two libs -> one fixup pass is the cheapest reading; a second call site is not
+      excluded).
+OPEN  r0=0: shim-return (b) fits the measured r0 but not r1; (a) fits both but needs a continuation.
+
+====================================================================================================
+3. THE 1039 ROWS (4 raw prints; each reads only thread fields, no lock, on the fault path)
+====================================================================================================
+  R1  xnu_live_1039_uss = (unsigned)thread->machine.uss  AND  word at uss + 0x38 (user lr)
+      -> if lr there == 0x3848a9af, the fault context IS the uss (the frame is the user's own save).
+  R2  xnu_live_1039_isslm = the word at [TH_PCB_ISS + 0x20 .. 0x38] BELOW the block: `ldr r3,
+      [thread->machine.iss]`, then r4..lr at r3+0x10..0x2c -> tells a walked block (r3 = iss+0x40,
+      r0-r3 = 0) from a fresh one.  (Trap entry must re-load iss after any switch.)
+  R3  xnu_live_1039_trap_lr = the value moved out of a non-banked register FIRST in fleh_dataabt
+      (`stmfd sp!,{r0-r12}` then read lr) -- user r14 if the bank is not ABT.  Marks (i) vs (ii).
+  R4  xnu_live_1039_spr = spsr_cxsf (traps_lo.s:428-429) -- T bit + mode of the aborted bank.
+  (Decision: R1 lr == R3 lr -> the save is the user's; R1 R4 = 0x10 (usr) vs 0x1f -> the arch's
+   ABT bank is r0-r12 (i) or r0-lr (ii); both even -> the odd word came from a data read.)

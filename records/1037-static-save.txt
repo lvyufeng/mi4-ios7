@@ -1,0 +1,184 @@
+1037 STATIC SAVE -- the trap entry's stmea offsets against every C-side definition of the same record
+2026-10-19.  Static + the 1036/1033 capture now ON THE HOST:
+  out/stage90/captures/recovered-unknown-arm-20261019-080148-last_kmsg.txt (L4212-4353, cited as L####).
+Labels: BYTES = read in this tree's files or that capture this hour; INFER = follows; OPEN = undecidable here.
+
+Question: lr 0x399999af and r10 0x39aedc00 both carry bit0 on a path that is ARM end to end.  Is the
+trap entry storing the user registers at the WRONG OFFSET?
+
+REVISION NOTE (this file replaces the first version).  The first version was written from the team lead's
+brief because the capture had not been recovered; it got two things wrong, both corrected here:
+  * It called the DATA-ABORT entry's `stmea {r0-lr}^` the same instruction as the SWI/UNDEF entries'.  The
+    context is ABT mode (traps_lo.s:411-422), where `{r0-lr}` is r0..r12 (13 regs), so 0x34 / 0x38 are
+    written by the EXPLICIT `str`s, NOT by the stm.  Same machine result, different assumption.
+  * Its section 4 "single-shift falsification" rested on the brief's r10.  The capture shows r10 is NOT in
+    the uss at all (L4231 is a live read); the falsification is withdrawn and replaced (section 4).
+It also found, by reading the capture, a frame defect neither the brief nor the lead's message names
+(section 1.5): sp, r4 and r7 of the uss are not the fault's sp, r4 and r7.  It is the largest finding here.
+
+====================================================================================================
+1. FIELD TABLE: WHAT THE ENTRY WRITES, WHAT C BELIEVES, AND WHICH WRITES THE CAPTURE CONFIRMS
+====================================================================================================
+  BYTES -- the store (osfmk/arm/traps_lo.s:411-448):
+    411 EnterARM(fleh_dataabt)        ; entered in ABT mode, SPSR_mode = the faulting mode
+    413 sub lr, lr, #8                  ; r14_abt - 8 = the faulting PC
+    420 LoadThreadRegister(sp)          ; mrc p15,0,sp,c13,c0,4 -> current_thread (asm_help.h:155)
+    421 ldr sp, [sp, TH_PCB_USS]        ; genassym.c:230
+    422 stmea sp, {r0-lr}^              ; ABT context: 13 registers, r0..r12 -> [0x00..0x30] only
+    425 str lr, [sp, #0x3C]             ; faulting PC -> pc
+    428-429 mrs r0, spsr ; str r0, [sp, #0x40]     ; SPSR -> cpsr
+    432-433 mrc DFSR ; str r0, [sp, #0x44]         ; -> fsr
+    436-437 mrc DFAR ; str r0, [sp, #0x48]         ; -> far
+    439 mov r0, sp                      ; NOTHING between 422 and 439 writes [0x34] or [0x38]
+  BYTES -- the C side (osfmk/arm/misc_protos.h:45-52) abort_information_context_t
+    r[13] 0x00..0x30, sp 0x34, lr 0x38, pc 0x3C, cpsr 0x40, fsr 0x44, far 0x48  (19 words = 76 B, asserted)
+    identical to _STRUCT_ARM_THREAD_STATE (_structs.h:47-65); arm_saved_state_t == arm_thread_state_t
+    (thread_status.h:97).  `pcb.user_saved_state` and `struct register_saved_state` DO NOT EXIST anywhere
+    in this tree (grep, no hits) -- the upstream-Darwin concept is absent.
+
+  offset  written by    value               what C reads            confirmed in capture
+  0x00..0x30  stm (ABT)   r0..r12              r[0..12]               only r1/r2/r8/r9/r12 print (section 1.5)
+  0x34    nobody        previous value      sp                     L4247 = 0x2bd8d088
+  0x38    nobody        previous value      lr                     via arm_ctx->lr (L4235/L4246)
+  0x3C    :425          faulting PC         pc                     L4245 = 0x399a1474
+  0x40    :429          user SPSR           cpsr                   L4248 = 0x30 (User, Thumb)
+  0x44    :433          DFSR                fsr                    L4253 = 7 (READ)
+  0x48    :437          DFAR                far                    L4249 = 0x10
+  => For r0..r12 and pc the two definitions AGREE.  [0x34] and [0x38] are CLEARED OR PREVIOUS, never
+     written by this entry -- [0x38] in particular cannot be "the user lr": the entry never touches it.
+     So "the that save offset is wrong" is dead for r0-r12/pc; and for sp/lr the question is not the
+     entry but WHO else writes them (1.5).
+
+  WHY [0x38] ODD IS UNDECIDABLE ON THE DEVICE (BYTES): every reader of the field prints it as a POINTER
+     -- arm_ctx->lr is print-only (L4219/L4235/L4246, L4278, L4305/L4314-4317) and the sole semantic
+     consumer, evf lr_slot, masks it: (_evf_lr-4)&~3 (patch_d13_eval_frame.py:95).  Nothing branches on
+     lr, compares it, or puts it back.  The probe that holds lr's pointer is the 1033 evf, not 1037's fb;
+     a 1037 capture cannot add a single new fact about lr.  1038 must read 1036's relog with the 1033/1035
+     values (section 5).
+
+====================================================================================================
+1.5 THE USs IS COHERENT EXCEPT sp, r4, r7 -- THE CAPTURE'S OWN PAIRED ROWS
+====================================================================================================
+  BYTES, one block L4212-L4353:
+    arm_ctx (== uss): r1 0 (L4227) r2 -1 (L4228) r3 0x39b04020 r7 0x2bd8d0ac (L4233) r9 0x1fff r12 0x4000
+                      sp 0x2bd8d088 (L4247) pc 0x399a1474 lr 0x399999af cpsr 0x30 far 0x10
+                      r8 0x2f232575 (L4308) r5 -1 (L4281) r6 = sp (L4307)
+    user mem at sp:   [sp+0x10] 0x3a166ae0 (L4263) [sp+0x14] 1 (L4265) [sp+0x18] 0 (L4267)
+                      [sp-0x08] 0x2bd8d080 [sp-0x04] 0x399a16fb [sp] 0x2bd8d084 [sp+4] -1
+                      [sp+8] 0x2bd8d088 [sp+0xC] 0x2bd8d0ac [sp+0x10] 0x399a1469 ... (L4322-L4353)
+  (a) r2 / r5:  DMIPS of the walk's VLA region -- count = -1 lands exactly on the size of the region.
+  (b) r9 = 0x1FFF, r12 = 0x4000: the walk's chunk count and (0x8000>>1) -- live.
+  (c) r3 = 0x39b04020: a pointer ABOVE the user stack (0x2bd8e000) and in the shared-cache image: the
+      stack argument of a memcpy-class call.  A past-it value left in r3, not an independent witness.
+  (d) r6 == sp == 0x2bd8d088 (L4307 vs L4247) -- the walk's destination base is the faulting sp.
+  (e) r8 = 0x2f232575 (L4308): low bits 0101 -- never a pointer.  r8 is an argument of the walk (1030 read
+      the writer's r8, a source THREADS FORWARD).  Not contradicted, NOT confirmed.
+  (f) sp = 0x2bd8d088 (L4247) and r7 = sp+0x24 (L4234).  But the one frame on this stack names: at
+      [sp+0x10] sits 0x3a166ae0, and the faulting register's own value at [sp+0x10] (L4324) is 0x399a16fb
+      -- a different value.  [sp+0x04] = -1 equals r5; [sp+0] = sp-4 equals r4.  So the uss describes
+      ONE stack frame, and the faults are on ANOTHER.  1036's pcc2_s0..s15 (also taken at this sp) hold a
+      THIRD set ([sp]=0x2bd8d080, [sp+4]=0x399a16fb, ...).
+  QUALIFICATION (BYTES, open): r1 is caller-saved.  The walk calls a lookup (1035-read: writer
+       ...0x37c266f6 BLs ...0x37c1e950); that callee can clobber r1, and JSROC would have to reload
+       r1 <- [r6+0x10] before the load.  IF it does not reload, r1 = 0x399a16fb is a clobbered register,
+       not the loaded word, and the contradiction softens to "the loaded word is not observable".
+       The tool is a LOAD of the instruction AT the pc, and 1035 P1's device bytes there are `ldrb`, so
+       the reload is not assumed.  Either way [sp] = r4 and [sp+0x10] != arm_ctx r1 are RECORDED values.
+  => The uss record is coherent with itself in r0-r12 but its sp/r4/r7 are NOT the registers the aborting
+     instruction used.  The faulting access (NULL+0x10) was made with some sp' whose [sp'+0x10] held
+     r1 = 0x399a16fb; the record's sp is a different frame.  This is neither "offset" nor "shift": a
+     LATER save of the same thread with a partially regenerated frame.
+     RECORDED vs INFERRED: [sp] == r4 and [sp+0x10] != arm_ctx r1 are RECORDED (L4322, L4326, L4324 vs
+     L4227).  "The uss is NOT the abort's frame" is an INFERENCE from those two.  Its alternatives --
+     a load bypassing [sp+0x10], or a regen that PRESERVES r0/r1/r4 (the template does not, status.c
+     copies them) -- are not excluded by this file.
+     ADMISSIBLE if a regen: grepping every `machine.` write in osfmk/kern (thread.c, thread_act.c,
+     exception.c, ipc) finds NO write of r0..r12 / sp / lr / pc outside the template, the BULK set_state
+     path (thread.c:911, verified), and the ONE-BY-ONE fee paths (exception.c:212/273 ->
+     thread_act.c:520/532 at pcb.c:345-362; sys_perf_notify) -- which this pid-2 fault never reaches.
+     status.c:555-583 thread_set_wq_state32 is BULK but UNREACHABLE here (no in-tree caller).
+  (g) CANDIDATE for the corruption, WEAK, unclaimed: arm_vfp_state_t is 64 + 1 words (0x104; _structs.h:93-107)
+      but vfp_context_save writes 64 + 64 + 1 (vfp.s:68-84, d16-d31 plus FPSCR at 0x204) and
+      vfp_context_load READS FPSCR at 0x204 (vfp.s:106).  vfp_regs sits AFTER user_regs+es in
+      struct machine_thread (thread.h:65-84) -- so the overflow goes forward, away from the uss -- but
+      that is a layout FACT; the write is real and nobody in-tree may touch it.  1038 should dump
+      `&thread->machine.vfp_regs` beside `arm_ctx` before any other corruption theory.
+  HARD EDGE (BYTES): between the entry landing in uss (SPSR mode 0x10) and sleh_abort running, the ONLY
+     code is LoadThreadRegister / cpsid / LoadThreadRegister / ldr sp / mov / mov / blx -- no store, no
+     call, no VFP.  So ANY difference between the uss at entry and at arm_ctx has to come from somewhere
+     trap.c cannot see (an entry path not in traps_lo.s -- OPEN: checkout C).  The out-of-line text on the
+     A9 is a coherent view (r0, sp, lr, SPSR, dfsr, dfar all agree), so CACHE cleaning is excluded.
+  (h) r10 = 0x39aedc00 bit0: r10 is NOT in the uss.  L4231 is xnu_live_cal_r10, a LIVE printf of
+      arm_ctx->r[10] nothing else writes; the probe block cannot be MID-mutation (single word, no call).
+      So r10 = ...c00 is a real saved r10.  0x39aedc00 & 0xFFF == 0xC00, 4-aligned -- not a Thumb
+      marker (bit0 of a Thumb pointer is 1, not "bit 11").  The design 1(iii) "r10 has its low bit set"
+      is FALSIFIED BY READING: 00 has bit0 = 0.  r10 is the DATA case and should not be in the proof.
+
+====================================================================================================
+2. THUMB AND BIT0 CONVENTIONS ALONG THIS PATH
+====================================================================================================
+  BYTES -- cpsr (L4248) = 0x30: User (0x10) | T (0x20).  Thumb is REAL, not a crash-prejudiced guess:
+    SPSR in ABT mode holds the CPSR of the mode the abort was taken from, and the stored word is
+    exactly 0x30 with mode 0x10.  (Lead's argument stands: an IRQ/abort from a non-Thumb user stores
+    0x10, never 0x30.)
+  BYTES -- no kernel path puts a bit0 into [0x38]: sleh_abort's only pc write is the KERNEL-branch
+    `arm_ctx->pc = thread->recover` (trap.c:705); status.c:345/442 and 536-537 write user states raw;
+    trap.c:1485 derives Thumb from cpsr, never from a pc bit; nothing copies lr/pc into another slot.
+  BYTES -- traps_lo.s:535 `orr lr, lr, #1` (irqhandler_from_kernel) is still the only interworking-bit
+    producer in the tree, and its restore half is missing (`restore_kernel_context` returns r14_abt raw
+    into PC) -- a named mechanism for a bit0-0 PC in a Thumb user; not on the abort path.
+  => lr bit0 = 1 with cpsr T = 1 is CONSISTENT with a Thumb caller returning by `blx`, and with a Thumb
+     link register at any odd address.  It is not evidence of a save error.
+
+====================================================================================================
+3. CONTEXT ORIGIN PER CALLER
+====================================================================================================
+  BYTES (traps_lo.s): :361 prefetch_user and :448 dataabt_user pass r0 = machine.uss; :403 (prefetch
+    kernel stack) and :491 (dataabt kernel stack) pass r0 = sp of an own 0x50-byte kernel frame.
+  BYTES: ios7leo_data_abort037.h:95 asserts context == owner->machine.uss on the LEO build; CANCRO
+    compiles it out but passes the same register.  arm_ctx == machine.uss == &machine.user_regs
+    (pcb.c:177).  Thread-local: a nested frame cannot alias.
+  => For this fault arm_ctx is the uss record itself.  Sections 1 and 1.5 stand on that.
+
+====================================================================================================
+4. SHIFT CANDIDATES
+====================================================================================================
+  WITHDRAWN: the first version's "(a)+(b)+(c)+(d)" arithmetic.  It tested RLR = arm_ctx lr and
+  RM = arm_ctx r10 against a SINGLE uss -- the capture (section 1.5) shows the faults are on a stack
+  the uss does not describe, so a coherent shifted record does not exist to find.
+  WHAT CAN STILL BE SAID:
+    * A 4-byte misaligned shift is impossible on ARM.
+    * Against the aborting stack's OWN word r1 = 0x399a16fb, a 32-bit load at [sp'+0x10] returning 0
+      would require that word to be 0 -- it is not.  A 16-bit load would take 0x16fb & 0xFFFF = 0x16fb,
+      also not 0.  Under that word the walk's loop CANNOT produce r1 = 0 by loading.  (This is also the
+      1036 H-SHORTNAME reinforcement: the 32-bit-load model is dead; but see 1035 P1: device bytes
+      at pc = 09 7c 00 29, which IS `ldrb` -- a byte load of 0xf9 is not 0 either.  OPEN: whose word
+      is 0x399a16fb.)
+    * The pc=0x399a1474 / [sp-4]=0x399a16fb adjacency (0x2A87) and r10 = 0x39aedc00 = 0x399a1474+0x3C78C
+      are two .c-local addresses; they say the walk and its caller are adjacent functions, nothing about
+      offsets.  But: 0x39aedc00 is in the shared-cache image; if a FILE VA == DEVICE VA there, the cache
+      ran without relocation and the file VA of 0x399a16fb (and of the walk) can be searched.
+    * "NOT in a 4-aligned slot of the sp-window": every in-window word is a 4-aligned value or a
+      pointer ending in 0/4/8/C; a framed BL-to-Thumb return (bit0 set) can only be recorded as the
+      ADDRESS of such a word (unions/bitfields), so no in-window slot can hold it.  1038 must read the
+      two 2-bit-folded halfword maps of the in-window words (folds: bits 1-2, 9-10, 17-18, 25-26).
+
+====================================================================================================
+5. WHAT 1037's ctx_diff ROW WILL AND WILL NOT DISAMBIGUATE (unchanged design concerns)
+====================================================================================================
+  BYTES: fb_ctx_diff compares arm_ctx with a TASK-MAP copyin of the uss VA.  The uss is a field inside
+     the thread struct (kern memory); the task map does not map it, the copyin fails, and the uss_* /
+     ctx_diff rows print 0 BY CONSTRUCTION.  "D2 SAVE-AGREES" from that is the 1026 self-fulfilling
+     defect.  1038 must read the record through the kernel pointer and print ctx_ok.
+  SMALLER NOTE, 1037-read.txt 1: it says _far_tr/_far_tr_ok are rows; tools/check_1037_capture.py's TRAY
+     does not list them.  Ensure the patcher and the checker agree (a row neither prints nor is read is
+     not a witness).
+  THE RANKING STANDS (host-side once a capture exists):
+     1. fb_dbg_off_ok / fb_ctx_ok
+     2. fb_pc, fb_sp_tr, fb_cpsr            -- fb_sp_tr == 0x2bd8d088 is NOT evidence the trap frame was
+                                               read (L4247 shows the uss sp is every reader's sp)
+     3. fb_uss_r3, r[4], r[7], r[8], sp, pc -- compare r4 vs [sp-4], r7 vs sp+0x24, r8's low bits
+     4. ctx_diff against the same base
+  AND to settle THIS analysis: the 1036 vfp_regs dump and the window-halfword folds (4).  Neither fits
+  1037's block; both belong to 1038.
+  The one thing no capture so far shows: WHO writes uss sp/r4/r7 with coherent but wrong values.

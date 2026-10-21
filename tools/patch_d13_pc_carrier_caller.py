@@ -171,7 +171,7 @@ TRAP_ALLOWED_IF_IDENTIFIERS = {
     "STAGE90_XNU_PC_CARRIER",         # 1035 (this block's immediate predecessor)
     "STAGE90_XNU_PC_CARRIER_CALLER",  # 1036 (this rung)
     "STAGE90_XNU_TRAP_FRAME",  # 1037 (tools/patch_d13_trap_frame.py)
-}
+    "STAGE90_XNU_FRAME_CARRIER"}  # 1039 (tools/patch_d13_frame_carrier.py)
 
 
 def read(p):
@@ -185,12 +185,17 @@ def write(p, t):
 
 
 def if_stage90_ids(text):
+    # LINE-STARTING directives only, and an id must stand WHOLE (a prefix of a longer id, or one quoted
+    # inside 1038's staged string literal, is not a directive ID) -- [[mi4-one-file-many-rungs]]
+    dirs = [m.group(1) for m in re.finditer(r"^[ \t]*#\s*(?:if|elif|ifdef|ifndef)\b(.*)$", text, re.M)]
     ids = set()
-    for m in re.finditer(r"^\s*#\s*(?:if|elif|ifdef|ifndef)\b(.*)$", text, re.M):
-        for ident in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", m.group(1)):
-            if ident.startswith("STAGE90_"):
-                ids.add(ident)
-    return ids
+    for e in dirs:
+        ids.update(i for i in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", e) if i.startswith("STAGE90_"))
+    whole = set()
+    for e in dirs:
+        e = re.sub(r'"(?:[^"\\]|\\.)*"', "", e)
+        whole.update(i for i in re.findall(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*", e) if i in ids)
+    return whole
 
 
 def trap_path(xnu):
@@ -251,6 +256,12 @@ def closes_inside_1025(t):
         while True:
             if rest.startswith("#endif /* STAGE90_XNU_USTACK_PROBE */\n", pos):
                 return True
+            # (1040) 1025's arm re-opens its bracket a second time (the first close shuts the region
+            # 1025 wrote its publisher in; the rows live in the PUBLISHER, which the next plain close
+            # shuts).  The re-open is one more "later whole thing"; the build proves the pairing.
+            if rest.startswith("#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE\n", pos):
+                pos += len("#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE\n")
+                continue
             b = blocks.match(rest, pos)
             if b is None:
                 break
@@ -269,10 +280,33 @@ def verify_off(xnu):
         print("patch_d13_pc_carrier_caller: --verify-off: switch ABSENT (nothing staged).",
               file=sys.stderr)
         return 1
-    have = (t.count(TRAP_DONE_MARK) == 1
+    # (1040) THE ROWS ARE THE PROOF THAT THE BLOCK IS STAGED, not the prose done-mark: a comment
+    # that SPELLS `xnu_live_pcc2_pc=` (1016-A's block carries it: "the pcc2 window") is not the row.
+    have = (t.count("\"xnu_live_pcc2_pc=") == 1
             and t.count("#if defined(%s) && %s\n" % (SWITCH, SWITCH)) == 1
             and t.count("#endif /* %s */\n" % SWITCH) == 1)
-    between = t.count("#endif /* STAGE90_XNU_PC_CARRIER */\n#if defined(%s)" % SWITCH) == 1
+    # 1037's block (TRAP_FRAME) stages between 1035's close and this switch (1039 re-stages it there),
+    # so 1035's close is followed by zero or more WHOLE STAGE90 blocks, then this block's opener.
+    _blocks = re.compile(r"#if defined\((STAGE90_[A-Z0-9_]+)\) && \1\n.*?#endif /\* \1 \*/\n", re.S)
+    _k = "#endif /* STAGE90_XNU_PC_CARRIER */\n"
+    _open = "#if defined(%s) && %s\n" % (SWITCH, SWITCH)
+    _arm = "#if defined(STAGE90_XNU_USTACK_PROBE) && STAGE90_XNU_USTACK_PROBE\n"
+    between = False
+    for _m in re.finditer(re.escape(_k), t):
+        _rest = t[_m.end():]
+        _pos = 0
+        while True:
+            if _rest.startswith(_open, _pos):
+                between = True
+                break
+            if _rest.startswith(_arm, _pos) or _rest.startswith("#endif /* STAGE90_XNU_USTACK_PROBE */\n", _pos):
+                break
+            _b = _blocks.match(_rest, _pos)
+            if _b is None:
+                break
+            _pos = _b.end()
+        if between:
+            break
     # 1035's own switch text must not match this rung's bracket counts (it does not: the prefix
     # STAGE90_XNU_PC_CARRIER never appears as `#if defined(X) && X\n` for this X).
     tail = closes_inside_1025(t)

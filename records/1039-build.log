@@ -1,0 +1,31 @@
+== 1039: THE FRAME CARRIER (STAGE90_XNU_FRAME_CARRIER=1, STAGE90_XNU_TRAP_FRAME re-staged, STAGE90_XNU_WATCH_LE=0: 1038's row side inert; instrument only) ==
+-- 1. the owners' selftests + the plan's selftest --
+SELFTEST PASS
+SELFTEST PASS (23 checks: plan/apply/idempotent/bracket/namespace/OFF-can-fail/structural/uss-side/restage)
+patch_d13_watch_le: --selftest PASS
+patch_d13_plan: selftest PASS.
+patch_d13_watch_le: --verify-model PASS (the three files are the model's, byte for byte).
+-- 2. compose trap.c from the plan --
+   trap.c is: staged
+   re-staged over this rung's composite (the plan folded out, then composed again)
+patch_d13_plan: trap.c staged: the 1036 tail's 1025 close replaced by the seam (92062 bytes), the hook at sleh_abort's preamble.
+patch_d13_plan: --verify PASS.
+   OFF: preprocesses, no directive survives (0 bytes)
+   1025: preprocesses, no directive survives (0 bytes)
+   ALL: preprocesses, no directive survives (0 bytes)
+-- 5. the record's inherited chain --
+   1038 (STAGE90_XNU_WATCH_LE) is 0 in the record (its ROW side compiles out: the switch is undefined)
+   the record and the entry layer carry STAGE90_XNU_FRAME_CARRIER
+-- 6. the D13 kernel pool (the record's switch set verbatim + STAGE90_XNU_FRAME_CARRIER=1) --
+   carrying 74 switch(es) from out/stage90/xnu_arm_entry-config.txt + STAGE90_XNU_FRAME_CARRIER=1
+  xnu_1021d: STAGE90_XNU_GENERAL_REGS=1 -> ... -mcpu=cortex-a15 -marm -msoft-float ...
+  xnu_1021d: the flag list above is the argv both compile loops expand; OFF reads '-mfpu=neon-vfpv4 -mfloat-abi=softfp' and ON reads '-msoft-float' (run this script with --print-flags to read the resolved arrays without building)
+trap argv: 202 elements + source (-> /mnt/data/mi4-ios6/external/xnu-hd2-darwin13/xnu/osfmk/arm/trap.c)
+   trap argv: 203 element(s), the pool's own (compiler first, source last)
+   OFF: DOES NOT COMPILE:
+     /mnt/data/mi4-ios6/external/xnu-hd2-darwin13/xnu/osfmk/arm/watch_le_arm.inc:9:48: error: use of undeclared identifier '_wl_a_seq'
+     /mnt/data/mi4-ios6/external/xnu-hd2-darwin13/xnu/osfmk/arm/watch_le_arm.inc:11:16: error: use of undeclared identifier 'WL_PRINT_CAP'
+     /mnt/data/mi4-ios6/external/xnu-hd2-darwin13/xnu/osfmk/arm/watch_le_arm.inc:12:30: error: use of undeclared identifier 'arm_ctx'
+     /mnt/data/mi4-ios6/external/xnu-hd2-darwin13/xnu/osfmk/arm/watch_le_arm.inc:13:2: error: use of undeclared identifier '_wl_a_pc0'
+     /mnt/data/mi4-ios6/external/xnu-hd2-darwin13/xnu/osfmk/arm/watch_le_arm.inc:13:24: error: use of undeclared identifier 'arm_ctx'
+REFUSING: the staged trap.c does not compile on the pool's own argv
