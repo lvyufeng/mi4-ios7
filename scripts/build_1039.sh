@@ -111,6 +111,8 @@ if m.verify(t, xnu) == []:
 # folded, and the plan composed a SECOND seam -- trap.c carried it twice and step 6 caught the doubled
 # row.  Ask the composer, never a look-alike of it.)
 _at, _why = m.place(t, xnu)
+if _at is None and "carries 1038's defs include" in str(_why):
+    print("ready"); sys.exit(0)
 if _at is None:
     # (2026-10-20: a tree that still carries the OLD composite -- 1037's switch present, the plan's
     # bytes changed under it -- refused here.  It is not pristine: compose() INSERTS and the tree
@@ -155,16 +157,27 @@ m.write(tp, out)
 print("   folded the old composite out (the 1036 bytes, then composed again)")
 PYFOLD
     ;;
+  ready)
+    # (the tree already carries this rung's whole edit - the plan's seam, the inherited chain, 1037 and
+    #  1038's defs include. There is nothing to compose: composing again would put a second seam in.)
+    echo "   trap.c is already this rung's: composing skipped, the staged text is used as it stands"
+    ;;
   composed-under-a-second-seam)
     # (a tree staged under TWO seams is not this rung's composite and not the 1036 tree: the fold
     # would have to guess which seam is real.  Never re-compose it -- start from a pristine tree.)
     echo "REFUSING: $TRAP_SRC carries 1037's rows or the hook outside this rung's plan (a second seam?) - start from the 1036 tree"; exit 1 ;;
   *) echo "REFUSING: the plan will not compose on $TRAP_SRC (not the 1036 tree)"; exit 1 ;;
 esac
-python3 -I tools/patch_d13_plan.py "$XNU_TREE" --apply | tail -1 \
-  || { echo "REFUSING: the plan will not compose on $TRAP_SRC (not the 1036 tree)"; exit 1; }
-python3 -I tools/patch_d13_plan.py "$XNU_TREE" --verify | tail -1 \
-  || { echo "REFUSING: the plan does not verify after --apply"; exit 1; }
+if [[ "${_st%%:*}" == ready ]]; then
+  # (nothing to compose; the staged text is verified as it stands)
+  python3 -I tools/patch_d13_plan.py "$XNU_TREE" --verify | tail -1 \
+    || { echo "REFUSING: the staged plan does not verify"; exit 1; }
+else
+  python3 -I tools/patch_d13_plan.py "$XNU_TREE" --apply | tail -1 \
+    || { echo "REFUSING: the plan will not compose on $TRAP_SRC (not the 1036 tree)"; exit 1; }
+  python3 -I tools/patch_d13_plan.py "$XNU_TREE" --verify | tail -1 \
+    || { echo "REFUSING: the plan does not verify after --apply"; exit 1; }
+fi
 # **The plan composes the SEAM - 1037's and 1038's blocks are their OWN rungs and must be staged on
 # top of it.** They were never applied here: `$TF_PATCHER` and `$LE_PATCHER` were defined at the top
 # and used only by the preflight's selftests, so a freshly composed tree reached the pool with no

@@ -238,10 +238,30 @@ def _row_count(row, xnu=None):
     return sum(1 for _q in _rows[_sw:_ce + 1] if row in _q)
 
 
+def wl_mod_name():
+    """1038's defs file name, from its owner."""
+    return _mod("patch_d13_watch_le").INC_DEFS
+
+
 def place(t, xnu):
     """(the anchor offsets, why): trap.c must be the 1036 tree -- 1025's arm open and, after it, the
     close that ends the arm -- and sleh_abort's preamble exactly once.  The seam goes IN FRONT of
     1025's close (inside the arm, after every rung's rows); it does not replace the arm."""
+
+    # **A tree that already carries 1038's defs include is staged, not 1036.** `place()` only asks
+    # whether the seam could go somewhere; it never looked at what else is in the file. A fully chained
+    # tree (defs include at the seam AND in the arm) therefore answered "yes, pristine", the build ran
+    # compose on it, and verify then refused with "1038's defs include is not exactly one line". The
+    # classifier in build_1039.sh asks THIS function, so the answer has to be right here.
+    # (Only the ABSOLUTE spelling decides this. compose() writes the absolute path, and a 1036 fixture
+    #  that names the file relatively is a fixture, not a staged tree - asking about both spellings made
+    #  the plan refuse its own selftest fixture.)
+    if xnu:
+        _wn = wl_mod_name()
+        _row = "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm", _wn) + chr(34)
+        if _row in t:
+            return None, ("the tree already carries 1038's defs include (%s) - it is staged, not 1036"
+                          % _wn)
     # (THE CLOSE IS THE ROW AT ITS OWN INDENT -- the one the seam goes in front of.  2026-10-20: a bare
     #  `find(U25_CLOSE)` also matched 1037's OWN close inside the seam's body, one indentation level
     #  deeper (`\t\t\t\t\t#ifdef` ... `#endif`), and the splice landed in the middle of 1037's text.)
