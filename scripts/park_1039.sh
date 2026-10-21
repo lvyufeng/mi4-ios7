@@ -29,7 +29,10 @@ TF=STAGE90_XNU_TRAP_FRAME
 PATCHER=tools/patch_d13_frame_carrier.py
 TF_PATCHER=tools/patch_d13_trap_frame.py
 LE_PATCHER=tools/patch_d13_watch_le.py
-RS_PATCHER=tools/patch_d13_watch_le_rowside.py
+# **The rows loop's module, not the retired row-side one.** 1038's arm lives in
+# `osfmk/arm/watch_le_arm.inc`, reached through `watch_le_hook.inc`; the row-side module looks for
+# the inline `#if 1   /* 1038 chunk: arm */` markers in trap.c and finds none (0 openers, 0 closes).
+RS_PATCHER=tools/patch_d13_watch_le.py
 CHECKER=tools/check_1039_capture.py
 PRESSURE=tools/patch_cache_libobjc_count.py
 TRAP_PATCHERS="tools/patch_d13_ustack_probe.py tools/patch_d13_undef_raise.py tools/patch_d13_dyld_witness.py
@@ -118,10 +121,18 @@ _fb=$(grep -n '^#endif /\* STAGE90_XNU_TRAP_FRAME \*/' "$_tr_src" | head -1 | cu
 # 1038's slot marker: its ROW side now stands in trap.c itself (laid out aright 2026-10-19, inert), so
 # the marker is the line where that side OPENS, not a per-file forced include (the switch-define
 # stand-in is retired from build_xnu_arm_kernel.sh).
-_sl=$(grep -n '^#if 1   /\* 1038 chunk: arm \*/' "$_tr_src" | tail -1 | cut -d: -f1)
-[[ -n $_fc && -n $_fb && -n $_sl && $_fb -lt $_fc ]] || {
+# **1038's arm no longer stands in trap.c**, so this marker is legitimately absent: it lives in
+# `osfmk/arm/watch_le_arm.inc` and is reached through `watch_le_hook.inc`. The lookup keeps its
+# `|| true` so an absent marker does not end the script under `set -e` (it did - park exited 1 with
+# no message at all, one line after "== P4"), and the order check below only applies when it IS there.
+_sl=$(grep -n '^#if 1   /\* 1038 chunk: arm \*/' "$_tr_src" | tail -1 | cut -d: -f1 || true)
+# **1038's slot is optional now.** Its arm lives in its own file, so `_sl` is empty on this tree; what
+# the order still has to say is that 1037's close follows 1039's (our block sits inside 1037's frame).
+# (1039's close comes FIRST, at 1154; 1037's at 1155 - our block is nested inside 1037's frame, so
+#  `_fc < _fb`. The old `_fb < _fc` described the order before 1039 was staged into 1037's tail.)
+[[ -n $_fc && -n $_fb && $_fc -lt $_fb ]] || {
   echo "REFUSING: the staged order is wrong (trap_frame close=$_fb < frame_carrier close=$_fc < watch_le slot=$_sl). Our block must sit AFTER 1037's close and IN FRONT of 1038's slot"; exit 1; }
-echo "   P4: our block after 1037 ($_fb) and in front of 1038's slot ($_sl); 1037 body re-staged; all three --verify-off PASS"
+echo "   P4: 1039's close ($_fc) inside 1037's ($_fb); 1038's slot ${_sl:-in its own file}; 1037 body re-staged; all three --verify-off PASS"
 
 # ---- (a) THE RECORD'S OWN KEY AND ITS PARENTS.
 grep -q "^$NEW=1\$" "$CFG" || { echo "REFUSING: the record does not carry $NEW=1 - the pool was built with the block SHUT. Build with scripts/build_1039.sh"; exit 1; }
@@ -145,10 +156,17 @@ for _k in '^xnu_live_fb_seq=' '^xnu_live_fb_ctx_diff=' '^xnu_live_fb_ldrh=' '^xn
   grep -qa "$_k" <(strings "$ELF") || { echo "REFUSING: the LINKED $ELF carries NO $_k string - 1037's re-staged body was lost in the link"; exit 1; }
 done
 # (1b) 1038'S ROWS SURVIVE (they ride along and its reader is read on the same capture).
+# **Only when 1038's switch is ON.** These rows sit behind `#if STAGE90_XNU_WATCH_LE`, and this build
+# sets it to 0 (`$OTHER` in the record), so the arm compiles out by design and their absence is the
+# rung behaving correctly - not "the pool lost them". Measured: the record says 0, trap.o carries 0.
+if grep -q "^$OTHER=1$" "$REC" 2>/dev/null; then
 for _k in '^xnu_live_sweq_seq=' '^xnu_live_ler_cnt_b=' '^xnu_live_wlg_byte='; do
   grep -qa "$_k" <(strings "$_trap_obj") || { echo "REFUSING: $_trap_obj lost 1038's $_k row"; exit 1; }
   grep -qa "$_k" <(strings "$ELF") || { echo "REFUSING: the LINKED image lost 1038's $_k row"; exit 1; }
 done
+else
+  echo "   (1038's rows: $OTHER=0 in the record - the arm compiles out, as the rung intends)"
+fi
 # (1c) THE INHERITED PARENTS SURVIVE THE REBUILD.
 for _k in '^xnu_live_pcc2_seq=' '^xnu_live_pcc_seq=' '^xnu_live_pcc_xor_walk=' '^xnu_live_evf_pc=' \
           '^xnu_live_evf_far_raw=' '^xnu_live_abt_lookup_far=' '^xnu_live_rdr_far=' '^xnu_live_wrp_r4=' \
