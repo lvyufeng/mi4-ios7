@@ -92,6 +92,7 @@ import re
 # its switch HERE (and to the other three patchers' sets) or the OFF proof of every other patcher
 # refuses the tree.
 TRAP_ALLOWED_IF_IDENTIFIERS = {
+    "WATCH_LE_H_STANDIN",           # 1038 (its hook's stand-in guard)
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",     # 994  (tools/patch_d13_dyld_witness.py)

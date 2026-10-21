@@ -211,6 +211,7 @@ EXEC_DONE_MARK = "xnu_live_abt_proc_ustack"
 # can certify its OFF arm: an unregistered identifier "may come from a header", which the
 # placeholder-include proof cannot see.
 TRAP_ALLOWED_IF_IDENTIFIERS = {
+    "WATCH_LE_H_STANDIN",           # 1038 (its hook's stand-in guard)
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",     # 994  (tools/patch_d13_dyld_witness.py)

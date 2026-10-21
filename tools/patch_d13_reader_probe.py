@@ -86,6 +86,7 @@ TRAP_BLOCK = (
 # trap.c's `#if` identifiers are the union of what ALL FIVE patchers put there.  A foreign one is a
 # hand edit or an unregistered rung; refuse before the anchors, naming the real cause.
 TRAP_ALLOWED_IF_IDENTIFIERS = {
+    "WATCH_LE_H_STANDIN",           # 1038 (its hook's stand-in guard)
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",       # 994

@@ -133,6 +133,7 @@ PCC_ROWS = (
 
 # trap.c's `#if` identifiers are the union of what ALL the patchers put there.
 TRAP_ALLOWED_IF_IDENTIFIERS = {
+    "WATCH_LE_H_STANDIN",           # 1038 (its hook's stand-in guard)
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     "STAGE90_XNU_DYLD_WITNESS",       # 994

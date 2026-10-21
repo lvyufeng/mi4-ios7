@@ -256,6 +256,7 @@ PATCHERS = (
     "tools/patch_d13_ustack_probe.py",
 )
 TRAP_ALLOWED_IF_IDENTIFIERS = {
+    "WATCH_LE_H_STANDIN",           # 1038 (its hook's stand-in guard)
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
     # 1038's chunk (the parked ROW-side), laid out aright 2026-10-19: its `#ifndef` guard, the arm's
