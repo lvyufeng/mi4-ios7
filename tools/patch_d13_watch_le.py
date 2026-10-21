@@ -1387,6 +1387,22 @@ def _staged_hook_at(t):
         if b < 0:
             return None
         b += 1                                          # past the include line's newline: the frame's `#if`
+        # **The frame's `#if` need not be the very next line.** 1038 writes a comment block between
+        # the include and the frame ("... The statics it touches are DEFINED at file scope (chunk 4)."),
+        # so a test that required `b` to BE the `#if` found nothing at all on a tree that carries the
+        # frame - measured as "a partial splice (the seam's include line and the tail hook are not
+        # both present)" on a tree that had both. Skip the comment and blank rows.
+        _k = b
+        while True:
+            _e = t.find(chr(10), _k)
+            _row = t[_k:(_e if _e >= 0 else len(t))].strip()
+            if _row == "" or _row.startswith("/*") or _row.startswith("*"):
+                if _e < 0:
+                    return None
+                _k = _e + 1
+                continue
+            break
+        b = _k
         j = t.find(chr(10) + sep + chr(10), b)          # the call's close: a LINE of its own
         # the ARM's switch `#if` -- the FRAME's copy follows a real newline; the hook's own copy precedes b
         k = t.find(chr(10) + sw, b)
