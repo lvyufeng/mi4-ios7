@@ -204,8 +204,24 @@ if _sig is not None:
         nxt = next((l.strip() for l in lines[k + 1:k + 3] if l.strip()), "")
         return nxt.startswith("#endif") or nxt.startswith("#else")
 
+    # **Only braces that stand at COLUMN 0.** A `}` that already carries indentation is inside a
+    # rung block's own body - `patch_d13_frame_carrier.py` ships `\t}` as part of TRAP_BODY and
+    # compares that text byte for byte, so re-indenting it made the patcher answer "the tail is not
+    # preceded by this patcher's opener and body" on a tree it had itself written.
+    # **And never a brace that is part of a patcher's own body.** 1039's TRAP_BODY ends with `}` and
+    # the patcher compares that text byte for byte; indenting it made
+    # `patch_d13_frame_carrier.py --verify-off` answer "the tail is not preceded by this patcher's
+    # opener and body" on a tree the patcher itself wrote, which stopped park_1039 at P4 and so
+    # stopped the press. The body is recognised by its own first row.
+    _body_head = "/* 1039: THE FRAME CARRIER"
+    _bstart = next((k for k, l in enumerate(lines) if l.strip().startswith(_body_head)), None)
+    _bend = None
+    if _bstart is not None:
+        _bend = next((k for k in range(_bstart, len(lines))
+                      if lines[k].strip().startswith("#endif /* STAGE90_XNU_FRAME_CARRIER */")), None)
     _indent = [k for k in range(_sig + 1, _undef)
-               if lines[k] == "}" and _block_close(k)]
+               if lines[k] == "}" and _block_close(k)
+               and not (_bstart is not None and _bend is not None and _bstart < k < _bend)]
     for k in _indent:
         lines[k] = "\t" + lines[k]
     if _indent:

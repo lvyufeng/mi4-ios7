@@ -605,6 +605,13 @@ def verify_off(xnu):
         if t.count(TAIL) != 1:
             TAIL = K[2] + chr(10) + K[3] + chr(10)
         if t.count(TAIL) != 1:
+            # **1037's block sits between ours and 1025's close.** 1039 stages INTO 1037's frame (the
+            # carrier adds its rows on top of the re-staged fb rows), so the tail is
+            # `FRAME_CARRIER` -> `TRAP_FRAME` -> `USTACK_PROBE`, not straight to `USTACK_PROBE`.
+            # Measured: without this the whole probe answered "switch ABSENT (nothing staged)" on a
+            # tree that carries 26 xnu_live_fcr_ rows - park_1039's P4 gate refused on it.
+            TAIL = K[2] + chr(10) + K[3].replace("USTACK_PROBE", "TRAP_FRAME") + chr(10)
+        if t.count(TAIL) != 1:
             # a tree with a STRAY K[0] after the block (measured 2026-10-19: one stood between our
             # body-close and 1025's close, pushing both seams past 1): anchor the body at OUR open
             # line and count the closes after it instead of the whole file's.
