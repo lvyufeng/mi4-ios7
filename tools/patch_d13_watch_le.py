@@ -1503,10 +1503,40 @@ def seam_site(t):
         return None, "the sleh_abort hook anchor occurs %d time(s), expected 1" % t.count(HOOK_ANCHOR)
     if TRAP_FRAME_CLOSE + TRAP_ANCHOR in t:
         return t.replace(TRAP_FRAME_CLOSE + TRAP_ANCHOR, TRAP_ANCHOR), "1037's arm is empty"
-    if t.count(TRAP_ANCHOR) != 1:
-        return None, ("the TRAP_FRAME/USTACK_PROBE `#endif` seam occurs %d time(s), expected 1 "
-                      "(1037's block is not staged, or a displaced anchor)" % t.count(TRAP_ANCHOR))
-    return t, "anchors unique, switch absent"
+    if t.count(TRAP_ANCHOR) == 1:
+        return t, "anchors unique, switch absent"
+    # **Later rungs may stand between 1037's close and 1025's.** The anchor above wants the two
+    # closes ADJACENT, which was true when 1037 was the outermost block. On a tree that carries the
+    # inherited chain (abt_entry .. pc_carrier_caller) those blocks are spliced at the end of 1025's
+    # arm as well, so they sit between the closes and the adjacency is gone - measured: "the
+    # TRAP_FRAME/USTACK_PROBE `#endif` seam occurs 0 time(s), expected 1" on a tree where 1037 IS
+    # staged and the only thing in between is the chain. The seam is accepted when 1037's close is
+    # followed, at the same nesting, by exactly one 1025 close with only rung blocks in between.
+    _tc = TRAP_FRAME_CLOSE
+    if t.count(_tc) != 1:
+        return None, ("1037's close occurs %d time(s), expected 1" % t.count(_tc))
+    _i = t.index(_tc)
+    _d = 0
+    _j = _i
+    _found = None
+    while True:
+        _j = t.find(chr(10) + chr(35), _j + 1)
+        if _j < 0:
+            break
+        _row = t[_j + 1:t.find(chr(10), _j + 1) + 1]
+        if _row.startswith("#if"):
+            _d += 1
+        elif _row.startswith("#endif"):
+            if _d == 0 and _row.strip() == TRAP_USTACK_CLOSE.strip():
+                _found = _j + 1
+                break
+            _d -= 1
+            if _d < 0:
+                break
+    if _found is None:
+        return None, ("1037's close is not followed at its own depth by 1025's close (a displaced "
+                      "anchor or a partial edit)")
+    return t, "anchors unique behind the inherited chain, switch absent"
 
 
 def check_trap(xnu):
