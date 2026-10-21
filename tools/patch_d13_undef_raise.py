@@ -114,9 +114,19 @@ CHUNK = MARK + "\n" + ON_BRANCH + ORIG_BLOCK + "#endif\n" + _END + "\n"
 ALLOWED_IF_IDENTIFIERS = {
     "BOARD_CONFIG_QSD8250_LEO",
     "BOARD_CONFIG_ARMPBA8",
+    # 1038 wraps its SECOND copy of the hook in `#if !defined(WATCH_LE_H_STANDIN)`. Same reasoning as
+    # the other 1038 entries: OFF drives this identifier to its "not defined" arm, the block that names
+    # it compiles out, and the OFF text stays HEAD's. Without it the proof refuses before comparing
+    # anything ("those may come from a header"), which is what stopped the whole 1020 rung.
+    "WATCH_LE_H_STANDIN",
     "STAGE90_XNU_DYLD_WITNESS",
     "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
-    "WATCH_LE_STATICS_DEFINED", "chunk", "arm",  # 1038's chunk names (shared namespace: [[mi4-one-file-many-rungs]])
+    "WATCH_LE_STATICS_DEFINED", "chunk", "arm",  # 1038's chunk names
+    # 1038 also wraps its SECOND copy of the hook in `#if !defined(WATCH_LE_H_STANDIN)`. Same reasoning
+    # as the other 1038 entries: OFF drives this identifier to its "not defined" arm, the block that
+    # names it is compiled out, and the OFF text is HEAD's. Without it the proof refuses before it has
+    # compared anything - "those may come from a header" - which is what stopped the whole 1020 rung.
+
     "STAGE90_XNU_GLOBAL_FIX",
     "STAGE90_XNU_UNDEF_RAISE",
     "STAGE90_XNU_IOS7_TRAPS",

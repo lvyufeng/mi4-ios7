@@ -398,6 +398,7 @@ CHUNKS = ((BLOCK_ANCHOR, BLOCK, "witness block"), (CALL_ANCHOR, CALL, "witness c
 # (the file's pre-existing bytes) is emitted, leaving the OFF byte-identity this proof certifies intact.
 # An identifier a HEADER could invent would still be caught, because such a name is not in this set.
 ALLOWED_IF_IDENTIFIERS = {"BOARD_CONFIG_QSD8250_LEO", "BOARD_CONFIG_ARMPBA8", SWITCH,
+    "WATCH_LE_H_STANDIN",  # 1038: its hook's stand-in guard
                           "STAGE90_XNU_UNDEF_RAISE",
                           "STAGE90_XNU_WATCH_LE",  # 1038 (tools/patch_d13_watch_le.py)
                           "WATCH_LE_STATICS_DEFINED", "chunk", "arm",  # 1038's chunk names (shared namespace: [[mi4-one-file-many-rungs]])

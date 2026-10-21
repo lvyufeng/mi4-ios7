@@ -192,6 +192,16 @@ fi
 # 1038 names PC_CARRIER_CALLER as "this block's immediate predecessor", i.e. it goes last.
 python3 tools/stage_trap_half.py "$XNU_TREE" --chain \
   || { echo "REFUSING: the inherited rung chain did not stage in order"; exit 1; }
+# **1020 rides along**, and the build never staged it. The record carries STAGE90_XNU_UNDEF_RAISE=1,
+# and step 7 refuses an image whose `sleh_undef` still returns before the EXC_BAD_INSTRUCTION raise -
+# which is exactly what this rung fixes. Its own OFF byte-identity proof is what gates it, so it runs
+# after the chain (its directive namespace has to admit the identifiers the other rungs added).
+python3 -I tools/patch_d13_undef_raise.py "$XNU_TREE" | tail -2 | sed 's/^/  /' \
+  || { echo "REFUSING: 1020's udf-raise fix did not stage"; exit 1; }
+# **994 rides along too.** The record carries STAGE90_XNU_DYLD_WITNESS=1 and step 7 refuses an image
+# it never reached. Its stager owns the edit; the patcher's own OFF proof is the gate.
+bash tools/stage_d13_dyld_witness.sh | tail -2 | sed 's/^/  /' \
+  || { echo "REFUSING: 994's dyld witness did not stage"; exit 1; }
 python3 -I "$TF_PATCHER" "$XNU_TREE" --apply | tail -1 \
   || { echo "REFUSING: 1037's frame body did not stage on the composed seam"; exit 1; }
 python3 -I "$LE_PATCHER" "$XNU_TREE" --apply | tail -1 \
