@@ -28,7 +28,7 @@ TRAP="$XNU/osfmk/arm/trap.c"
 [[ -f $TRAP ]] || { echo "REFUSING: no $TRAP"; exit 1; }
 
 python3 - "$TRAP" <<'PY'
-import sys
+import os, sys
 
 tp = sys.argv[1]
 lines = open(tp).read().split("\n")
@@ -87,6 +87,73 @@ if s is not None and _inside:
         lines.insert(t, "static unsigned _wl_claim(void);")
         did.append("statics hoisted in front of their users")
 
+# (2b) THE DEFS INCLUDE.  It stands in the SEAT, i.e. inside sleh_abort, and the file it names
+#      DEFINES the statics - so C rejects every one of them ("function declared in block scope
+#      cannot have 'static' storage class", "function definition is not allowed here"), once per
+#      definition, 1199 errors in all. It belongs at file scope, in front of the seat.
+s = first(lambda l: l.strip() == '#include "watch_le_defs.inc"')
+if s is not None:
+    _sig = next((i for i, l in enumerate(lines) if l.startswith("void sleh_abort(void *context")), None)
+    if _sig is not None and s > _sig:
+        row = lines[s]
+        del lines[s]
+        _sig = next(i for i, l in enumerate(lines) if l.startswith("void sleh_abort(void *context"))
+        # the ABSOLUTE spelling: a relative include resolves against the compiler's cwd
+        row = row.replace('#include "watch_le_defs.inc"',
+                          '#include "' + os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(tp))),
+                                                    "arm", "watch_le_defs.inc") + '"')
+        lines[_sig:_sig] = [row]
+        did.append("the defs include moved to file scope, in front of sleh_abort")
+
+# (2c) THE STATICS, WHERE THEY STAND.  1038 writes them into the function the hook was anchored in,
+#      and that function is not always sleh_abort - `sleh_undef` opens with the same line - so they
+#      land inside a function body, where C rejects every definition ("function declared in block
+#      scope cannot have 'static' storage class"). They belong at file scope, in front of the seat.
+s = first(lambda l: l.strip() == "#ifndef WATCH_LE_STATICS_DEFINED")
+if s is not None:
+    end = next(i for i in range(s, len(lines))
+               if lines[i].strip() == "#endif /* WATCH_LE_STATICS_DEFINED */")
+    # **Is it inside a function?** Decided by the nearest function signature above it and that
+    # function's closing row (a `}` in column 0). Looking at the row before the block tells nothing:
+    # the block is preceded by `#define WATCH_LE_H_STANDIN 1`, not by a `{`.
+    _sig2 = None
+    for _j in range(s - 1, -1, -1):
+        if (lines[_j] and lines[_j][0] not in " \t"
+                and "(" in lines[_j] and ")" in lines[_j]
+                and not lines[_j].lstrip().startswith("#")):
+            _sig2 = _j
+            break
+    _inside = False
+    if _sig2 is not None:
+        _close2 = next((j for j in range(_sig2 + 1, s) if lines[j] == "}"), None)
+        _inside = _close2 is None          # no closing row before the block: still inside
+    if _inside:
+        block = lines[s:end + 1]
+        del lines[s:end + 1]
+        _sig = next(i for i, l in enumerate(lines) if l.startswith("void sleh_abort(void *context"))
+        lines[_sig:_sig] = block
+        did.append("the statics moved to file scope, in front of sleh_abort")
+
+# (2d) THE INLINE HOOK FRAME, OUTSIDE ANY FUNCTION.  1038's older form inlined the hook's body
+#      after the include; it names `reason` and `arm_ctx`, which exist only inside sleh_abort, so
+#      standing outside it the compiler says "use of undeclared identifier 'reason'". The frame the
+#      module uses is watch_le_hook.inc; this copy is redundant.
+_c = first(lambda l: l.strip().startswith("/* 1038's HOOK"))
+if _c is not None:
+    _sig = next(i for i, l in enumerate(lines) if l.startswith("void sleh_abort(void *context"))
+    _close = next((j for j in range(_sig + 1, len(lines)) if lines[j] == "}"), None)
+    if _close is not None and _c > _close:
+        _b = next(k for k in range(_c, len(lines)) if lines[k].strip() == "{")
+        _d, _e = 0, None
+        for j in range(_b, len(lines)):
+            _d += lines[j].count("{") - lines[j].count("}")
+            if _d == 0 and j > _b:
+                _e = j
+                break
+        if _e is not None:
+            del lines[_c:_e + 1]
+            did.append("the inline hook frame outside sleh_abort dropped (%d rows)" % (_e - _c + 1))
+
 # (3) THE SECOND DEFINE.
 n = len([l for l in lines if l.strip() == "#define STAGE90_XNU_WATCH_LE 1"])
 if n:
@@ -125,12 +192,11 @@ if i is None:
     sys.exit(0)
 sig = next(k for k, l in enumerate(lines) if l.startswith("void sleh_abort(void *context"))
 undef = next((k for k, l in enumerate(lines) if l.startswith("void sleh_undef(")), len(lines))
-depth, close = 0, None
-for j in range(sig, undef):
-    depth += lines[j].count("{") - lines[j].count("}")
-    if depth == 0 and j > sig and lines[j].strip() == "}":
-        close = j
-        break
+# **sleh_abort ends at the first row that is exactly `}` in column 0.** Counting braces does not
+# work here: the function's body carries preprocessor blocks whose rows open and close braces of
+# their own, so a depth count reaches zero long before the function does and the hook was judged
+# "inside sleh_abort" while it stood 500 rows below the real closing brace.
+close = next((j for j in range(sig + 1, undef) if lines[j] == "}"), None)
 if close is None:
     sys.exit("stage 4 failed: sleh_abort's closing brace not found")
 if i < close:
