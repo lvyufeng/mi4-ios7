@@ -97,6 +97,14 @@ extern void entry_live_write(const char *key, uint32_t value);
  * wrap. `CleanPoU_DcacheRegion` (the CPU->core clean) is not wrapped and stays. */
 extern void CleanPoU_DcacheRegion(uintptr_t va, unsigned length);
 extern void FlushPoC_DcacheRegion(uintptr_t va, unsigned length);
+/* The kernel timebase (`entry_timebase.c`), for the `usb_enum_settle` waits - bounded delays on CNTVCT,
+ * the same clock `entry_usb_dev.c` waits on. */
+extern uint64_t stage90_cntvct_read(void);
+/* 910a/910a2's gates, defined UNCONDITIONALLY in `entry_usb.c`/`entry_usb_dev.c` (so this file reads
+ * them as "did the arm that OWNS the PHY/device transition run", which is what the settle ladder's rung
+ * 0 depends on - see `usb_enum_settle_gate`). */
+extern uint32_t g_stage90_usb_usbmode;
+extern uint32_t g_stage90_usb_dev_usbmode_wrote;
 
 #if STAGE90_XNU_USB_ENUM
 
@@ -135,6 +143,28 @@ static uint32_t g_usb_enum_requests;
 static uint32_t g_usb_enum_resets;
 static uint32_t g_usb_enum_in_reads;
 
+/*
+ * P1: the recorded control state, so every request a host's probe sends is ANSWERED or RECORDED.
+ *   `g_usb_enum_remote_wakeup` - SET_FEATURE(device_remote_wakeup) set (1) or CLEAR_FEATURE cleared (0);
+ *                               GET_STATUS(device) reports it in bit 1, honest because it is recorded.
+ *   `g_usb_enum_bad_req`       - the last unanswered request, `bRequest | (type << 8)`, published once
+ *                               per distinct value; the status-only prime is no longer silent.
+ *   `g_usb_enum_settle`        - the `usb_enum_settle` var (header §4), clamped to 0..4.
+ *   `g_usb_enum_settle_gate`   - 1 iff both arm-time settle rungs ARE reachable: 910a and 910a2 ran AND
+ *                               the core is a device. Otherwise a wait would be an idle pass watched by
+ *                               nobody, and rung 0's answer would read as an arm that settled.
+ *   `g_usb_enum_settle_last`/`_n` - the rung last waited on and the wait count.
+ */
+static uint32_t g_usb_enum_remote_wakeup;
+static uint32_t g_usb_enum_bad_req;
+/* these four are UNCONDITIONAL: the stream's pump reads them with its own switch ON even when this
+ * arm's is OFF, and a per-file `static` would be a link error in exactly that combination (the build
+ * refuses STREAM=1 ENUM=0, and the checker refuses a static here so the pair cannot come back). */
+uint32_t g_usb_enum_settle = STAGE90_USB_ENUM_SETTLE_DEFAULT;
+uint32_t g_usb_enum_settle_gate;
+uint32_t g_usb_enum_settle_last;
+uint32_t g_usb_enum_settle_n;
+
 /* The last SETUP packet, and a small enum naming the state the poll last reached. Published so a press
  * is a reading, not a silence ([[mi4-silence-is-a-reading-only-if-success-is-silent]]). State names:
  *   0 idle (not armed)   1 armed (EP0 waiting)   2 setup-read   3 data-primed
@@ -167,6 +197,83 @@ static volatile uint32_t *usb_enum_td(uint32_t idx, uint32_t off)
 static uint32_t usb_enum_pa(const void *p)
 {
     return (uint32_t)(uintptr_t)p;
+}
+
+/* =================================================================================================
+ * P1: the settle point (header §4) and the recorded answers' publication.
+ * =================================================================================================
+ * `usb_enum_settle_wait(rung)` is a DELAY, not a poll of a device: it waits until CNTVCT has advanced
+ * one second (counted in CNTFRQ, not a transcribed 19.2 MHz), and it waits only where the var names the
+ * rung AND the gate says someone downstream can see the result. The gate is read LIVE:
+ *   910a ran (`g_stage90_usb_usbmode != 0`, a capture register that is never legitimately 0 for this
+ *   core) and 910a2 ran (`g_stage90_usb_dev_usbmode_wrote != 0`) - a settle point between EP0 arming and
+ *   the PHY/device-mode transition would be a wait nobody downstream can answer, so with either arm off
+ *   the var is honoured as OFF and `_settle_gate = 0` says why it did not wait.
+ */
+static void usb_enum_settle_wait(uint32_t rung);
+
+static uint32_t usb_enum_settle_wanted(uint32_t rung)
+{
+    if (g_usb_enum_settle < rung)
+        return 0u;
+    if (g_usb_enum_settle_gate == 0u)
+        return 0u;
+    switch (g_usb_enum_settle_last) {
+    case 1u:   /* SET_ADDRESS: only the address rung is gated */
+    case 2u:   /* SET_CONFIGURATION */
+    case 3u:   /* EP1-IN data */
+        return 0u;   /* a later answer already stands in for this rung */
+    case 4u:   /* the stream's first chunk: waited in the stream's pump (entry_usb_stream.c), and
+                * only after rung 3 has stood aside, so the two rungs never wait back to back */
+        return 0u;
+    default:
+        return 1u;
+    }
+}
+
+static void usb_enum_settle_wait(uint32_t rung)
+{
+    uint32_t freq, t0, now;
+
+    if (usb_enum_settle_wanted(rung) == 0u)
+        return;
+    __asm__ volatile ("mrc p15, 0, %0, c14, c0, 0" : "=r"(freq));
+    if (freq == 0u)
+        return;   /* no clock to wait on: not a wait, and `_settle_last` stays at what it was */
+    g_usb_enum_settle_last = rung;
+    g_usb_enum_settle_n++;
+    t0 = (uint32_t)stage90_cntvct_read();
+    do {
+        now = (uint32_t)stage90_cntvct_read();
+    } while ((uint32_t)(now - t0) < freq);
+}
+
+/* Record an unanswered request as `bRequest | (bRequestType << 8)` - once per distinct value, so a host
+ * that repeats it does not flood the console, and the FIRST unanswered one is the reading that matters. */
+static void usb_enum_bad(uint32_t bRequest, uint32_t bRequestType)
+{
+    uint32_t req = (bRequest & 0xffu) | ((bRequestType & 0xffu) << 8);
+
+    if (req == g_usb_enum_bad_req)
+        return;
+    g_usb_enum_bad_req = req;
+    USB_ENUM_LIVE("xnu_live_usb_enum_bad_req", req);
+}
+
+/* Find `needle` in the IN buffer and overwrite it with `ch`, returning the index. `needle == 0` is the
+ * "zero the buffer" call: written this way (a scan for a zero, not a `memset`) so the answer path uses
+ * no library routine - the same reason every buffer in this image is filled by hand. */
+static uint32_t usb_enum_in_find(uint8_t needle, uint8_t ch)
+{
+    uint32_t i;
+
+    for (i = 0u; i < sizeof(g_usb_in_buf); i++) {
+        if (g_usb_in_buf[i] == needle) {
+            g_usb_in_buf[i] = ch;
+            return i;
+        }
+    }
+    return (uint32_t)-1;   /* the buffer is not all-`needle`: a caller's struct is already there */
 }
 
 /*
@@ -379,6 +486,7 @@ static void usb_enum_arm_ep_in(void)
     g_usb_in_buf[2] = (uint8_t)((STAGE90_USB_ENUM_IN_MAGIC >> 16) & 0xffu);
     g_usb_in_buf[3] = (uint8_t)((STAGE90_USB_ENUM_IN_MAGIC >> 24) & 0xffu);
     usb_enum_prime(STAGE90_USB_ENUM_QH_IN1, USB_ENUM_TD_IN1, g_usb_in_buf, 4u, 1u);
+    usb_enum_settle_wait(3u);   /* rung 3: EP1-IN's data is primed and a host can read it */
 #endif
 }
 
@@ -458,35 +566,89 @@ static void usb_enum_ui(void)
         bRequest = setup[1];
         wValue = (uint32_t)setup[2] | ((uint32_t)setup[3] << 8);
         wLength = (uint32_t)setup[6] | ((uint32_t)setup[7] << 8);
-        (void)wValue;
 
+        /*
+         * P1's coverage: every standard request a host's probe sends has a case here that ANSWERS it or
+         * RECORDS it; only `SET_DESCRIPTOR` (no answer is owed) is left for the no-data status phase, and
+         * it still RECORDS the request. `usb_enum_in_find(0, 0)` preloads the IN buffer to zero before
+         * any answer is built - the status-only prime used to send a STALE buffer.
+         */
         if ((bRequestType & STAGE90_USB_ENUM_TYPE_MASK) == STAGE90_USB_ENUM_TYPE_STANDARD) {
-            if (bRequest == STAGE90_USB_ENUM_REQ_GET_DESCRIPTOR && (bRequestType & STAGE90_USB_ENUM_DIR_IN)) {
-                if (usb_enum_get_descriptor(setup) != 0u) {
+            (void)usb_enum_in_find(0u, 0u);
+            switch (bRequest) {
+            case STAGE90_USB_ENUM_REQ_GET_DESCRIPTOR:
+                if ((bRequestType & STAGE90_USB_ENUM_DIR_IN) && usb_enum_get_descriptor(setup) != 0u) {
                     g_usb_enum_state = USB_ENUM_ST_DATA;
                     return;
                 }
-                /* no data: fall through to a status-only response */
-            } else if (bRequest == STAGE90_USB_ENUM_REQ_SET_ADDRESS) {
+                /* a descriptor we do not have (a host's ask for DEVICE_QUALIFIER on FS, or an OUT
+                 * direction): no data owed, status only - and the ask is RECORDED, not silence. */
+                usb_enum_bad(bRequest, bRequestType);
+                break;
+            case STAGE90_USB_ENUM_REQ_SET_ADDRESS:
                 g_usb_enum_addr = wValue & 0x7fu;
                 usb_enum_write32(STAGE90_USB_DEVICEADDR,
                                  (g_usb_enum_addr << STAGE90_USB_ENUM_DEVICEADDR_ADDR_SHIFT)
                                  | STAGE90_USB_ENUM_DEVICEADDR_USBADRA);
+                g_usb_enum_settle_gate = (g_stage90_usb_dev_usbmode_wrote != 0u
+                                          && (usb_enum_read32(STAGE90_USB_USBMODE)
+                                              & STAGE90_USB_USBMODE_CM) == STAGE90_USB_USBMODE_CM_DEVICE)
+                                         ? 1u : 0u;
                 g_usb_enum_state = USB_ENUM_ST_ADDRESS;
-            } else if (bRequest == STAGE90_USB_ENUM_REQ_GET_STATUS && (bRequestType & STAGE90_USB_ENUM_DIR_IN)) {
-                g_usb_in_buf[0] = 0u;   /* not self-powered, no remote wakeup - the honest value */
-                g_usb_in_buf[1] = 0u;
+                USB_ENUM_LIVE("xnu_live_usb_enum_addr", g_usb_enum_addr);
+                usb_enum_settle_wait(1u);
+                break;
+            case STAGE90_USB_ENUM_REQ_GET_STATUS:
+                if ((bRequestType & STAGE90_USB_ENUM_DIR_IN) == 0u)
+                    usb_enum_bad(bRequest, bRequestType);
+                /* bit 0 self-powered = 0; bit 1 remote wakeup = what SET_FEATURE actually recorded. */
+                g_usb_in_buf[0] = 0u;
+                g_usb_in_buf[1] = (g_usb_enum_remote_wakeup != 0u) ? 0x02u : 0x00u;
                 usb_enum_prime(STAGE90_USB_ENUM_QH_IN0, USB_ENUM_TD_IN0, g_usb_in_buf,
                                (wLength < 2u) ? wLength : 2u, 1u);
                 g_usb_enum_state = USB_ENUM_ST_DATA;
                 return;
-            } else if (bRequest == STAGE90_USB_ENUM_REQ_SET_CONFIGURATION) {
+            case STAGE90_USB_ENUM_REQ_GET_CONFIGURATION:
+                /* answered FROM the recorded value (header §4): the current configuration, 0 if unset. */
+                g_usb_in_buf[0] = (g_usb_enum_configured != 0u) ? STAGE90_USB_ENUM_CONFIG_VALUE : 0u;
+                usb_enum_prime(STAGE90_USB_ENUM_QH_IN0, USB_ENUM_TD_IN0, g_usb_in_buf,
+                               (wLength != 0u) ? 1u : 0u, 1u);
+                g_usb_enum_state = USB_ENUM_ST_DATA;
+                return;
+            case STAGE90_USB_ENUM_REQ_SET_CONFIGURATION:
                 g_usb_enum_configured = (wValue != 0u) ? 1u : 0u;
                 if (g_usb_enum_configured)
                     usb_enum_arm_ep_in();
                 g_usb_enum_state = USB_ENUM_ST_CONFIG;
+                USB_ENUM_LIVE("xnu_live_usb_enum_config", wValue);
+                usb_enum_settle_wait(2u);
+                break;
+            case STAGE90_USB_ENUM_REQ_SET_FEATURE:
+            case STAGE90_USB_ENUM_REQ_CLEAR_FEATURE:
+                /* status-only AND recorded: the device_remote_wakeup selector is the one feature this
+                 * port has; any other selector is recorded as a bad request rather than silently
+                 * succeeding. */
+                if (wValue == STAGE90_USB_ENUM_FEATURE_REMOTE_WAKEUP
+                    && (bRequestType & STAGE90_USB_ENUM_RECIP_MASK) == STAGE90_USB_ENUM_RECIP_DEVICE) {
+                    g_usb_enum_remote_wakeup =
+                        (bRequest == STAGE90_USB_ENUM_REQ_SET_FEATURE) ? 1u : 0u;
+                    USB_ENUM_LIVE((bRequest == STAGE90_USB_ENUM_REQ_SET_FEATURE)
+                                      ? "xnu_live_usb_enum_feature_set"
+                                      : "xnu_live_usb_enum_feature_clear",
+                                  wValue);
+                } else {
+                    usb_enum_bad(bRequest, bRequestType);
+                }
+                break;
+            default:
+                /* SET_DESCRIPTOR, SYNCH_FRAME, and anything the host invents: recorded, status only. */
+                usb_enum_bad(bRequest, bRequestType);
+                break;
             }
-            /* GET_CONFIGURATION / CLEAR_FEATURE / SET_FEATURE: status-only. */
+        } else {
+            /* class/vendor: nothing this port implements, and the prime below is the status that says
+             * "no data" - recorded so the host's own ask is in the log. */
+            usb_enum_bad(bRequest, bRequestType);
         }
 
         /* The status phase for a no-data request goes IN (ep0in), zero length, and is the end of it. */
@@ -546,6 +708,11 @@ void entry_usb_enum_poll(void)
     if (g_usb_enum_done == 0u) {
         g_usb_enum_done = 1u;
         usb_enum_arm_ep0();
+        /* rung 0 (CMD): the full arm-time gate, read AFTER the arm so it names what this poll can act
+         * on - 910a ran, 910a2 ran, and the core is a device (the gate above already said the last). */
+        g_usb_enum_settle_gate = (g_stage90_usb_usbmode != 0u && g_stage90_usb_dev_usbmode_wrote != 0u)
+                                 ? 1u : 0u;
+        usb_enum_settle_wait(0u);
         g_usb_enum_state = USB_ENUM_ST_ARMED;
         USB_ENUM_LIVE("xnu_live_usb_enum_armed", 1u);
         USB_ENUM_LIVE("xnu_live_usb_enum_intr_wrote", STAGE90_USB_ENUM_INTR_VALUE);

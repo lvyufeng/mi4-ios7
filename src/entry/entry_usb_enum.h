@@ -164,6 +164,27 @@
 #define STAGE90_USB_ENUM_TYPE_MASK      0x60u  /* bits [6:5]: 0=standard, 1=class, 2=vendor.         */
 #define STAGE90_USB_ENUM_TYPE_STANDARD  0x00u
 #define STAGE90_USB_ENUM_RECIP_MASK     0x1fu  /* bits [4:0].                                        */
+#define STAGE90_USB_ENUM_RECIP_DEVICE   0x00u  /* the recipient a device_remote_wakeup names.         */
+#define STAGE90_USB_ENUM_RECIP_INTERFACE 0x01u
+
+/* The feature selectors `SET_FEATURE`/`CLEAR_FEATURE` carry in `wValue` (ch9 `USB_FEATURE_*`). A device
+ * records the remote-wakeup selector; any other selector is a `bad_req`, not a silent success. */
+#define STAGE90_USB_ENUM_FEATURE_REMOTE_WAKEUP 1u
+
+/*
+ * The `usb_enum_settle` console var (design §4, "settling"): 0..4, default 2. The fastboot boot's "no
+ * device on the bus" is ambiguous - a host that probes before the entry image has armed EP0 sees nothing,
+ * a host that probes after SET_ADDRESS but before the device has taken it sees the wrong answer - so the
+ * arm names where the settle points are; this var SELECTS where it waits, and each rung of the ladder is
+ * one more second of the kernel timebase (`stage90_cntvct_read` at CNTFRQ):
+ *   0  none                1  after SET_ADDRESS         2  after SET_CONFIGURATION (the default)
+ *   3  after EP1-IN's data is primed                   4  after the stream's first chunk is primed
+ * The wait is a BOUNDED busy-wait on CNTVCT (a delay, not a poll of a device), so a host that never
+ * asks costs the idle path one second per idle branch - the cost §4 accepts - and never a hang.
+ */
+#define STAGE90_USB_ENUM_SETTLE_MIN     0u
+#define STAGE90_USB_ENUM_SETTLE_MAX     4u
+#define STAGE90_USB_ENUM_SETTLE_DEFAULT 2u
 
 /*
  * The device descriptor's mutable values, chosen here and published in the arm's own record. `idVendor`

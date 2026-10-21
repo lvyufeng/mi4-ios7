@@ -26,18 +26,31 @@ recompute the offset from `struct ci13xxx_qh` ([[mi4-one-value-two-definitions]]
 4. **THE MODE GATE, at the source** - the same `!= CM_DEVICE && FORCE == 0` form `entry_usb_dev.c` uses.
 
 5. **THE SWITCH REACHED THE IMAGE, both ways.**
+
+6. **P1's REQUEST COVERAGE (value-based).** The seven standard requests a host's probe sends, read out of
+   the `switch (bRequest)` in `usb_enum_ui` by finding its `case STAGE90_USB_ENUM_REQ_*` labels - never a
+   hand list of line numbers - each must be ANSWERED (a `return` after a prime) or RECORDED (a `break`
+   that falls into the shared status phase, with `usb_enum_bad` reached on the paths that record). Any
+   other bRequest must reach `usb_enum_bad` (the `default:` arm), and the IN buffer must be preloaded to
+   zero before the switch (the status-only prime used to send a stale buffer).
+
+7. **ONE DEFINITION for the descriptor contract.** No VID/PID value literal and no endpoint-address
+   literal outside `entry_usb_enum.h` (the stream arm and the headers must re-use the names).
 """
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
 
 ENUM_H = os.path.join(REPO_ROOT, "src/entry/entry_usb_enum.h")
 ENUM_C = os.path.join(REPO_ROOT, "src/entry/entry_usb_enum.c")
+STREAM_C = os.path.join(REPO_ROOT, "src/entry/entry_usb_stream.c")
 DEV_H = os.path.join(REPO_ROOT, "src/entry/entry_usb_dev.h")
 USB_H = os.path.join(REPO_ROOT, "src/entry/entry_usb.h")
 ANDROID = os.path.join(REPO_ROOT, "external/android_kernel_xiaomi_cancro")
@@ -86,6 +99,13 @@ STRUCT_OFFSETS = {
 }
 
 
+# The characters a hex literal may neighbour and still be a standalone token (`0x18d1u`, `(0x18d1)`,
+# `=0x18d1;`, end of line): everything that is NOT an ASCII letter, digit, or `_`.
+LITERAL_SEPARATORS = frozenset(chr(c) for c in range(0x80)
+                               if not (0x30 <= c <= 0x39 or 0x41 <= c <= 0x5a or 0x61 <= c <= 0x7a
+                                       or c == 0x5f))
+
+
 class Refused(Exception):
     pass
 
@@ -100,6 +120,8 @@ def read(path):
 
 
 def strip_comments(text):
+    # `re.sub` RETURNS the text: without `text =` this function returned only a run of spaces (the
+    # existing checks were run over that, which is why several of them could never read a comment).
     text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
     text = re.sub(r"//[^\n]*", " ", text)
     return text
@@ -233,7 +255,11 @@ def struct_offsets(text):
 
 def check_sources():
     enum_text = read(ENUM_H)
-    enum_body = strip_comments(read(ENUM_C))
+    raw_body = read(ENUM_C)
+    # comments become a SPACE each (`strip_comments`): replacing `/*...*/` with nothing glues the code
+    # on either side together (`(...) /* c */ switch` -> `(...)switch`), which is how a parser misses a
+    # real switch.
+    enum_body = strip_comments(raw_body)
     problems = []
 
     vals = header_values(enum_text)
@@ -382,8 +408,296 @@ def check_sources():
                             "before the check that bounds them")
     say("  mode gate: the `!= CM_DEVICE && FORCE == 0` form is present and returns")
 
+    problems.extend(check_request_coverage(enum_text, enum_body, vals))
+    problems.extend(check_one_definition(enum_text, enum_body))
+
     if problems:
         raise Refused("\n".join("  - " + p for p in problems))
+
+
+# P1: the seven standard requests a host's probe sends (ch9, tablet's enumeration: Linux's
+# `usb_get_device_descriptor`, `usb_set_address`, the two config reads, `usb_get_configuration`, ...).
+# Each must be ANSWERED or RECORDED; the set is the clause, the switch is the evidence.
+PROBE_REQUESTS = [
+    "STAGE90_USB_ENUM_REQ_GET_STATUS",
+    "STAGE90_USB_ENUM_REQ_CLEAR_FEATURE",
+    "STAGE90_USB_ENUM_REQ_SET_FEATURE",
+    "STAGE90_USB_ENUM_REQ_SET_ADDRESS",
+    "STAGE90_USB_ENUM_REQ_GET_DESCRIPTOR",
+    "STAGE90_USB_ENUM_REQ_GET_CONFIGURATION",
+    "STAGE90_USB_ENUM_REQ_SET_CONFIGURATION",
+]
+
+
+def match_paren(text, open_at):
+    """The index of the bracket closing the one at `open_at` (or -1).
+
+    Both bracket KINDS are counted together (the body's braces interleave with `(a) && (b) {` gates),
+    and preprocessor lines are skipped whole: a `#if FOO` names no bracket, and a `{`-counting regex
+    over it is the "directive is not code" defect [[mi4-blank-line-splits-a-spliced-row-group]].
+    Plain `str` walking, not `re` - see `probe()`.
+    """
+    depth = 0
+    i = open_at
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\n" and i + 1 < n and text[i + 1] == "#":
+            nl = text.find("\n", i + 1)
+            i = n if nl == -1 else nl
+            continue
+        if ch in "({":
+            depth += 1
+        elif ch in ")}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+IDENT_START = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_")
+IDENT_CHARS = IDENT_START | frozenset("0123456789")
+
+
+def _ident_at(text, i):
+    if i >= len(text) or text[i] not in IDENT_START:
+        return None, i
+    j = i
+    while j < len(text) and text[j] in IDENT_CHARS:
+        j += 1
+    return text[i:j], j
+
+
+def _skip_ws(text, i):
+    while i < len(text) and text[i] in " \t\r\n":
+        i += 1
+    return i
+
+
+def switch_arms(bare):
+    """`switch (bRequest) { ... }` in the comment-stripped `bare` -> ({case-name: arm-code}, default-arm).
+
+    Walked character by character ([[the switch is parsed by VALUE]]): the `switch` whose controlling
+    expression is exactly `bRequest`, its body brace, and each `case NAME:`/`default:` label up to the
+    next label or the body's close. A fall-through (`case A:` with no statement before the next label)
+    resolves to the first arm that has code. Comments are already gone (`bare`), so a doc comment that
+    SAYS "returns" cannot answer for the code - the defect that let a silent request pass as covered.
+    """
+    i = 0
+    while True:
+        i = bare.find("switch", i)
+        if i == -1:
+            return None, None
+        j = _skip_ws(bare, i + 6)
+        if j < len(bare) and bare[j] == "(":
+            k = _skip_ws(bare, j + 1)
+            name, k = _ident_at(bare, k)
+            k = _skip_ws(bare, k)
+            if name == "bRequest" and k < len(bare) and bare[k] == ")":
+                k = _skip_ws(bare, k + 1)
+                if k < len(bare) and bare[k] == "{":
+                    break
+        i += 6
+    open_at = k
+    close_at = match_paren(bare, open_at)
+    if close_at == -1:
+        return None, None
+    inner = bare[open_at + 1:close_at]
+
+    labels = []   # (kind, name, start-of-code)
+    i = 0
+    while i < len(inner):
+        name, j = _ident_at(inner, i)
+        if name in ("case", "default"):
+            k = _skip_ws(inner, j)
+            if name == "default":
+                if k < len(inner) and inner[k] == ":":
+                    labels.append(("default", None, k + 1, i))
+                    i = k + 1
+                    continue
+            else:
+                cname, k = _ident_at(inner, k)
+                k = _skip_ws(inner, k)
+                if cname and k < len(inner) and inner[k] == ":":
+                    labels.append(("case", cname, k + 1, i))
+                    i = k + 1
+                    continue
+            i = j
+            continue
+        i = j if name else i + 1
+
+    arms, default = {}, None
+    for idx, (kind, cname, start, _label_at) in enumerate(labels):
+        end = labels[idx + 1][3] if idx + 1 < len(labels) else len(inner)
+        code = inner[start:end].strip()
+        if kind == "default":
+            default = code
+        else:
+            arms[cname] = code
+    order = [cname for kind, cname, _start, _at in labels if kind == "case"]
+    resolved = {}
+    for back, cname in enumerate(order):
+        code, j = arms[cname], back
+        while not code and j + 1 < len(order):
+            j += 1
+            code = arms[order[j]]
+        resolved[cname] = code
+    return resolved, default
+
+
+def _statement_call(code, call):
+    """Is `call(` present as an UNCONDITIONAL statement of `code` (first non-space, or after `;`/`}`)?"""
+    needle = call + "("
+    at = code.find(needle)
+    while at != -1:
+        before = code[:at].rstrip()
+        if before == "" or before[-1] in ";}":
+            return True
+        at = code.find(needle, at + 1)
+    return False
+
+
+def _has_word(code, word):
+    """`word` as a whole identifier in `code` (so `return;` is not found inside `return_value`)."""
+    at = code.find(word)
+    while at != -1:
+        end = at + len(word)
+        before_ok = at == 0 or code[at - 1] not in IDENT_CHARS
+        after_ok = end >= len(code) or code[end] not in IDENT_CHARS
+        if before_ok and after_ok:
+            return True
+        at = code.find(word, at + 1)
+    return False
+
+
+def check_request_coverage(enum_text, enum_body, vals):
+    problems = []
+    if len(re.findall(r"switch\s*\(\s*bRequest\s*\)", enum_body)) != 1:
+        problems.append("entry_usb_enum.c does not have exactly ONE `switch (bRequest)`: the request "
+                        "coverage is read from that one switch (a second would be a second definition of "
+                        "the dispatch) [[mi4-one-value-two-definitions]]")
+    arms, default = switch_arms(enum_body)
+    if arms is None:
+        problems.append("entry_usb_enum.c has no `switch (bRequest) { ... }`: nothing answers a request")
+        return problems
+
+    answered = recorded = 0
+    for name in PROBE_REQUESTS:
+        short = name[len("STAGE90_USB_"):]
+        if short not in vals:
+            problems.append("entry_usb_enum.h defines no %s, but a host's probe sends it" % name)
+            continue
+        if name not in arms:
+            problems.append("the `switch (bRequest)` has no `case %s`: a host's probe sends it and would "
+                            "fall to the status-only default - it must be ANSWERED or RECORDED" % name)
+            continue
+        arm = arms[name]
+        recorded_here = _statement_call(arm, "usb_enum_bad") or _statement_call(arm, "USB_ENUM_LIVE")
+        if _has_word(arm, "return") and not _has_word(arm, "break"):
+            if "usb_enum_prime(" not in arm:
+                problems.append("the `case %s` returns without priming an answer" % name)
+                continue
+            answered += 1
+        elif _has_word(arm, "break"):
+            # RECORDED: a `usb_enum_bad(...)`/`USB_ENUM_LIVE(...)` as an UNCONDITIONAL statement, or the
+            # request falls to the shared status phase and is invisible ([[silence is a reading...]]).
+            if not recorded_here:
+                problems.append("the `case %s` breaks to the status-only phase without an unconditional "
+                                "`usb_enum_bad(...)`/`USB_ENUM_LIVE(...)`: a request that reaches it is "
+                                "neither answered nor recorded - silence "
+                                "[[mi4-silence-is-a-reading-only-if-success-is-silent]]" % name)
+                continue
+            recorded += 1
+        else:
+            problems.append("the `case %s` neither returns an answer nor records: a host's probe sends it"
+                            % name)
+    if default is None:
+        problems.append("the `switch (bRequest)` has no `default:` arm: an unknown bRequest would fall "
+                        "to the silent status-only prime")
+    elif not _statement_call(default, "usb_enum_bad"):
+        problems.append("the `switch (bRequest)` default arm does not call `usb_enum_bad`: any other "
+                        "bRequest is a silent status-only prime again")
+    # the preload: the IN buffer is zeroed BEFORE the first case label, so a stale answer cannot be sent.
+    sw = enum_body.find("switch (bRequest)")
+    sw = sw if sw != -1 else enum_body.find("switch(bRequest)")
+    sw = sw if sw != -1 else 0
+    window = "".join(enum_body[max(0, sw - 400):sw + 60].split())
+    if "usb_enum_in_find(0u,0u)" not in window:
+        problems.append("entry_usb_enum.c does not preload the IN buffer to zero (`usb_enum_in_find(0u, "
+                        "0u)`) before the switch: the status-only prime would send whatever the last "
+                        "answer left")
+    say("  request coverage: %d of %d probe requests answered (%d) or recorded (%d); default records; "
+        "IN buffer preloaded" % (answered + recorded, len(PROBE_REQUESTS), answered, recorded))
+    return problems
+
+
+def literal_present(text, value, separators=LITERAL_SEPARATORS):
+    """Is `value` a STANDALONE token in `text`? By `str.find` and a character set - NOT a regex.
+
+    This host's `re` mis-evaluates `[^a-z]` (it excluded `u`), a `(?!u)` lookahead and `$` (which skipped
+    a `;`) - measured 2026-10-20 with both `/usr/bin/python3` and the conda 3.10. So a check whose job is
+    to SEE a literal is written against `str`, which has no pattern engine to be wrong.
+    """
+    pieces = text.split(value)
+    pos = 0
+    for k, piece in enumerate(pieces):
+        if k > 0:   # the match after index k-1 lies at [pos - len(value), pos)
+            start = pos - len(value)
+            before_ok = start == 0 or text[start - 1] in separators
+            if before_ok and piece == "":
+                return True                     # the token runs to the end of the text
+            after = piece[0] if piece else ""
+            if before_ok and after in separators:
+                return True
+        pos += len(piece)
+        if k + 1 < len(pieces):
+            pos += len(value)
+    return False
+
+
+def check_one_definition(enum_text, enum_body):
+    """No VID/PID value literal and no endpoint-address literal outside `entry_usb_enum.h`.
+
+    `enum_body` is the caller's comment-stripped ENUM_C (the caller may be reading a temp copy).
+    """
+    problems = []
+    files = [ENUM_C,
+             STREAM_C,
+             os.path.join(REPO_ROOT, "src/entry/entry_usb.h"),
+             os.path.join(REPO_ROOT, "src/entry/entry_usb_dev.h"),
+             os.path.join(REPO_ROOT, "src/entry/entry_usb_dev.c")]
+    for path in files:
+        if not os.path.isfile(path):
+            continue
+        text = strip_comments(read(path))
+        rel = os.path.relpath(path, REPO_ROOT)
+        for value in ("0x18d1", "0x0910"):
+            if literal_present(text, value):
+                problems.append("%s carries the literal %s: the idVendor/idProduct value belongs to "
+                                "entry_usb_enum.h alone (STAGE90_USB_ENUM_ID_VENDOR/ID_PRODUCT) "
+                                "[[mi4-one-value-two-definitions]]" % (rel, value))
+    # the endpoint DESCRIPTOR's bEndpointAddress: the token two rows before `EP_IN_ATTR` must be the
+    # name, never a literal (a second spelling of EP_IN_EPADDR in the bytes the host reads).
+    rows = None
+    m = re.search(r"static\s+const\s+uint8_t\s+g_usb_cfg_desc\s*\[[^\]]*\]\s*=\s*\{(.*?)\};",
+                  enum_body, re.S)
+    if m:
+        rows = [r.strip() for r in m.group(1).split(",") if r.strip()]
+    if not rows:
+        problems.append("entry_usb_enum.c has no `g_usb_cfg_desc` array: the configuration descriptor "
+                        "cannot be read")
+    else:
+        for idx, row in enumerate(rows):
+            if row == "STAGE90_USB_ENUM_EP_IN_ATTR":
+                if idx < 1 or rows[idx - 1] != "STAGE90_USB_ENUM_EP_IN_EPADDR":
+                    problems.append("the endpoint descriptor's bEndpointAddress row is %r: it must be "
+                                    "`STAGE90_USB_ENUM_EP_IN_EPADDR` (entry_usb_enum.h) "
+                                    "[[mi4-one-value-two-definitions]]"
+                                    % (rows[idx - 1] if idx >= 1 else "(missing)"))
+    say("  one definition: no VID/PID/EP address literal outside entry_usb_enum.h (%d files)"
+        % len(files))
+    return problems
 
 
 def record_switch(image_path, key):
@@ -447,18 +761,34 @@ def check_image(image):
     _ = stores_window
 
 
-def selftest():
-    original_h = read(ENUM_H)
-    original_c = read(ENUM_C)
-    cases = []
 
-    def with_edit(name, path, old, new, expect_in):
-        text = original_h if path == "h" else original_c
+def selftest():
+    """The falsification battery. Each mutation is applied to a TEMP COPY of the lane files (the real tree
+    is never written - a checker that edits the tree and dies mid-case leaves it mutated), and
+    `check_sources` is pointed at the copy through its module globals."""
+    global ENUM_H, ENUM_C, STREAM_C
+    real = (ENUM_H, ENUM_C, STREAM_C)
+    originals = {p: read(p) for p in real}
+    cases = []
+    scratch = tempfile.mkdtemp(prefix="enum-selftest-")
+    copies = {}
+    for p in real:
+        copies[p] = os.path.join(scratch, os.path.basename(p))
+        shutil.copyfile(p, copies[p])
+
+    def with_edit(name, path, old, new, expect_in=None):
+        global ENUM_H, ENUM_C, STREAM_C
+        if expect_in is None:
+            expect_in = name
+        target = {"h": ENUM_H, "c": ENUM_C, "stream": STREAM_C}[path]
+        text = originals[target]
         mutated = text.replace(old, new, 1)
         if mutated == text:
             cases.append((name, "the mutation did not apply: %r not in %s" % (old, path), False))
             return
-        open(ENUM_H if path == "h" else ENUM_C, "w").write(mutated)
+        open(copies[target], "w").write(mutated)
+        saved = (ENUM_H, ENUM_C, STREAM_C)
+        ENUM_H, ENUM_C, STREAM_C = copies[real[0]], copies[real[1]], copies[real[2]]
         try:
             check_sources()
             cases.append((name, "check_sources accepted the mutation (it should have refused)", False))
@@ -466,8 +796,8 @@ def selftest():
             cases.append((name, str(exc).strip().splitlines()[0] if str(exc).strip() else "(refused)",
                           expect_in in str(exc)))
         finally:
-            open(ENUM_H, "w").write(original_h)
-            open(ENUM_C, "w").write(original_c)
+            ENUM_H, ENUM_C, STREAM_C = saved
+            open(copies[target], "w").write(text)
 
     # The qh setup offset drifts back to the wrong 32 (the defect this guard exists for).
     with_edit("the qh setup offset drifts to 32", "h",
@@ -500,7 +830,29 @@ def selftest():
               "(usbmode & STAGE90_USB_USBMODE_CM) != STAGE90_USB_USBMODE_CM_DEVICE",
               "(usbmode & STAGE90_USB_USBMODE_CM) != 0xf0f0u",
               "CM_DEVICE")
+    # P1: one answer deleted -> a host's probe request falls to the status-only default.
+    with_edit("GET_CONFIGURATION's answer is deleted", "c",
+              "            case STAGE90_USB_ENUM_REQ_GET_CONFIGURATION:\n",
+              "", "GET_CONFIGURATION")
+    # default: falls silent.
+    with_edit("the default arm stops recording", "c",
+              "                /* SET_DESCRIPTOR, SYNCH_FRAME, and anything the host invents: recorded, status only. */\n                usb_enum_bad(bRequest, bRequestType);",
+              "                /* silent */", "default")
+    # GET_STATUS's answer becomes a silent status phase (prime removed, fall to the shared status).
+    with_edit("GET_STATUS's answer stops priming", "c",
+              "                usb_enum_prime(STAGE90_USB_ENUM_QH_IN0, USB_ENUM_TD_IN0, g_usb_in_buf,\n"
+              "                               (wLength < 2u) ? wLength : 2u, 1u);\n",
+              "                (void)wLength;\n", "GET_STATUS")
+    # a second VID appears in the stream arm.
+    with_edit("a second idVendor literal appears in the stream arm", "stream",
+              "uint32_t entry_usb_stream_ring_publish(const void *buf, uint32_t len)",
+              "uint32_t entry_usb_stream_ring_publish(const void *buf, uint32_t len)\n{\n    uint32_t vid = 0x18d1, pid = 0x0910;", "idVendor")
+    # the IN-buffer preload disappears.
+    with_edit("the IN-buffer preload disappears", "c",
+              "            (void)usb_enum_in_find(0u, 0u);\n",
+              "", "preload")
 
+    shutil.rmtree(scratch, ignore_errors=True)
     refused = sum(1 for _n, _r, ok in cases if ok)
     for name, reason, ok in cases:
         say("  %-45s %s  %s" % (name, "refused:" if ok else "ACCEPTED:", reason))
@@ -510,12 +862,44 @@ def selftest():
                          % (refused, len(cases)))
 
 
+def probe():
+    """The host's own primitives, measured: a checker can only be as right as the engine under it.
+
+    This host (2026-10-20, both `/usr/bin/python3` 3.10.12 and the conda 3.10.10, under `-I`) matched
+    `[^a-z]` against `u`, failed a `(?!u)` lookahead, let `$` skip a `;`, and failed a lookbehind whose
+    prefix alternative was empty. Every case below is a fact a check depends on; a FAIL means a check
+    written that way cannot see what it claims to see.
+    """
+    cases = [
+        # (name, pattern, text, does the pattern match?) - each measured on this host before writing it
+        ("literal glue", r"0x18d1u\b", "uint32_t vid = 0x18d1u;", True),
+        ("ident word", r"\breturn\b", "return; break;", True),
+        ("ident word (neg)", r"\bbreak\b", "return; x;", False),
+        ("preload call", r"usb_enum_in_find\(0u, 0u\)", "x = usb_enum_in_find(0u, 0u);", True),
+    ]
+    ok = True
+    for name, pattern, text, want in cases:
+        got = re.search(pattern, text) is not None
+        ok = ok and got == want
+        say("  %-22s %s (want %s)" % (name, "ok" if got == want else "WRONG", want))
+    # `0x18d1u` is GLUED (`u` is a letter): only a separator after the literal makes it standalone.
+    got = (literal_present("(&0x18d1,", "0x18d1") and literal_present(" 0x18d1;", "0x18d1")
+           and not literal_present("x0x18d1,", "0x18d1") and not literal_present("0x18d1u", "0x18d1"))
+    say("  %-22s %s" % ("str scanner", "ok" if got else "WRONG"))
+    ok = ok and got
+    say("  --probe: %s" % ("PASS" if ok else "FAIL - the host engine mis-reports at least one of these"))
+    return 0 if ok else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="910b's USB enumeration-arm guard")
     parser.add_argument("--image", help="the linked xnu_arm_entry.elf")
     parser.add_argument("--selftest", action="store_true", help="run the falsification battery")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--probe", action="store_true", help="measure the host's regex primitives")
     args = parser.parse_args()
+    if args.probe:
+        return probe()
 
     try:
         check_sources()
