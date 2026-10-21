@@ -305,6 +305,12 @@ check:
 # switch-independent, so it runs here with no build and no device.
 	@tools/check_usb_stream.py --selftest >/dev/null
 	@tools/check_usb_stream.py
+# The stream arm's BEHAVIOUR, not just its source: `--model` generates a host unit holding two copies of
+# entry_usb_stream.c, maps the register window over itself, and drives the ring through seven cases
+# (idle, one token per pass, host racing the CPU, a short transfer, the ring's fullness and wrap, the
+# 1 s publication, and the DRAINED -> STREAM refill) at -O0 and -O1. It needs clang and mmap(MAP_FIXED)
+# and reports `skipped` without them; it is not skipped for a failure.
+	@tools/check_usb_stream.py --model
 # 959-962: the RUNNER half of the clause-3 ladder. The four USB rungs are checked by the four guards
 # above, but a key the entry image WRITES and the runner never READS makes a press's summary silent
 # about that arm - the recorded "unread family" defect ([[mi4-911-runner-now-reads-all-goal-clauses]]).

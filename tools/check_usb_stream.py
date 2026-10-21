@@ -707,9 +707,13 @@ def reset_lines(statics, arrays=()):
     with memset. Read from the source rather than hand-listed, since a hand-list is one more thing
     that can fall behind the file.
     """
-    lines = "".join("    m2_%s = 0u;\n" % name for name in statics
-                    if name not in arrays and name != "g_usb_stream_pub_next")
-    lines += "    m2_g_usb_stream_pub_next = 0xffffffffu;    /* no publication until the deadline */\n"
+    # **`pub_next` resets to 0, like the arm's own static.** It used to be forced to 0xffffffff as
+    # "no publication until the deadline", but the arm's test is `(int32_t)(now - pub_next) < 0` - a
+    # WRAP-AWARE comparison - and `0 - 0xffffffff` wraps to 1, i.e. "already due". So the sentinel made
+    # publish fire on the very first pass, which is the opposite of its intent, and a case that wanted
+    # silence before the deadline saw seven keys. The arm's BSS default is 0 and means "due
+    # immediately", which is what the arm actually does; the model resets to the same thing.
+    lines = "".join("    m2_%s = 0u;\n" % name for name in statics if name not in arrays)
     for name in sorted(arrays):
         lines += "    memset((void *)m2_%s, 0, sizeof m2_%s);\n" % (name, name)
     return lines
@@ -778,7 +782,16 @@ def build_harness(scratch):
             raise Refused("entry_usb_stream.c declares no file-scope `%s`: the model's tables must be "
                           "re-checked against the arm" % need)
     plain = strip_comments(text)
-    keys = len(re.findall(r'entry_live_write\("xnu_live_usb_stream_[a-z_]+"', plain))
+    # **Only the keys `usb_stream_publish` writes are "every stream key".** Counting every
+    # `entry_live_write("xnu_live_usb_stream_*")` in the file gave 10, but three of those are notices
+    # in other places - the `waiting` transition and the two `armed` sites - which a rate deadline
+    # does not touch. The arm published 7, the case expected 10, and a correct arm failed. The block
+    # counted here is the publish function's body, found by name rather than by line.
+    _pub = re.search(r"static void usb_stream_publish\(void\)\s*\{(.*?)\n\}", plain, re.S)
+    if _pub is None:
+        raise Refused("`usb_stream_publish` is gone from entry_usb_stream.c: the rate case's key "
+                      "count cannot be derived")
+    keys = len(re.findall(r'entry_live_write\("xnu_live_usb_stream_[a-z_]+"', _pub.group(1)))
     # every identifier the arm defines at file scope and copy 2 renames: prefixed, so neither copy's name
     # has file scope in the other's unit and the two units' statics cannot collide
     outer = {m for m in re.findall(r"(?m)^(?:static[ \t]+)?[A-Za-z_][A-Za-z0-9_ \t\*]*?\b([A-Za-z_][A-Za-z0-9_]*)"
@@ -809,15 +822,27 @@ def build_harness(scratch):
     if "model_window" not in head or "\n}\n" not in head:
         raise Refused("the runner's head does not hold the window page and its mapping")
     first, rest = without_reset(plain)
-    glue = glue_text("static void model_reset_2(void)\n{\n    (void)model_kv_n;\n" + reset_lines(statics, array_statics(text)))
+    # **`model_kv_n` is CLEARED, not merely mentioned.** The body used to open with
+    # `(void)model_kv_n;` - a silence-the-warning cast - so the key log carried every case's writes
+    # into the next one. Case G then saw eight entries before it had written anything (seven of them
+    # `usb_stream_publish`'s from an earlier case) and its "the first entry is _armed" assertion could
+    # never hold. `model_kv` is the model's own log, so it belongs in the model's reset.
+    glue = glue_text("static void model_reset_2(void)\n{\n    model_kv_n = 0u;\n    model_arm_now = 0u;\n"
+                     + reset_lines(statics, array_statics(text)))
     # Forward declarations: the .inc expands MODEL_RUN -> model_pass and MODEL_RESET -> model_reset_2
     # before either is defined, and an implicit first call would collide with the later `static`
     # definition ("static declaration follows non-static").
     glue = ("static void model_pass(uint32_t pc);\n"
             "static void model_reset_2(void);\n") + glue
+    # **The arm's clock is the model's too, and it restarts with the arm.** `model_arm_now` is what
+    # `stage90_cntvct_read` returns, and it accumulated across cases while the arm's statics were being
+    # reset underneath it - so a later case started with a clock already past the 0xffffffff
+    # "not yet" deadline and `usb_stream_publish` fired seven keys before the case had done anything
+    # (case G then found its `_armed` notice in eighth place). A case that wants a particular time
+    # sets MODEL_ARM_NOW anyway.
     glue_tail = REAL_GLUE_TAIL.replace("%(hz)uu", "19200000u").replace(
         "%(reset)s",
-        "static void model_reset_2(void)\n{\n    (void)model_kv_n;\n"
+        "static void model_reset_2(void)\n{\n    model_kv_n = 0u;\n    model_arm_now = 0u;\n"
         + reset_lines(statics, array_statics(text)))
     if "MODEL_RESET()        model_reset_2()" not in glue:
         raise Refused("the glue's `MODEL_RESET` is not the copy-2 reset: the one-unit layout is gone")
@@ -1098,7 +1123,12 @@ uint32_t g_usb_enum_settle_last, g_usb_enum_settle_n, g_usb_enum_settle_gate;
 
 void CleanPoU_DcacheRegion(uintptr_t va, unsigned length) { (void)va; (void)length; }
 void FlushPoC_DcacheRegion(uintptr_t va, unsigned length) { (void)va; (void)length; }
-uint64_t stage90_cntvct_read(void) { return (uint64_t)model_now; }
+/* **One clock, and it is `model_arm_now`.** The arm reads CNTVCT through this, `model_pass`
+ * advances `model_arm_now` by 1 ms per pass, and the cases set MODEL_ARM_NOW (the same
+ * variable). It used to return `model_now` - a different global that nothing ever wrote, so the
+ * arm saw a clock pinned at 0 no matter what a case set: the deadline in case F never arrived
+ * and nothing was ever published. */
+uint64_t stage90_cntvct_read(void) { return (uint64_t)model_arm_now; }
 void entry_live_write(const char *key, uint32_t value)
 {
     if (model_kv_n < MODEL_KV_MAX && strlen(key) < sizeof model_kv[0].k) {

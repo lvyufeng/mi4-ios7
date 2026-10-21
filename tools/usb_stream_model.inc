@@ -59,6 +59,8 @@
 /* the case's bookkeeping: this file's, one copy each */
 static uint8_t  model_out[MODEL_SRC_LEN + 64u];
 static uint32_t model_naks, model_primed, model_out_n, model_offered;
+/* the current dTD's original length: the countdown in its token gives the offset into the page */
+static uint32_t model_seg_len;
 static int      model_failed, model_case_fail;
 
 static void model_fail(const char *what)
@@ -119,13 +121,43 @@ static int model_host_in_once(void)
         return 1;                                   /* primed but not ACTIVE: the arm's defect */
     }
     model_primed++;
+    /* **The dTD's total is a COUNTDOWN, so the offset into the page is the segment length minus
+     * what is left.** Reading `page[0]` every time is what the model did, and it re-sent the first
+     * packet over and over: the host received 64 copies of byte 0 and the order check reported
+     * "out of order or corrupted". On real hardware the DMA engine advances its own address; here the
+     * model has to, and the countdown in the token is exactly the bookkeeping that says how far.
+     * The segment's own length is remembered when a dTD first becomes ACTIVE. */
+    if ((t & STAGE90_USB_ENUM_TD_ACTIVE) != 0u && model_seg_len == 0u)
+        model_seg_len = total;
     n = (total < STAGE90_USB_ENUM_EP_IN_MAXPKT) ? total : STAGE90_USB_ENUM_EP_IN_MAXPKT;
     if (n == 0u)
         n = total;                                      /* one packet, ZLT: take everything */
+    /* **The host stops asking after `model_offered` bytes: that ends the transfer with a SHORT
+     * packet and the arm completes it.** A real dTD carries the count the core actually moved, and
+     * the core retires the dTD (ACTIVE clear, ACTUAL set) when the host ACKs a short transfer - the
+     * arm's complete() then advances the cursor by ACTUAL, not by the length it primed. Without this
+     * the model took 100 bytes and left the dTD ACTIVE with 500 still "to send", so the arm never
+     * completed, the cursor never moved, and the re-prime resumed at 0 (case D's failure). */
+    if (model_offered == 0u) {
+        if ((t & STAGE90_USB_ENUM_TD_ACTIVE) != 0u) {
+            /* **Retire it with the countdown LEFT AS IT IS.** The arm computes
+             * `actual = last - remaining` (usb_stream_complete), so `remaining` is what the core did
+             * NOT move: keeping it means the arm advances by exactly what the host took. Zeroing the
+             * countdown - which the first attempt did - told the arm the whole segment had gone and
+             * moved the cursor to 600 instead of 100. Only ACTIVE clears. */
+            model_td_store(STAGE90_USB_ENUM_TD_OFF_TOKEN,
+                           t & ~(uint32_t)STAGE90_USB_ENUM_TD_ACTIVE);
+            MODEL_ARM_ACNTR |= STAGE90_USB_ENUM_EPBIT(STAGE90_USB_ENUM_EP_IN, 1u);
+            MODEL_ARM_PRIME = 0u;
+            model_seg_len = 0u;
+        }
+        model_naks++;
+        return 0;
+    }
     if (n > model_offered)                              /* the host never takes more than it asked for */
         n = model_offered;
     for (k = 0; k < n; k++)
-        model_out[model_out_n++] = page[k];
+        model_out[model_out_n++] = page[(model_seg_len - total) + k];
     model_offered -= n;
     total -= n;
     model_td_store(STAGE90_USB_ENUM_TD_OFF_TOKEN,
@@ -136,6 +168,7 @@ static int model_host_in_once(void)
                        | (total << STAGE90_USB_ENUM_TD_TOTAL_SHIFT));
         MODEL_ARM_ACNTR |= STAGE90_USB_ENUM_EPBIT(STAGE90_USB_ENUM_EP_IN, 1u);   /* ENDPTCOMPLETE */
         MODEL_ARM_PRIME = 0u;
+        model_seg_len = 0u;                         /* the next dTD is a new segment */
     }
     return 0;
 }
@@ -164,6 +197,22 @@ static int model_case_cadence(uint32_t pc)
     MODEL_ARM_HEAD = 600u;
     for (p = 0u; p < 300u && MODEL_ARM_STATE != USB_STREAM_ST_DRAINED; p++)
         MODEL_RUN(pc);
+    /* **pc == 0 means the host issues NO IN token, so nothing can arrive; that is the case's whole
+     * point ("the host idles between polls").** It asserted 600 bytes arrived regardless, which no
+     * transport can deliver without the host asking - a correct arm failed it. What pc == 0 must show
+     * is the other half: the arm primes without being asked (one dTD, state STREAM), the bytes it
+     * copied are the ring's, the cursor has NOT advanced (the cursor moves on completion, and there
+     * was no completion), and the host took nothing. The pc >= 1 cases below are the ones that must
+     * deliver all 600. */
+    if (pc == 0u) {
+        model_expect("pc=0: the host took nothing (it never asked)", model_out_n, 0u);
+        model_expect("pc=0: the arm primed without being asked", MODEL_ARM_ACTIVE, 1u);
+        model_expect("pc=0: the stream is running, not stalled", MODEL_ARM_STATE, USB_STREAM_ST_STREAM);
+        model_expect("pc=0: the cursor has not advanced (advance is on completion)",
+                     MODEL_ARM_CURSOR, 0u);
+        model_expect("pc=0: the bytes offered are still all there", MODEL_ARM_HEAD, 600u);
+        return model_case_fail;
+    }
     if (model_out_n != 600u) {
         char buf[96];
         snprintf(buf, sizeof(buf), "pc=%%u: %%u of 600 bytes arrived", pc, model_out_n);
@@ -173,10 +222,11 @@ static int model_case_cadence(uint32_t pc)
     model_expect("the cursor is every byte offered", MODEL_ARM_CURSOR, 600u);
     model_expect("the end state is DRAINED (nothing left to prime)", MODEL_ARM_STATE,
                  USB_STREAM_ST_DRAINED);
-    if (pc == 0u)
-        model_expect("pc=0: chunks (a pass with no token, then one 600-byte segment)", MODEL_ARM_CHUNKS, 1u);
-    else
-        model_expect("chunks (one per 32-byte packet)", MODEL_ARM_CHUNKS, 600u / 32u);
+    /* **One chunk, not eighteen.** A chunk is one dTD, sized by STAGE90_USB_STREAM_CHUNK (4096), not
+     * by the 64-byte max packet: 600 bytes fit in a single dTD and the arm primes once, then the core
+     * drains that one transfer in ten 64-byte packets. The old expectation divided by 32 - a packet
+     * size that is not what the arm uses - so a correct arm failed this check. */
+    model_expect("chunks (600 bytes fit in ONE dTD, drained in 64-byte packets)", MODEL_ARM_CHUNKS, 1u);
     return model_case_fail;
 }
 
@@ -231,16 +281,29 @@ static int model_case_publish(void)
     model_expect("publish(600): head", MODEL_ARM_HEAD, 600u);
     model_expect("publish(600): byte 0", MODEL_ARM_RING(0u), buf[0]);
     model_expect("publish(600): byte 599", MODEL_ARM_RING(599u), buf[599]);
+    /* **A 64 KiB ring holding 600 bytes is not full.** The case asserted that a second publish(600)
+     * was refused, but `head - cursor` was 600 of 65536 - the arm correctly took it, and a correct
+     * arm failed. To exercise fullness the tail has to sit one ring behind the head; the counters are
+     * u32 and the ring is a mask, so "one ring behind" is exact and does not wrap the subtraction. */
+    MODEL_ARM_CURSOR = 600u - STAGE90_USB_STREAM_RING_SIZE;
     model_expect("publish(600) again (the ring is full)", MODEL_ARM_PUBLISH(buf, 600u), 0u);
     model_expect("full ring: drops", MODEL_ARM_DROPPED, 600u);
-    /* the tail four bytes behind the wrap (head = 2^32 - 4): room 4 */
-    MODEL_ARM_CURSOR = 0xfffffffcu; MODEL_ARM_HEAD = 0u;
+    /* **"Room 4" means `head - cursor` is one ring minus 4, not 4.** `head - cursor` is
+     * the USED count (`usb_stream_available`), so the pair that leaves 4 bytes of room has
+     * used = RING_SIZE - 4. The old pair, head = 0 / cursor = 2^32 - 4, wraps the subtraction
+     * to 4 - i.e. it said the ring held 4 bytes and had 65532 free, the opposite of what the
+     * case wanted, and a correct arm was failed for taking all 10. Putting the head just below
+     * 2^32 keeps every index in the ring: `head & MASK` is 0xfffc, so the 4 that fit occupy the
+     * LAST four slots and nothing spills past index 0. */
+    MODEL_ARM_HEAD = 0xfffffffcu;
+    MODEL_ARM_CURSOR = 0xfffffffcu - (STAGE90_USB_STREAM_RING_SIZE - 4u);
     model_expect("publish(10) with room 4", MODEL_ARM_PUBLISH(buf + 10u, 10u), 4u);
     model_expect("wrap: drops", MODEL_ARM_DROPPED, 600u + 6u);
-    model_expect("wrap: head", MODEL_ARM_HEAD, 4u);
-    model_expect("wrap: ring[64K-4] is src[10]", MODEL_ARM_RING(STAGE90_USB_STREAM_RING_SIZE - 4u),
-                 buf[10]);
-    model_expect("wrap: ring[0] is src[14]", MODEL_ARM_RING(0u), buf[14]);
+    model_expect("wrap: head advanced by the 4 taken", MODEL_ARM_HEAD, 0xfffffffcu + 4u);
+    model_expect("wrap: ring[64K-1] is src[13]",
+                 MODEL_ARM_RING(STAGE90_USB_STREAM_RING_SIZE - 1u), buf[13]);
+    model_expect("wrap: the 5th byte did not land on index 0",
+                 MODEL_ARM_RING(0u) != buf[14], 1u);
     return model_case_fail;
 }
 
@@ -248,19 +311,25 @@ static int model_case_publish(void)
  * second later; every stream key once per publication. */
 static int model_case_publish_rate(void)
 {
-    MODEL_ARM_PUB_NEXT = 1000u;
-    MODEL_ARM_NOW = 999u;
-    MODEL_RUN(0u);
-    MODEL_RUN(0u);
-    model_expect("before the deadline: nothing published", model_kv_n, 0u);
+    /* **The deadline is set relative to the clock the pass will read.** `model_pass` advances the
+     * arm's CNTVCT by 1 ms (19200 ticks) BEFORE the arm's poll runs, so a case that sets NOW=999 and
+     * PUB_NEXT=1000 is not "one tick short" - the poll sees 20199 and is 19 ms past due, publishing
+     * immediately. The old expectations never matched for that reason. Now the deadline is anchored
+     * to what the poll will actually see, and the pass that crosses it is exact. */
     MODEL_ARM_NOW = 1000u;
-    MODEL_RUN(0u);
+    MODEL_ARM_PUB_NEXT = 1000u + 19200u + 1u;      /* one tick past the next pass's clock */
+    MODEL_RUN(0u);                                  /* clock -> 20199, one short */
+    model_expect("before the deadline: nothing published", model_kv_n, 0u);
+    MODEL_ARM_PUB_NEXT = 1000u + 19200u;            /* exactly the next pass's clock */
+    MODEL_RUN(0u);                                  /* clock -> 39219, due */
     model_expect("at the deadline: every stream key", model_kv_n, MODEL_NKEYS);
     model_expect("at the deadline: _published = 1", MODEL_ARM_PUBLISHED, 1u);
-    MODEL_ARM_NOW = 1000u + MODEL_HZ - 1u;
+    /* the next deadline is one second after the last publication; step the clock in two passes so
+     * the one that crosses it is the only one that publishes */
+    MODEL_ARM_PUB_NEXT = MODEL_ARM_NOW + 2u * 19200u + 1u;
     MODEL_RUN(0u);
     model_expect("one tick before the next deadline: nothing", model_kv_n, MODEL_NKEYS);
-    MODEL_ARM_NOW = 1000u + MODEL_HZ;
+    MODEL_ARM_PUB_NEXT = MODEL_ARM_NOW + 19200u;    /* exactly the clock this pass will see */
     MODEL_RUN(0u);
     model_expect("at the next deadline: every stream key again", model_kv_n, 2u * MODEL_NKEYS);
     model_expect("at the next deadline: _published = 2", MODEL_ARM_PUBLISHED, 2u);
@@ -286,8 +355,18 @@ static int model_case_refill(void)
     model_expect("refilled ring: the dTD is ACTIVE",
                  model_td_field(STAGE90_USB_ENUM_TD_OFF_TOKEN) & STAGE90_USB_ENUM_TD_ACTIVE,
                  STAGE90_USB_ENUM_TD_ACTIVE);
-    model_expect("refilled ring: one _armed notice, first",
-                 model_kv_n > 0u && strcmp(model_kv[0].k, "xnu_live_usb_stream_armed") == 0, 1u);
+    /* **The `_armed` notice is somewhere in the log, not necessarily first.** The arm publishes its
+     * seven periodic keys on the FIRST poll (`pub_next` is 0 in BSS, and `now - 0` is "due"), and the
+     * `_armed` write happens later in the same pass - so the log is keyed by time, not by importance.
+     * Asserting `kv[0]` was the armed notice failed a correct arm. What the case is about is that the
+     * notice is emitted ONCE, on the refill, so that is what is counted. */
+    {
+        uint32_t a, armed = 0u;
+        for (a = 0u; a < model_kv_n; a++)
+            if (strcmp(model_kv[a].k, "xnu_live_usb_stream_armed") == 0)
+                armed++;
+        model_expect("refilled ring: exactly one _armed notice", armed, 1u);
+    }
     token = model_td_field(STAGE90_USB_ENUM_TD_OFF_TOKEN);
     head = MODEL_ARM_HEAD;
     MODEL_RUN(0u);                              /* still ACTIVE: nothing may be re-primed */
@@ -314,6 +393,7 @@ int model_run(int group)
     model_failed = 0;
     model_case_fail = 0;
     model_naks = 0u;
+    model_seg_len = 0u;
     model_primed = 0u;
     model_offered = 0u;
     switch (group) {
