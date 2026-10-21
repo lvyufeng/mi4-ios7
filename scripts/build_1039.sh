@@ -105,6 +105,10 @@ spec = importlib.util.spec_from_file_location("_plan", p); m = importlib.util.mo
 sys.modules["_plan"] = m; spec.loader.exec_module(m)
 xnu = sys.argv[1]; t = m.read(m.trap_path(xnu))
 if m.verify(t, xnu) == []:
+    # **`verify` passing IS the ready state.** The tree is exactly what this rung produces, so there is
+    # nothing to fold out and compose again - and trying to made the fold refuse ("the seat carries 2
+    # model row(s), expected 3"), because a staged tree's seat also holds 1038's rows. The build reads
+    # this state the same way it reads `ready` below: verify what is there and go on.
     print("staged"); sys.exit(0)
 # PRISTINE = the COMPOSER CAN PLACE its seam here.  (2026-10-20: a COMPOSED tree was classified by a
 # str.strip()ed fold comparison; the 1037 body is TAB-indented, the stripped fold matched, nothing was
@@ -128,18 +132,14 @@ PYST
 echo "   trap.c is: ${_st:-unknown}"
 case "${_st%%:*}" in
   staged)
-    # (fold the plan out first: --apply composes the 1036 tree, and the fold is the plan's own --off)
-    python3 -I - "$XNU_TREE" <<'PYFOLD' || { echo "REFUSING: this rung's composite cannot be folded"; exit 1; }
-import importlib.util, os, sys
-spec = importlib.util.spec_from_file_location("_plan", os.path.join("tools", "patch_d13_plan.py"))
-m = importlib.util.module_from_spec(spec); sys.modules["_plan"] = m; spec.loader.exec_module(m)
-xnu = sys.argv[1]; tp = m.trap_path(xnu)
-out, why = m.off(m.read(tp), xnu)
-if out is None:
-    print("REFUSING: " + str(why)); sys.exit(1)
-m.write(tp, out)
-print("   re-staged over this rung's composite (the plan folded out, then composed again)")
-PYFOLD
+    # **A tree whose text already verifies is READY: use it.** This branch used to fold the plan out
+    # and compose it again, which refused on a fully staged tree ("the seat carries 2 model row(s),
+    # expected 3") because a staged seat also holds 1038's rows - the fold's model is the 1036 one.
+    # There is nothing to rebuild here: verify() has just certified the text against every one of the
+    # plan's facts, so the edit is what this rung produces. (The old `ready)` arm below repeated this
+    # for the case where place() refused on the defs include; that arm is now unreachable, which the
+    # duplicate `staged|ready)` pattern made obvious - a later pattern never wins.)
+    echo "   trap.c already verifies as this rung's: folding skipped"
     ;;
   pristine) ;;
   old-composite)
@@ -168,7 +168,7 @@ PYFOLD
     echo "REFUSING: $TRAP_SRC carries 1037's rows or the hook outside this rung's plan (a second seam?) - start from the 1036 tree"; exit 1 ;;
   *) echo "REFUSING: the plan will not compose on $TRAP_SRC (not the 1036 tree)"; exit 1 ;;
 esac
-if [[ "${_st%%:*}" == ready ]]; then
+if [[ "${_st%%:*}" == ready || "${_st%%:*}" == staged ]]; then
   # (nothing to compose; the staged text is verified as it stands)
   python3 -I tools/patch_d13_plan.py "$XNU_TREE" --verify | tail -1 \
     || { echo "REFUSING: the staged plan does not verify"; exit 1; }
