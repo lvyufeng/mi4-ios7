@@ -563,6 +563,7 @@ echo "-- 8. payload (arm switches + -DSTAGE90_XNU_ENTRY=1) --"
 #    (the same three keys step 7 skips: they describe the image, not the compile)
 _arm_sw=$(sed -e 's/\r$//' -e '/^[[:space:]]*$/d' -e '/^#/d' \
               -e '/^STAGE90_XNU_ENTRY_\(SHA256\|BYTES\)=/d' -e '/^STAGE90_XNU_TREE_D13=/d' \
+              -e '/=(unset)$/d' \
               -e 's/^/-D/' "$REC" | tr '\n' ' ')
 XNU_TREE="$XNU_TREE" STAGE90_EXTRA_CFLAGS="$_arm_sw -DSTAGE90_XNU_ENTRY=1" ./scripts/build.sh || { echo "FAIL: payload build refused"; exit 1; }
 
