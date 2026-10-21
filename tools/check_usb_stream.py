@@ -468,8 +468,14 @@ def particles_to_text(parts):
 REAL_GLUE_PREAMBLE = "/* the glue: every arm static the cases name -> the SECOND copy of the arm; it ends with\n * its last macro (`MODEL_ARM_TD__END__`), so neither side of the line names the other copy */\n"
 REAL_GLUE = r"""
 #define MODEL_ARM_TD         m2_g_usb_stream_td
-#define MODEL_ARM_PRIME      model_prime
-#define MODEL_ARM_ACNTR      model_acntr
+/* **PRIME and ACNTR ARE THE REGISTERS, not model-side mirrors.** The arm primes by storing to
+ * ENDPTPRIME and reaps by writing ENDPTCOMPLETE (W1C); if the model kept its own counters the two
+ * would never meet and the arm would see no completion - the model streamed into a void and reported
+ * "0 of 600 bytes arrived" with the state stuck at STREAM. Mapping the macros straight onto the
+ * register window makes a model write the store the core would see, and a model read the value the
+ * arm really wrote. */
+#define MODEL_ARM_PRIME      (*((volatile uint32_t *)(HOST_REG_BASE + STAGE90_USB_ENDPTPRIME)))
+#define MODEL_ARM_ACNTR      (*((volatile uint32_t *)(HOST_REG_BASE + STAGE90_USB_ENDPTCOMPLETE)))
 #define MODEL_ARM_NOW        model_arm_now
 #define MODEL_ARM_RING(k)    m2_g_usb_stream_ring[(k)]
 #define MODEL_ARM_HEAD       m2_g_usb_stream_head
@@ -500,10 +506,16 @@ static void model_pass(uint32_t pc)
 
     for (t = 0u; t < pc; t++)
         if (model_host_in_once() != 0) {
-            model_case_fail = 1;                 /* a NAK while bytes were offered: never legal */
+            /* A transfer the core could not fetch is the arm's defect; a plain NAK is not. The
+             * distinction lives in host_in_once, which returns 1 only for the former. */
+            model_case_fail = 1;
             return;
         }
-    model_prime = 0u;
+    /* **No `model_prime = 0u` here.** The core clears PRIME when the transfer completes
+     * (`model_host_in_once` does exactly that when the last packet leaves), and clearing it again
+     * before the arm's poll erased a prime the host had not yet taken - which is why every case
+     * streamed zero bytes while the state sat at STREAM. PRIME is now the register itself, so this
+     * line was also writing hardware the arm still owned. */
     model_arm_now += 19200u;
     m2_entry_usb_stream_poll();
 }

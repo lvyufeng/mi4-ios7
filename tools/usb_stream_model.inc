@@ -105,9 +105,18 @@ static int model_host_in_once(void)
     uint32_t n, k;
     uint8_t *page = (uint8_t *)(uintptr_t)model_td_field(STAGE90_USB_ENUM_TD_OFF_PAGE0);
 
-    if (MODEL_ARM_PRIME == 0u || (t & STAGE90_USB_ENUM_TD_ACTIVE) == 0u) {
+    /* **A NAK with nothing primed is the NORMAL answer** - the host polled before the arm had
+     * anything to send, which is most of the time on a real bus. Only a primed-but-inactive dTD is a
+     * defect (the arm offered a transfer the core cannot fetch). The old code returned 1 for both,
+     * and model_pass treats 1 as a case failure, so the first pass of every case failed before the
+     * arm had ever been polled once: the model never reached the arm's poll at all. */
+    if (MODEL_ARM_PRIME == 0u && (t & STAGE90_USB_ENUM_TD_ACTIVE) == 0u) {
         model_naks++;
-        return 1;
+        return 0;                                   /* nothing offered yet: a plain NAK */
+    }
+    if ((t & STAGE90_USB_ENUM_TD_ACTIVE) == 0u) {
+        model_naks++;
+        return 1;                                   /* primed but not ACTIVE: the arm's defect */
     }
     model_primed++;
     n = (total < STAGE90_USB_ENUM_EP_IN_MAXPKT) ? total : STAGE90_USB_ENUM_EP_IN_MAXPKT;
