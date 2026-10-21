@@ -575,7 +575,17 @@ def off(t, xnu, had_1037=True):
             _ab.append(_k)
     if len(_ab) != 1:
         return None, "cannot fold: sleh_abort's definition occurs %d time(s)" % len(_ab)
-    _hi = _ab[0] + 12
+    # **The window has to clear the function's whole local-declaration block.** It was 12 rows from
+    # `void sleh_abort(...)`, but trap.c's block is longer than that - two BOARD_CONFIG_* preprocessor
+    # groups and the `dfsr/dfar/ifsr/...` declaration come first, so `thread_t thread =
+    # current_thread();` is the 22nd row and the fold reported "sleh_abort's preamble line occurs 0
+    # time(s)" on a tree that is in fact composed. It is bounded, not unbounded: the anchor must be
+    # found before the next function definition, and there is still exactly one match required.
+    # (A fixed span, not a scan-for-the-next-function: the seat's rows include file-scope STATICS
+    #  (`static unsigned _wl_ss_slot(...)`), which are indistinguishable from the next function's
+    #  openers by shape, so a heuristic that stopped at "a line starting in column 0" cut the seat
+    #  short - the fold then found 3 model rows where compose wrote 4.)
+    _hi = _ab[0] + 60
     if _hi > len(L):
         _hi = len(L)
     _pre = []
