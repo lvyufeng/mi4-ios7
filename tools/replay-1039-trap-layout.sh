@@ -94,14 +94,28 @@ PY
 # (4) THE HOOK'S FUNCTION.  Both `sleh_abort` and `sleh_undef` open with the anchor line, so the hook
 #     can land in the one it never runs in. It belongs to sleh_abort.
 python3 - "$TRAP" <<'PY'
-import sys
+import os, sys
 
 tp = sys.argv[1]
+# (ABSOLUTE: the compiler resolves an include against its own cwd, and the rung's includes in trap.c
+#  are all absolute for exactly that reason - a relative one resolves only by luck)
+XNU_HOOK = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(tp))), "arm", "watch_le_hook.inc")
 lines = open(tp).read().split("\n")
 i = next((k for k, l in enumerate(lines)
           if "watch_le_hook.inc" in l and l.lstrip().startswith("#include")), None)
 if i is None:
-    print("   trap.c: no hook include")
+    # **1038's include has to be there at all.** Removing the stale inline block took it with it once,
+    # and nothing put it back - the object compiled but emitted none of the rung's rows. It belongs
+    # right after sleh_abort's preamble, which is where 1038 anchors its frame.
+    sig = next(k for k, l in enumerate(lines) if l.startswith("void sleh_abort(void *context"))
+    pre = next((k for k in range(sig, len(lines))
+                if lines[k].strip() == "thread_t thread = current_thread();"), None)
+    if pre is None:
+        sys.exit("stage 4 failed: sleh_abort's preamble not found")
+    lines.insert(pre + 1,
+                 '\t#include "' + XNU_HOOK + '"')
+    open(tp, "w").write("\n".join(lines))
+    print("   trap.c: hook include inserted after the preamble")
     sys.exit(0)
 sig = next(k for k, l in enumerate(lines) if l.startswith("void sleh_abort(void *context"))
 undef = next((k for k, l in enumerate(lines) if l.startswith("void sleh_undef(")), len(lines))
