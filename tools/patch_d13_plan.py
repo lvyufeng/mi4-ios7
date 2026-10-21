@@ -191,6 +191,53 @@ def _fold_1037(t, xnu):
     return _cur, None
 
 
+def row_count(*args):
+    """(row, xnu) or (xnu, row) - the caller passes (xnu, row); both are strings, so tell them apart by
+    which one looks like a path."""
+    if len(args) == 2:
+        a, b = args
+        if a.rstrip("/").endswith("/xnu") or "/" in a:
+            xnu, row = a, b
+        elif b.rstrip("/").endswith("/xnu") or "/" in b:
+            xnu, row = b, a
+        else:
+            xnu, row = a, b
+    else:
+        row, xnu = args[0], None
+    return _row_count(row, xnu)
+
+
+def _row_count(row, xnu=None):
+    """How many times `row` occurs in 1037's OWN body, read from the owner.
+
+    `scripts/build_1039.sh` calls this to say how many of a row the staged trap.c should carry
+    ("the staged TRAP carries N ... 1037's own body carries M"). The function did not exist: the
+    caller wrapped it in `|| _fb_want=0`, so the AttributeError was swallowed and the check compared
+    against a zero it had invented - it could only ever fail. The count is read from the SAME text
+    compose() splices (the owner's block), so the two numbers are one value.
+    """
+    seam, _hook, (tf, _fc, _wl) = blocks(xnu)
+    o = o_of(seam)
+    # 1037's block runs from its switch row to its own close; the rows are counted inside that span
+    _o = o.rstrip(E)
+    _rows = _o.split(E)
+    _sw = next((k for k, q in enumerate(_rows)
+                if q.strip() == TRAP_FRAME_OPEN.strip(E)), None)
+    if _sw is None:
+        return 0
+    _ind = ""
+    for _q in _rows[_sw]:
+        if _q in (" ", T):
+            _ind += _q
+        else:
+            break
+    _ce = next((k for k in range(len(_rows) - 1, _sw, -1)
+                if _rows[k] == _ind + TRAP_FRAME_CLOSE.rstrip(E)), None)
+    if _ce is None:
+        return 0
+    return sum(1 for _q in _rows[_sw:_ce + 1] if row in _q)
+
+
 def place(t, xnu):
     """(the anchor offsets, why): trap.c must be the 1036 tree -- 1025's arm open and, after it, the
     close that ends the arm -- and sleh_abort's preamble exactly once.  The seam goes IN FRONT of
@@ -313,7 +360,20 @@ def compose(t, xnu):
     #  hook row carries trap.c's absolute path, as every include in the tree does.)
     _seat_rows = [T + "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm",
                                                             wl.INC_HOOK) + chr(34)]
-    _seat_rows += wl.SEAT_ROWS.split(E)[1:]
+    # **`watch_le_fwd.inc` does NOT belong in the seat.** It is the FORWARD DECLARATION file - its own
+    # header says so: "trap.c `#include`s this at FILE SCOPE in front of sleh_abort ... A file-scope
+    # declaration reaches only DOWNWARD". The defs it stands in for are ~1300 lines below the
+    # function, so the declarations have to be above it, outside the body. Restating them inside the
+    # body is not the same thing: the pool's own check asks for exactly one include, ahead of the
+    # signature, at preprocessor depth 0 - and it is right to. So the fwd row is pulled out of the
+    # seat here and placed by `_place_fwd()` below.
+    _fwd_row = None
+    for _r in wl.SEAT_ROWS.split(E)[1:]:
+        if _r.strip() == "#include " + chr(34) + "watch_le_fwd.inc" + chr(34):
+            _fwd_row = _r
+            continue
+        if _r.strip():
+            _seat_rows.append(_r)
     while _seat_rows and _seat_rows[-1] == "":
         _seat_rows.pop()
     # (1) THE SEAT.  The tree's comment line, then the hook's rows -- a seat carrying an arm alone (or
@@ -348,6 +408,22 @@ def compose(t, xnu):
     if _at < len(L) and "watch_le_arm.inc's entry" in L[_at]:
         _at += 1
     L = L[:_at] + _seat_rows + L[_at:]
+    # THE FWD INCLUDE: file scope, in front of sleh_abort's signature, ABSOLUTE (every include in the
+    # tree carries its absolute path, and a relative one only resolves when the compiler happens to
+    # have osfmk/arm on its -I list - measured: it does not).
+    _fwd_abs = "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm",
+                                                    "watch_le_fwd.inc") + chr(34)
+    _sig = [k for k, q in enumerate(L) if q.lstrip().startswith("void sleh_abort(void *context")]
+    if len(_sig) != 1:
+        return None, "sleh_abort's definition occurs %d time(s), expected one" % len(_sig)
+    _have = [k for k, q in enumerate(L) if q.strip() == _fwd_abs]
+    if len(_have) > 1:
+        return None, "the fwd include occurs %d time(s), expected at most one" % len(_have)
+    if _have:
+        if _have[0] > _sig[0]:
+            return None, "the fwd include stands at or below sleh_abort (not file scope)"
+    else:
+        L = L[:_sig[0]] + [_fwd_abs] + L[_sig[0]:]
     t1 = E.join(L)
     # (2) THE SEAM'S ANCHOR IS 1025's CLOSE LINE'S START: the splice is INSERTED in front of it.
     at, why = place(t1, xnu)                           # (the seat's rows are the hook's now: re-place)
@@ -629,9 +705,20 @@ def off(t, xnu, had_1037=True):
         _kill.append(_k)
         if _s == _fwd and _fwd_pos < 0:
             _fwd_pos = _k
-    if len(_kill) != 1 + 1 + 1 + len(_model):
+    # **The fwd include is no longer one of the seat's rows** - it stands at file scope, in front of
+    # sleh_abort (see compose() for why), so the body carries only the hook, the defs include and the
+    # model's own declarations. It is cut separately, below, by its absolute path.
+    if len(_kill) != 1 + 1 + len(_model):
         return None, ("cannot fold: the seat carries %d model row(s), expected %d -- the text is not"
                       " compose's") % (len(_kill), 2 + len(_model))
+    # (the fwd include, at file scope: cut by its own absolute path)
+    _fwd_abs = "#include " + chr(34) + os.path.join(os.path.abspath(xnu), "osfmk", "arm",
+                                                    "watch_le_fwd.inc") + chr(34)
+    _fwd_rows = [k for k in range(len(L)) if L[k].strip() == _fwd_abs]
+    if len(_fwd_rows) > 1:
+        return None, "cannot fold: the fwd include occurs %d time(s), expected at most one" % len(_fwd_rows)
+    if _fwd_rows:
+        _kill = _kill + [_fwd_rows[0]]
     L1 = _cut(L, _kill)
     # (2) 1037's pair: the marker row, the switch row above it, the close row below it at the SWITCH's
     #     own indent (1039's close is nested deeper -- read as rows, not as a stripped text)

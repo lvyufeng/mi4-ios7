@@ -165,6 +165,15 @@ python3 -I tools/patch_d13_plan.py "$XNU_TREE" --apply | tail -1 \
   || { echo "REFUSING: the plan will not compose on $TRAP_SRC (not the 1036 tree)"; exit 1; }
 python3 -I tools/patch_d13_plan.py "$XNU_TREE" --verify | tail -1 \
   || { echo "REFUSING: the plan does not verify after --apply"; exit 1; }
+# **The plan composes the SEAM - 1037's and 1038's blocks are their OWN rungs and must be staged on
+# top of it.** They were never applied here: `$TF_PATCHER` and `$LE_PATCHER` were defined at the top
+# and used only by the preflight's selftests, so a freshly composed tree reached the pool with no
+# `xnu_live_fb_*` rows at all and step 6 failed its "1037's own body carries 0" count. 1037 first (the
+# plan's seam carries its text), then 1038's model, which lands inside it.
+python3 -I "$TF_PATCHER" "$XNU_TREE" --apply | tail -1 \
+  || { echo "REFUSING: 1037's frame body did not stage on the composed seam"; exit 1; }
+python3 -I "$LE_PATCHER" "$XNU_TREE" --apply | tail -1 \
+  || { echo "REFUSING: 1038's model did not stage"; exit 1; }
 
 # 3. THE STAGED TEXT PREPROCESSES, BY THE COMPILER.  The defect this rung fixes was structural (a
 #    close with nothing open); the guard is the real preprocessor over the seam's DIRECTIVE lines
