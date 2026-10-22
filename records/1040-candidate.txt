@@ -1,0 +1,44 @@
+1040 CANDIDATE: libobjc's caller walks a buffer the callee declined to fill
+==================================================================================================
+
+EVIDENCE CHAIN (all from out/stage90/captures/recovered-unknown-arm-20261022-015401-last_kmsg.txt)
+  fault   launchctl[2] usermode data abort, EXC_BAD_ACCESS at 0x00000010, Translation fault on page
+  slide   0x14f1000  (capture: IOS7SHREG map_slide slide=0x14f1000)
+  pc      0x39117474 - slide = 0x37c26474  -> libobjc.A.dylib __TEXT +0x14474
+  lr      0x3910f9af - slide = 0x37c1e9af  -> libobjc.A.dylib __TEXT +0xc9af
+  lane    both runs (20261021-203423 and 20261022-015401) fault at 0x10, same map
+
+THE INSTRUCTION
+  37c26464: bl    0x37c266ec            the function 1032 patched
+  37c2646e: ldr.w r1, [r6, r0, lsl #2]
+  37c26474: ldrb  r1, [r1, #16]         <- fault: r1 == 0
+
+WHY r1 IS ZERO
+  37c2644e: sub.w r4, sp, r5, lsl #2    alloca #1
+  37c26456: sub.w r6, sp, r5, lsl #2    alloca #2  (never initialised)
+  37c2645c..64: r0=sl r1=r8 r2=r4 r3=r6 ; bl 0x37c266ec
+  37c26468: movs r0, #0                 <- the callee's return value is NOT examined
+  37c2646a: cmp r0, r5 ; bcs exit
+  37c2646e: r1 = r6[r0]                 <- walks r5 slots of uninitialised stack
+
+  the callee's pop-only exits (none of which write r6[] or r4[]):
+   37c266fe: beq 0x37c2675c   when its index lookup returns -1        -> `pop {r4,r5,r6,r7,pc}`
+   37c2671e: beq 0x37c2675e   when the header word lacks bit 0        -> writes ONE element, returns
+   37c26726: pop              when count < 1  (1032's patch: was == 0) -> `pop {r4,r5,r6,r7,pc}`
+
+WHAT IS AND IS NOT 1032'S FAULT
+  1032 widened the guard from `count == 0` to `count < 1` so a negative count stops running away.
+  That is correct and stays. The pop-only exit for index == -1 (0x37c2675c) PREDATES 1032.
+  The defect is the CONTRACT: a callee that may fill nothing, and a caller that assumes it filled.
+
+TWO CANDIDATE FIXES FOR THE NEXT RUNG
+  (a) caller-side: after `bl 0x37c266ec`, bound the loop by what was actually written. Cheapest, but
+      the callee returns void today, so this needs either a second output or a sentinel.
+  (b) callee-side: on every early exit, write a recognisable sentinel (NULL is the honest one) into
+      the slot(s) and let the caller's `ldrb [r1,#16]` test for it - the loop already does
+      `cmp r1,#0 / beq` right after, so a NULL slot would be skipped if the load were guarded.
+  (b) is the smaller edit and matches the caller's existing `cmp r1, #0`.
+
+NOT YET KNOWN
+  which of the three early exits fired in this run (r5 = 0xffffffff at the fault is the loop BOUND,
+  which fits count == -1, but the capture does not carry the callee's own r0 at 0x37c266ee).
