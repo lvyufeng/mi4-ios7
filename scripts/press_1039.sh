@@ -134,7 +134,11 @@ _got=$(dd if="$CARD" bs=1 skip=$SITE_DEC count=10 2>/dev/null | od -An -tx1 | tr
 python3 -I "$_cp" --check >/dev/null 2>&1 || { echo "REFUSING: $_cp --check FAILED - the card's cache header or the content anchor differs"; exit 1; }
 _rs=${STAGE90_REAL_ROOTFS:-/mnt/data/ios7-payload/v2/ios7/rootfs.hfs}
 _n=$(cmp -l "$CARD" "$_rs" 2>/dev/null | wc -l || true)
-[[ "$_n" == "10" ]] || { echo "REFUSING: the card differs from the pristine rootfs in $_n bytes (want EXACTLY 10)"; exit 1; }
+# **11, not 10.** 1032 writes 10 bytes; 1040's bound-sign fix changes one more (the halfword's low
+# byte was already 0x1d). The card is read back at 1040's offset below with the same by-value rule.
+_got44=$(dd if="$CARD" bs=1 skip=$((0x1018344C)) count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')
+[[ "$_got44" == "1ddb" ]] || { echo "REFUSING: card 0x1018344C = $_got44, want 1ddb (1040's blt.n)"; exit 1; }
+[[ "$_n" == "11" ]] || { echo "REFUSING: the card differs from the pristine rootfs in $_n bytes (want EXACTLY 10)"; exit 1; }
 echo "   (0g) by value: the card carries 1032's 10-byte guard, differs from the rootfs in exactly those 10 bytes, and --check PASSes"
 
 echo "== 1. the card image (built+patched by scripts/build_1039.sh -- NOT rebuilt here) =="

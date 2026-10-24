@@ -17428,6 +17428,25 @@ set=armed-d13-f03bc0c7 sha256=23d3da8ae0aa5bf73b2b4844216fd99020086ff39909cc25c1
 # written - fully reversible.  fastboot boot only, NEVER flash.
 # card_sha256=0ea912c2328e459966223d341f37b28469c358facfa70e6a69529a312f178529 card_off=0x10183720 card_new=5010012801daf0bdc046
 # =================================================================================================
+
+# =================================================================================================
+# armed-d13-87845b1f  -  1039: THE FRAME CARRIER -- the saved user context vs the hardware fault, read WITHOUT
+# arm_ctx.  INSTRUMENT ONLY.
+# 1037 READ: pc=0x38492474 lr=0x3848a9af (a blx return word +1), r1=0 at the ldrb, uss_ok=0
+# (ctx_diff was a tautology).  1039 re-stages 1037 and reads thread->machine.uss BY ADDRESS,
+# thread->continuation, the entry spsr, pc/lr bit0, pc bit5 and the uptime.
+# NOT a return if the fault path runs: a resident rung.
+# NEW SWITCH: STAGE90_XNU_FRAME_CARRIER=1 (tools/patch_d13_frame_carrier.py), a TRAP block AFTER 1037-s close
+# and IN FRONT OF 1038-s slot, inside 1025-s data-abort publisher.  Rows xnu_live_fcr_*.  READS ONLY.
+# CHANNEL: the global DEFINES array (build_xnu_arm_kernel.sh, gated on the switch); a -D in EXTRA is not the channel.
+# THE POOL MOVES: TRAP is a pool object, so the entry bin (and the arm name) MOVES.
+# [[mi4-one-file-many-rungs]]: FRAME_CARRIER is in EVERY TRAP patcher-s ALLOWED_IF_IDENTIFIERS.
+# THE CARD: 1039 serves 1032-s 10 bytes (card 0x10183720 = 5010012801daf0bdc046).
+# THE READING: tools/check_1039_capture.py (pre-registered cells in records/1039-read.txt 2).
+# Medium: 968 real iOS 7.1.2 HFSX rootfs over hfs_rmd0; CARD_COW=1, HDD_WRITE=0, base never
+# written - fully reversible.  fastboot boot only, NEVER flash.
+# card_sha256=5e350a85a56081a7fa05c64698b143e94cb2fce29666fb98b965dad95b1cc23b card_off=0x10183720 card_new=5010012801daf0bdc046
+# =================================================================================================
 set=armed-d13-87845b1f sha256=7530c37cf1912bbe57e88c09ebb293c7bedc24be0a076b311bc914119edfa56a bytes=6343764 file=xnu_arm_entry.bin role=1039-frame-carrier;xnu_arm_entry.bin
 set=armed-d13-87845b1f sha256=bb8874d97989fe34425e7ba9a7f94848550f66eee62183d0482a39a0e084e6f4 bytes=7382208 file=xnu_arm_entry.elf role=1039-frame-carrier;xnu_arm_entry.elf
 set=armed-d13-87845b1f sha256=c10a9e5ce24f1930505e36c70123cf3611b088f655ddff45b1a23cc92183d7f2 bytes=1912 file=xnu_arm_entry.h role=1039-frame-carrier;xnu_arm_entry.h
