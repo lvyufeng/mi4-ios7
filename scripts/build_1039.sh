@@ -584,8 +584,18 @@ scripts/build_1032.sh | tail -3
 _card=$LIVE/xnu_card_hfs.img
 _rs=${STAGE90_REAL_ROOTFS:-/mnt/data/ios7-payload/v2/ios7/rootfs.hfs}
 [[ -f $_card && -f $_rs ]] || { echo "FAIL: card or pristine rootfs absent"; exit 1; }
+# **1040 rides on the same card.** `build_1032.sh` rebuilds the card byte-for-byte from the pristine
+# rootfs and writes 1032's 10 bytes; the bound-sign fix is a further halfword in the SAME libobjc, so
+# it is applied here, after 1032, and the byte count below expects it. The patcher is idempotent and
+# gated by value (it refuses bytes that are neither OLD nor NEW).
+python3 -I tools/patch_cache_libobjc_bound_sign.py "$_card" | sed 's/^/   /' \
+  || { echo "FAIL: 1040's bound-sign patch did not apply"; exit 1; }
+_got44=$(dd if="$_card" bs=1 skip=$((0x1018344C)) count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')
+[[ $_got44 == 1ddb ]] || { echo "FAIL: card 0x1018344C = $_got44, want 1ddb (blt.n)"; exit 1; }
+echo "   9b PASS: card carries 1040's bound sign (blt.n at 0x1018344C)"
+# (10 bytes from 1032 + 1 from 1040: the halfword's LOW byte was already 0x1d and does not change)
 _n=$(cmp -l "$_card" "$_rs" 2>/dev/null | wc -l || true)
-[[ $_n == 10 ]] || { echo "FAIL: the card differs from the pristine rootfs in $_n bytes, want 10"; exit 1; }
+[[ $_n == 11 ]] || { echo "FAIL: the card differs from the pristine rootfs in $_n bytes, want 11"; exit 1; }
 _got=$(dd if="$_card" bs=1 skip=$((0x10183720)) count=10 2>/dev/null | od -An -tx1 | tr -d ' \n')
 [[ $_got == 5010012801daf0bdc046 ]] || { echo "FAIL: card 0x10183720 = $_got"; exit 1; }
 echo "   9 PASS: card carries 1032's guard"
