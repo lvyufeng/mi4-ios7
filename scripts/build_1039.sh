@@ -215,6 +215,10 @@ python3 -I "$LE_PATCHER" "$XNU_TREE" --apply | tail -1 \
 echo "-- 2b. the trap.c layout (tools/replay-1039-trap-layout.sh) --"
 bash tools/replay-1039-trap-layout.sh "$XNU_TREE" | sed 's/^/  /' \
   || { echo "REFUSING: the trap.c layout could not be replayed"; exit 1; }
+# 2c. 1041's image-base probe: one vm_map lookup beside the register dump, so a faulting pc can be
+#     resolved to its image (the capture cannot name launchd's slide without it).
+python3 -I tools/add_1041_image_base.py "$XNU_TREE/osfmk/arm/trap.c" | sed 's/^/  /' \
+  || { echo "REFUSING: 1041's image-base probe did not stage"; exit 1; }
 
 # 3. THE STAGED TEXT PREPROCESSES, BY THE COMPILER.  The defect this rung fixes was structural (a
 #    close with nothing open); the guard is the real preprocessor over the seam's DIRECTIVE lines
